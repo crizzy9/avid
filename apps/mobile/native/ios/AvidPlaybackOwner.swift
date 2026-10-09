@@ -2,9 +2,11 @@ import AVFoundation
 import CryptoKit
 import Foundation
 import MediaPlayer
+import WebKit
 
 /// Process-owned transport: it does not retain the Capacitor WebView or its UI.
 /// Integrate into a generated Capacitor iOS target, then qualify on a physical device.
+@MainActor
 final class AvidPlaybackOwner: NSObject {
     static let shared = AvidPlaybackOwner()
     private let player = AVPlayer()
@@ -37,11 +39,23 @@ final class AvidPlaybackOwner: NSObject {
         configureRemoteCommands()
     }
 
-    func load(scope: String, bookId: String, fileId: String, url: URL, title: String, author: String, position: Double, rate: Float) throws {
+    func load(scope: String, bookId: String, fileId: String, url: URL, title: String, author: String, position: Double, rate: Float, expiresAt: Date? = nil, cookies: [HTTPCookie] = []) throws {
         guard !scope.isEmpty, !bookId.isEmpty, !fileId.isEmpty else { throw PlaybackError.invalidIdentity }
         guard ["https", "http", "file"].contains(url.scheme?.lowercased() ?? "") else { throw PlaybackError.invalidURL }
+        let source = AvidStoredAudioSource(accountScope: scope, bookId: bookId, fileId: fileId, url: url,
+            title: title, author: author, rate: rate, expiresAt: expiresAt)
+        if let expiresAt, expiresAt <= Date() { throw AvidSurfaceError.expiredSource }
+        try AvidPlaybackSourceStore.save(source)
         checkpoint()
         pause()
+        if AvidSharedStore.shared.isAvailable {
+            if let old = AvidSharedStore.shared.activeScopeHash, old != AvidSharedStore.scopeHash(scope) {
+                AvidPlaybackSourceStore.removeAccount(scopeHash: old)
+                AvidSharedStore.shared.clearActiveAccount()
+                AvidSystemSurfaces.removeAccount(old) { _ in }
+            }
+            try AvidSharedStore.shared.activate(accountScope: scope)
+        }
         setSleepTimer(deadlineMilliseconds: nil, chapterEnd: nil)
         self.scope = scope
         self.bookId = bookId
@@ -49,7 +63,7 @@ final class AvidPlaybackOwner: NSObject {
         self.title = title
         self.author = author
         preferredRate = min(3, max(0.5, rate))
-        let item = AVPlayerItem(url: url)
+        let item = AVPlayerItem(asset: AVURLAsset(url: url, options: [AVURLAssetHTTPCookiesKey: cookies]))
         item.audioTimePitchAlgorithm = .timeDomain
         player.replaceCurrentItem(with: item)
         seek(position)
@@ -62,6 +76,7 @@ final class AvidPlaybackOwner: NSObject {
         try session.setCategory(.playback, mode: .spokenAudio)
         try session.setActive(true)
         player.playImmediately(atRate: preferredRate)
+        checkpoint()
         publishNowPlaying()
     }
 
@@ -69,6 +84,29 @@ final class AvidPlaybackOwner: NSObject {
         player.pause()
         checkpoint()
         publishNowPlaying()
+    }
+
+    func resume(_ book: AvidRecentBook) async throws {
+        guard book.scopeHash == AvidSharedStore.shared.activeScopeHash, book.kind == "audio" else { throw AvidSurfaceError.unavailableBook }
+        if AvidSharedStore.scopeHash(scope) != book.scopeHash || bookId != book.bookId || fileId != book.fileId || player.currentItem == nil {
+            let source = try AvidPlaybackSourceStore.source(for: book)
+            let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+            try load(scope: source.accountScope, bookId: source.bookId, fileId: source.fileId, url: source.url,
+                title: source.title, author: source.author, position: book.audioPosition ?? 0, rate: source.rate, expiresAt: source.expiresAt, cookies: cookies)
+        }
+        try play()
+    }
+
+    func pause(_ book: AvidRecentBook) throws {
+        guard book.scopeHash == AvidSharedStore.shared.activeScopeHash else { throw AvidSurfaceError.unavailableBook }
+        if AvidSharedStore.scopeHash(scope) == book.scopeHash && bookId == book.bookId && fileId == book.fileId { pause() }
+        else {
+            var stopped = book
+            stopped.isPlaying = false
+            stopped.updatedAt = Date()
+            try AvidSharedStore.shared.save(stopped)
+            AvidSystemSurfaces.refresh()
+        }
     }
 
     func seek(_ seconds: Double) {
@@ -105,7 +143,10 @@ final class AvidPlaybackOwner: NSObject {
         return ["accountScope": scope, "bookId": bookId, "fileId": fileId,
                 "position": position.isFinite ? max(0, position) : 0,
                 "duration": duration.isFinite ? max(0, duration) : 0,
-                "rate": preferredRate, "playing": player.rate > 0,
+                "rate": preferredRate, "playing": player.timeControlStatus == .playing,
+                "status": player.currentItem?.status == .failed ? "failed" : player.timeControlStatus == .waitingToPlayAtSpecifiedRate ? "buffering" : player.timeControlStatus == .playing ? "playing" : player.currentItem == nil ? "stopped" : "paused",
+                "error": player.currentItem?.error?.localizedDescription ?? "",
+                "ended": duration.isFinite && duration > 0 && position >= duration,
                 "updatedAt": ISO8601DateFormatter().string(from: Date())]
     }
 
@@ -126,6 +167,15 @@ final class AvidPlaybackOwner: NSObject {
         // A server-sync journal is a separate integration; this is not a sync acknowledgement.
         UserDefaults.standard.set(value, forKey: "avid.playback.\(hash)")
         lastCheckpoint = Date()
+        if AvidSharedStore.shared.activeScopeHash == hash {
+            let duration = value["duration"] as? Double ?? 0
+            let position = value["position"] as? Double ?? 0
+            let book = AvidRecentBook(scopeHash: hash, bookId: bookId, fileId: fileId, title: title, author: author,
+                kind: "audio", progress: duration > 0 ? min(1, position / duration) : 0,
+                audioPosition: position, audioDuration: duration, isPlaying: player.timeControlStatus == .playing, updatedAt: Date())
+            try? AvidSharedStore.shared.save(book)
+            AvidSystemSurfaces.refresh()
+        }
         onCheckpoint?(value)
     }
 
@@ -212,6 +262,15 @@ final class AvidPlaybackOwner: NSObject {
             case .invalidURL: return "The audio URL has an unsupported scheme."
             case .noItem: return "Load an audiobook before starting playback."
             }
+        }
+    }
+}
+
+// WKHTTPCookieStore is the WebView's authenticated cookie owner; no cookie copy is persisted.
+extension WKHTTPCookieStore {
+    func allCookies() async -> [HTTPCookie] {
+        await withCheckedContinuation { continuation in
+            getAllCookies { continuation.resume(returning: $0) }
         }
     }
 }

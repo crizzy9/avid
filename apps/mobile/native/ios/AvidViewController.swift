@@ -1,8 +1,9 @@
 import Capacitor
 
-/// Set the generated storyboard's bridge view controller class to AvidViewController.
+/// The generated SceneDelegate installs this bridge controller.
 final class AvidViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(AvidPlaybackPlugin())
+        bridge?.registerPluginInstance(AvidSystemSurfacesPlugin())
     }
 }

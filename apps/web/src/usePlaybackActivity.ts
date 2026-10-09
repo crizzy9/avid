@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ReadingSession } from '../../../packages/core/src/types';
+import type {PlaybackTransport} from '../../mobile/src/native-transport';
 import { ActivitySessionTracker, createActivityJournal, type ActivityObservation,
   type PlaybackBook, type PlaybackController, type SpeechController } from '../../../packages/playback/src';
 
@@ -18,7 +19,7 @@ export type RecordPlaybackActivity = (session: ReadingSession, fileId: string, o
  * never owns or destroys the playback controller. Supply an account-scoped stable
  * recorder; cleanup retains that recorder for the old account's pending writes.
  */
-export function usePlaybackActivity(controller: PlaybackController, record: RecordPlaybackActivity, options: PlaybackActivityOptions = {}): void {
+export function usePlaybackActivity(controller: PlaybackTransport, record: RecordPlaybackActivity, options: PlaybackActivityOptions = {}): void {
   const onError = useRef(options.onError);
   onError.current = options.onError;
   const scope = useRef<string | undefined>(options.accountScope);

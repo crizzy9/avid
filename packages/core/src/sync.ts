@@ -3,33 +3,44 @@ import { accountScope, LibraryRepository, type OutboxOperation } from './reposit
 import type { Annotation } from './types';
 
 export interface SyncResult {sent:number;conflicts:number;failed:number;readOnly:boolean;}
+const activeSyncs=new Map<string,Promise<SyncResult>>();
+class SyncCancelled extends Error {}
 /** Foreground outbox, with explicit conflicts. No percentage-based conflict winner. */
 export class SyncCoordinator {
-  private running?:Promise<SyncResult>;
-  constructor(private readonly repository:LibraryRepository,private readonly client:BookOrbitClient) {
+  constructor(private readonly repository:LibraryRepository,private readonly client:BookOrbitClient,private readonly options:{isActive?:()=>boolean}={}) {
     if(repository.scope!==accountScope(client.session)) throw new Error('Repository and server account scopes do not match.');
   }
   flush():Promise<SyncResult> {
-    if(!this.running) this.running=this.performFlush().finally(()=>{this.running=undefined;});
-    return this.running;
+    if(this.client.readOnly)return Promise.resolve({sent:0,conflicts:0,failed:0,readOnly:true});
+    const key=JSON.stringify([this.repository.db.name,this.repository.scope]);
+    const active=activeSyncs.get(key);if(active)return active;
+    const running=this.performFlush().finally(()=>{activeSyncs.delete(key);});
+    activeSyncs.set(key,running);return running;
   }
   private async performFlush():Promise<SyncResult> {
     const result:SyncResult={sent:0,conflicts:0,failed:0,readOnly:this.client.readOnly};
     if(this.client.readOnly) return result;
-    const operations=await this.repository.pendingOperations();
-    for(const snapshot of operations) {
-      const operation=await this.repository.getOperation(snapshot.id);
+    const visited=new Set<string>();
+    while(this.options.isActive?.()!==false) {
+      // A checkpoint can arrive while a prior flush is in flight. Drain those
+      // new intents too, without retrying a failed operation in a tight loop.
+      const operations=(await this.repository.pendingOperations()).filter(operation=>!visited.has(operation.id));
+      if(!operations.length)break;
+      for(const snapshot of operations) {
+      visited.add(snapshot.id);
+      if(this.options.isActive?.()===false)return result;
+      const operation=await this.repository.claimOperation(snapshot.id);
       if(!operation) continue;
       if(['conflict','failed'].includes(operation.status)) continue;
       if(operation.nextAttemptAt && Date.parse(operation.nextAttemptAt)>Date.now()) continue;
-      await this.repository.updateOperation(operation.id,{status:'syncing',attempts:operation.attempts+1});
       try {
         const outcome=await this.send(operation);
         if(outcome==='conflict') { result.conflicts++; continue; }
         await this.repository.acknowledge(operation.id);
         result.sent++;
       } catch(error) {
-        if(error instanceof ReadOnlyError) { result.readOnly=true; break; }
+        if(error instanceof SyncCancelled) { await this.repository.updateOperation(operation.id,{status:operation.status==='syncing'?'uncertain':operation.status,leaseUntil:undefined});return result; }
+        if(error instanceof ReadOnlyError) { result.readOnly=true; return result; }
         const message=error instanceof Error?error.message:String(error);
         const status=error instanceof BookOrbitError?error.status:0;
         if(error instanceof ProgressConflictError || (operation.payload.kind==='progress'&&operation.payload.anchor.kind==='audio'&&(error instanceof ContractError||[404,409,412].includes(status)))) {
@@ -38,21 +49,24 @@ export class SyncCoordinator {
         const isAnnotationCreate=operation.payload.kind==='annotation'&&!/^\d+$/.test(operation.payload.annotation.id)&&!operation.payload.annotation.deleted;
         const uncertain=isAnnotationCreate && !(error instanceof ContractError) && (status===0||status>=500);
         const retryable=!(error instanceof ContractError)&&(status===0||status===429||status>=500);
-        await this.repository.updateOperation(operation.id,{status:uncertain?'uncertain':retryable?'pending':'failed',error:message,nextAttemptAt:retryable?new Date(Date.now()+Math.min(300000,1000*2**Math.min(operation.attempts,8))).toISOString():undefined});
+        await this.repository.updateOperation(operation.id,{status:uncertain?'uncertain':retryable?'pending':'failed',error:message,leaseUntil:undefined,nextAttemptAt:retryable?new Date(Date.now()+Math.min(300000,1000*2**Math.min(operation.attempts,8))).toISOString():undefined});
         result.failed++;
-        if(status===0||status===401||status===429||status>=500) break;
+        if(status===0||status===401||status===429||status>=500) return result;
       }
+    }
     }
     return result;
   }
   private async conflict(operation:OutboxOperation,message:string):Promise<'conflict'> {
-    await this.repository.updateOperation(operation.id,{status:'conflict',error:message});
+    await this.repository.updateOperation(operation.id,{status:'conflict',error:message,leaseUntil:undefined});
     return 'conflict';
   }
   private async send(operation:OutboxOperation):Promise<'sent'|'conflict'> {
+    if(this.options.isActive?.()===false)throw new SyncCancelled();
     const payload=operation.payload;
     if(payload.kind==='progress') {
       const remote=await this.client.getProgress(payload.anchor);
+      if(this.options.isActive?.()===false)throw new SyncCancelled();
       if(remote && remote.locator===payload.anchor.locator && remote.fileId===payload.anchor.fileId && Math.abs(remote.progress-payload.anchor.progress)<0.00001) return 'sent';
       if(remote?.updatedAt && Date.parse(remote.updatedAt)>Date.parse(operation.occurredAt)) return this.conflict(operation,'A newer position exists on the server. Choose which position to keep.');
       if(payload.anchor.kind==='audio') await this.client.saveProgress(payload.anchor,{operationId:operation.id});
@@ -63,6 +77,7 @@ export class SyncCoordinator {
     } else {
       const annotation=payload.annotation;
       const remote=annotation.kind==='audio'?await this.client.getAudioAnnotations(annotation.bookId,annotation.fileId):await this.client.getAnnotations(annotation.bookId,annotation.fileId);
+      if(this.options.isActive?.()===false)throw new SyncCancelled();
       let existing=remote.find(a=>a.id===annotation.id);
       if(operation.status==='uncertain'||operation.status==='syncing') {
         const matches=remote.filter(a=>a.fileId===annotation.fileId&&a.locator===annotation.locator&&a.quote===annotation.quote&&a.text===annotation.text&&a.color===annotation.color);

@@ -10,6 +10,8 @@ export interface NativePlaybackLoad {
   author: string;
   position?: number;
   rate?: number;
+  /** Optional signed-source expiry; native cold resume refuses expired access. */
+  expiresAt?: string;
 }
 
 export interface NativePlaybackSnapshot {
@@ -20,6 +22,9 @@ export interface NativePlaybackSnapshot {
   duration: number;
   rate: number;
   playing: boolean;
+  status?: 'stopped' | 'loading' | 'playing' | 'paused' | 'buffering' | 'interrupted' | 'failed';
+  error?: string;
+  ended?: boolean;
   updatedAt: string;
 }
 

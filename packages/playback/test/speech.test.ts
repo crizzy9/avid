@@ -15,7 +15,7 @@ function setup() {
   const utterances: Utterance[] = [];
   const engine = {
     cancel: vi.fn(), pause: vi.fn(), resume: vi.fn(), getVoices: vi.fn(() => []),
-    speak: vi.fn((utterance: Utterance) => { utterances.push(utterance); }),
+    speak: vi.fn((utterance: Utterance) => { utterances.push(utterance); utterance.onstart?.(); }),
     addEventListener: vi.fn(), removeEventListener: vi.fn(),
   };
   const speech = new SpeechController(engine as unknown as SpeechSynthesis);
@@ -62,6 +62,14 @@ describe('speech boundaries', () => {
     const unavailable = new SpeechController(null);
     unavailable.speak({ text: 'No engine' });
     expect(unavailable.getSnapshot()).toMatchObject({ status: 'failed' });
+  });
+  it('does not report queued speech as actual speaking before the engine starts', () => {
+    const { speech, engine, utterances } = setup();
+    engine.speak.mockImplementation(utterance => { utterances.push(utterance); });
+    speech.speak({ text: 'Waiting for the engine' });
+    expect(speech.getSnapshot().status).toBe('loading');
+    utterances[0]!.onstart?.();
+    expect(speech.getSnapshot().status).toBe('speaking');
   });
 });
 

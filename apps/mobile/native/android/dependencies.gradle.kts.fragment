@@ -1,6 +1,6 @@
-// Merge into the generated Android app after enabling its Kotlin plugin.
+// Reference only: these dependencies are already integrated in android/app/build.gradle.
 dependencies {
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-session:1.8.0")
-    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-ktx:1.17.0")
 }

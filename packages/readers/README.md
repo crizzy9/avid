@@ -1,0 +1,35 @@
+# Avid reader package
+
+`src/Reader.tsx` exports `Reader`, a full-screen native-modal React reader. Required props are the core `Book`, annotations, and close/anchor/annotation callbacks. Pass an explicit `BookFile` and `source: Blob` for authenticated downloads or imported files; ordinary file URLs are also accepted. `initialAnchor` restores native locators. `accountScope` scopes device preferences, imported fonts, and note drafts. `onActivity` reports reading, actual speech, or aligned-audio activity so the shell can avoid double-counting sessions.
+
+## Engines
+
+- EPUB/MOBI: vendored Foliate.js at commit `78914aef4466eb960965702401634c2cb348e9b1`, CFI restoration, book search, TOC, selection highlights, notes, paginated/scrolled layouts, typography, colors, imported fonts, and turn effects.
+- PDF: separate PDF.js renderer with one active page canvas, selectable text, page/rectangle anchors, page search, automatic content-bound detection and manual crop.
+- CBZ: fflate ZIP decoding with declared compressed/inflated limits and natural filename order.
+- CBR/CB7: lazily loaded libarchive WASM worker with individual-page extraction. Includes one-page, separate-cover spreads, reading directions, and bounded webtoon rendering with page/offset anchors.
+- Existing EPUB media overlays: actual SMIL text fragments and source clip times drive narration, highlights and optional follow-text. Controls include pause, resume, passage skips, and speed. There is no inferred ebook/audiobook alignment or standalone-audio matching.
+- Speech: installed browser voices, real word-boundary callbacks where available, and continuation across sections. This is a foreground browser implementation; native background speech is a separate platform requirement.
+- Speech source mapping preserves inline words, starts at the selected character, and skips non-linear sections. Voice, narration, font-import and search failures show a dismissible notice without removing the open publication.
+
+Only `demo-*` books without a source can render the clearly labeled original Avid demonstration EPUB. Real books without available content show an explicit error.
+
+## Language
+
+Reader controls, settings, notes/search, speech/narration controls, PDF cropping, comic/page status and application recovery messages have explicit catalogs for English, Finnish, French, German, Polish, Simplified Chinese and Spanish. `useReaderI18n()` observes the shared app language without reopening the publication. Generated page labels and accessibility labels follow that language; publication text, its own contents titles, filenames and installed voice names remain source data. Unknown third-party decoder diagnostics remain available after a translated explanation.
+
+Catalog tests require seven nonempty translations and identical interpolation placeholders per key. Rendered UI tests switch through all seven languages and check settings, notes, search and accessible names while confirming the ebook component stays mounted. Text wrapping handles expanded labels; actual device, screen-reader and native-speaker review remain release checks.
+
+## Content boundary
+
+Before any book document is navigated to, Avid removes executable/embed/form content and event handlers, injects a restrictive CSP, and renders it in an iframe without `allow-scripts`. Book resource URLs are limited to archive-local blob/data URLs by CSP; unexpected network requests, nested frames, scripts and forms are blocked. EPUB scripts never receive a native bridge. Pinned upstream changes and license are recorded in `vendor/foliate/AVID-NOTICE.md` and `LICENSE`.
+
+## Evidence and limits
+
+Reader unit tests cover native CFI restoration after typography changes, page/backward/offset anchors, source Blob normalization, isolation, EPUB packaging, CBZ extraction, actual RAR4/7-Zip image decoding, PDF crop bounds, and actual SMIL fragment/source-time transitions. The embedded-browser EPUB smoke test covered rendered content, TOC, search, notes and typography. Additional embedded-browser fixtures passed PDF rendering/cropping/restoration, CBZ/CB7/RAR4 image rendering, spreads/RTL, exact within-page webtoon restoration, and actual aligned WAV playback with a progressing source clock, pause, follow toggle, speed and highlighted passage skips. The parent app additionally tests real server files.
+
+The original MOBI6/PalmDB fixture passes Foliate metadata, section and TOC byte-offset parsing tests; protected-file flags produce an explicit error. Speech range tests cover exact selection starts, words spanning inline markup, real callback-offset mapping, hidden content and linear-section transitions. Installed-voice playback and cross-chapter interruption still require runtime qualification.
+
+Fixtures in `fixtures/` are original synthetic assets and are not included in the production application. Decoder unit tests do not certify every RAR variant, fixed-layout publication, speech voice, PDF, or mobile WebView. Production-build WASM packaging, accessibility on each OS, native lifecycle, and broad format corpora remain explicit qualification work.
+
+The comic browser limit is 150 MB compressed, 40 MB per image, at most 2,500 images, and 350 MB total inflated bytes for CBZ. Encrypted archives are rejected. At most three fonts of at most 1 MB each are retained per account/device. Font validation uses `FontFace.load()` before persistence.

@@ -12,8 +12,8 @@ export interface ReaderProps {
   onAnchor: (anchor: ReadingAnchor) => void;
   onAnnotation: (annotation: Annotation) => void;
 }
-export interface TocItem { label: string; href: string | number; subitems?: TocItem[] }
-export interface SearchResult { label: string; locator: string; excerpt: string }
+export interface TocItem { label: string; href: string | number; subitems?: TocItem[]; pageNumber?: number; fileName?: string }
+export interface SearchResult { label: string; locator: string; excerpt: string; pageNumber?: number }
 export interface SelectionAnchor { quote: string; locator: string }
 export interface ReaderSettings {
   theme: 'light' | 'warm' | 'dark' | 'custom';
@@ -40,6 +40,7 @@ export interface EngineProps extends ReaderProps {
   onReady: (handle: EngineHandle, toc: TocItem[]) => void;
   onLocation: (locator: string, progress: number, label: string) => void;
   onError: (error: string) => void;
+  onNotice: (message: string) => void;
   onSelection: (selection: SelectionAnchor | undefined) => void;
   onSpeaking: (active: boolean) => void;
   onMediaState: (state: { available: boolean; playing: boolean; seconds: number }) => void;

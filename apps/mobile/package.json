@@ -8,8 +8,18 @@
     "add:ios": "cap add ios",
     "add:android": "cap add android",
     "open:ios": "cap open ios",
-    "open:android": "cap open android"
+    "open:android": "cap open android",
+    "build:android": "cd android && ./gradlew :app:assembleDebug",
+    "verify:ios": "node scripts/verify-ios.mjs",
+    "configure:ios": "node scripts/configure-ios.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
-  "dependencies": { "@capacitor/core": "^8.0.0", "@capacitor/ios": "^8.0.0", "@capacitor/android": "^8.0.0" },
-  "devDependencies": { "@capacitor/cli": "^8.0.0" }
+  "dependencies": {
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@capacitor/android": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0"
+  }
 }

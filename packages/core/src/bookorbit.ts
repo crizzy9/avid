@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Annotation, Book, BookFile, Collection, ReadingAnchor, ReadingSession, ServerProfile, Session } from './types';
+import type { Annotation, Book, BookFile, BookOrbitReadStatus, Collection, ReadingAnchor, ReadingSession, ServerProfile, Session } from './types';
 
 /** Contract inspected at BookOrbit v3.3.0 / e767358443419253eeed782518d6fc4f675d69fd. */
 export const BOOKORBIT_CONTRACT_VERSION = '3.3.0';
@@ -25,15 +25,30 @@ const bookSchema = z.object({
   id: numericId, title: z.string().nullable(), authors: z.array(z.union([z.string(), z.object({name: z.string()})])),
   files: z.array(fileSchema), genres: z.array(z.string()).nullish().transform(value=>value??[]), description: z.string().nullable().optional(),
   readingProgress: z.number().nullable().optional(), readStatus: z.object({status: z.string()}).nullable().optional(),
-  seriesName: z.string().nullable().optional(), seriesIndex: z.union([z.string(), z.number()]).nullable().optional(),
+  seriesId:numericId.nullable().optional(),seriesName: z.string().nullable().optional(), seriesIndex: z.union([z.string(), z.number()]).nullable().optional(),
   addedAt: z.string(), hasCover: z.boolean().optional(), coverVersion: z.string().optional(),
 }).passthrough();
 const booksPageSchema = z.object({items: z.array(bookSchema), total: z.number(), page: z.number(), size: z.number()});
+const seriesSchema=z.object({id:numericId,name:z.string(),bookCount:z.number().int().nonnegative(),readCount:z.number().int().nonnegative(),authors:z.array(z.string()),coverBookIds:z.array(numericId).optional().default([]),expectedBookCount:z.number().nullable().optional(),gapCount:z.number().optional()});
+export type SeriesSummary=z.infer<typeof seriesSchema>;
+export interface SeriesPage {items:SeriesSummary[];total:number;page:number;size:number;}
 const authSchema = z.object({accessToken: z.string().min(1), refreshToken: z.string().optional(), user: z.object({id: numericId, username: z.string()})});
 const progressSchema = z.object({percentage: z.number(), cfi: z.string().nullable().optional(), pageNumber: z.number().nullable().optional(), positionSeconds: z.number().nullable().optional(), textUpdatedAt: z.string().nullable().optional(), updatedAt: z.string().nullable().optional(), currentFileId: numericId.optional()}).passthrough();
 const annotationSchema = z.object({id: numericId, bookId: numericId, jumpFileId: numericId.nullable().optional(), cfi: z.string().nullable().optional(), pdf: z.unknown().optional(), text: z.string(), note: z.string().nullable(), color: z.string(), createdAt: z.string(), updatedAt: z.string().nullable().optional()}).passthrough();
 const audioStateSchema=z.object({assetId:z.string(),positionMs:z.number().int().nonnegative(),percentage:z.number().min(0).max(100),completed:z.boolean(),capturedAt:z.string(),revision:z.number().int(),manifestRevision:z.string()});
 const audioBookmarkSchema=z.object({id:z.string(),bookId:z.number(),positionMs:z.number().int().nonnegative(),chapterId:z.string().nullable(),title:z.string(),note:z.string().nullable(),createdAt:z.string(),updatedAt:z.string()});
+const serverStatusSchema=z.enum(['unread','want_to_read','reading','on_hold','rereading','read','skimmed','abandoned']);
+const collectionSchema=z.object({id:numericId,name:z.string(),mediaType:z.string().optional()});
+const durationBreakdownSchema=z.object({totalSeconds:z.number().nonnegative(),readingSeconds:z.number().nonnegative(),listeningSeconds:z.number().nonnegative()});
+const activityDaySchema=durationBreakdownSchema.extend({day:z.string(),sessionsCount:z.number().nonnegative(),bySource:z.record(z.string(),z.number())});
+const activityCalendarSchema=z.object({year:z.number().int(),availableYears:z.array(z.number().int()),days:z.array(activityDaySchema)});
+const statisticsSummarySchema=z.object({trackedBooks:z.number(),startedBooks:z.number(),inProgressBooks:z.number(),completedBooks:z.number(),meanProgressPercent:z.number()});
+const activityOverviewSchema=z.object({generatedAt:z.string(),timezone:z.string(),snapshot:z.object({today:durationBreakdownSchema,lastSevenDays:durationBreakdownSchema,previousSevenDays:durationBreakdownSchema,currentStreak:z.number(),longestStreak:z.number(),completedBooksYtd:z.number()}),calendar:activityCalendarSchema,sources:z.object({windowDays:z.number(),totals:durationBreakdownSchema,slices:z.array(z.object({bucket:z.string(),totalSeconds:z.number()}))})});
+const bookSessionSchema=z.object({id:numericId,bookFileId:numericId.nullable(),startedAt:z.string(),endedAt:z.string(),durationSeconds:z.number(),progressDelta:z.number().nullable(),endProgress:z.number().nullable(),format:z.string().nullable(),source:z.string().nullable(),sessionType:z.enum(['read','tts','listen']).optional()});
+const bookSessionPageSchema=z.object({items:z.array(bookSessionSchema),total:z.number(),page:z.number(),pageSize:z.number(),stats:z.object({totalSessions:z.number(),totalSeconds:z.number(),avgDurationSeconds:z.number(),firstSessionAt:z.string().nullable(),lastSessionAt:z.string().nullable(),dailySummary:z.array(z.object({day:z.string(),totalMinutes:z.number()}))}).passthrough()});
+export type ServerReadingStatistics=z.infer<typeof activityOverviewSchema>&{summary:z.infer<typeof statisticsSummarySchema>;currentCalendar:z.infer<typeof activityCalendarSchema>};
+export type ServerBookSessions=z.infer<typeof bookSessionPageSchema>;
+export interface OidcCallback {code:string;state:string;codeVerifier:string;nonce:string;redirectUri:string;}
 
 export function normalizeServerUrl(input: string): string {
   const url = new URL(input.trim());
@@ -63,7 +78,12 @@ function format(value: string | null): BookFile['format'] | null {
   if (f === 'azw' || f === 'azw3') return 'MOBI';
   return ['epub', 'mobi', 'pdf', 'cbz', 'cbr', 'cb7'].includes(f) ? f.toUpperCase() as BookFile['format'] : null;
 }
-export interface BookQuery { page?: number; size?: number; query?: string; sort?: 'title' | 'addedAt' | 'lastReadAt'; direction?: 'asc' | 'desc'; libraryId?: string; }
+export interface BookQuery { page?: number; size?: number; query?: string; sort?: 'title' | 'addedAt' | 'lastReadAt'; direction?: 'asc' | 'desc'; libraryId?: string; media?:'all'|'books'|'audio'|'comics';readStatuses?:BookOrbitReadStatus[]; }
+/** Avid pages are one-based; BookOrbit catalog routes are zero-based. */
+function serverPage(page=1):number {
+  if(!Number.isInteger(page)||page<1)throw new ContractError('Page numbers start at one.');
+  return page-1;
+}
 export interface BooksPage { items: Book[]; total: number; page: number; size: number; }
 export interface LibrarySummary { id: string; name: string; }
 export interface LoginOptions { passwordLoginEnabled: boolean; allowRegistration: boolean; oidcProviders: {slug: string; displayName: string; enabled: boolean; clientId: string; scopes: string}[]; }
@@ -81,9 +101,9 @@ export interface PlaybackSource {
   tracks:{id:string;url:string;title?:string;duration?:number}[];
   chapters:{id:string;title:string;start:number;duration:number}[];
 }
-export interface AudioLocator {version:1;time?:number;trackId?:string;trackTime?:number;}
+export interface AudioLocator {version:1;time?:number;trackId?:string;trackTime?:number;manifestRevision?:string;}
 export function parseAudioLocator(locator:string):AudioLocator {
-  if(locator.trim().startsWith('{')) return parse(z.object({version:z.literal(1).default(1),time:z.number().finite().nonnegative().optional(),trackId:z.string().optional(),trackTime:z.number().finite().nonnegative().optional()}).refine(p=>p.time!==undefined||(p.trackId!==undefined&&p.trackTime!==undefined),'Audio position is missing'),JSON.parse(locator),'audio locator');
+  if(locator.trim().startsWith('{')) return parse(z.object({version:z.literal(1).default(1),time:z.number().finite().nonnegative().optional(),trackId:z.string().optional(),trackTime:z.number().finite().nonnegative().optional(),manifestRevision:z.string().optional()}).refine(p=>p.time!==undefined||(p.trackId!==undefined&&p.trackTime!==undefined),'Audio position is missing'),JSON.parse(locator),'audio locator');
   const seconds=Number(locator);
   if(locator.trim()===''||!Number.isFinite(seconds)||seconds<0) throw new ContractError('Audio locator must contain source seconds.');
   return {version:1,trackTime:seconds};
@@ -91,6 +111,7 @@ export function parseAudioLocator(locator:string):AudioLocator {
 function orderedAssets(manifest:AudioManifest):AudioManifest['assets'] { return [...manifest.assets].sort((a,b)=>a.sequence-b.sequence); }
 function audioPosition(manifest:AudioManifest,anchor:Pick<ReadingAnchor,'fileId'|'locator'>):{asset:AudioManifest['assets'][number];positionMs:number;time:number} {
   const locator=parseAudioLocator(anchor.locator),assets=orderedAssets(manifest);
+  if(locator.manifestRevision!==undefined&&locator.manifestRevision!==manifest.revision)throw new ProgressConflictError('The audiobook edition changed after this checkpoint.');
   let asset=assets.find(a=>String(a.fileId)===(locator.trackId??anchor.fileId)||a.assetId===locator.trackId);
   let trackTime=locator.trackTime;
   if(locator.trackId!==undefined && !asset) throw new ProgressConflictError('The saved audio track is absent from this manifest.');
@@ -148,6 +169,20 @@ export class BookOrbitClient {
     if (!response.ok) throw await BookOrbitClient.responseError(response);
     return parse(z.object({passwordLoginEnabled:z.boolean(),allowRegistration:z.boolean(),oidcProviders:z.array(z.object({slug:z.string(),displayName:z.string(),enabled:z.boolean(),clientId:z.string(),scopes:z.string()}))}), await response.json(), 'login options');
   }
+  /** Low-level contract only. The app must implement PKCE and a server-allowlisted callback before enabling SSO. */
+  static async createOidcState(url:string,providerSlug:string,options:ClientOptions={}):Promise<{state:string;authorizationEndpoint:string}> {
+    if(!/^[a-z0-9][a-z0-9_-]*$/i.test(providerSlug))throw new ContractError('Invalid sign-in provider.');
+    const response=await(options.fetch??globalThis.fetch.bind(globalThis))(`${transportBase(url,options.transportBaseUrl)}/api/v1/auth/oidc/${encodeURIComponent(providerSlug)}/state`,{method:'POST',credentials:'include'});
+    if(!response.ok)throw await BookOrbitClient.responseError(response);
+    return parse(z.object({state:z.string().min(1),authorizationEndpoint:z.string().url()}),await response.json(),'OIDC state');
+  }
+  static async exchangeOidcCode(profile:ServerProfile,callback:OidcCallback,options:ClientOptions={}):Promise<Session> {
+    if(!callback.code||!callback.state||!callback.codeVerifier||!callback.nonce||!callback.redirectUri)throw new ContractError('Complete OIDC callback and PKCE state are required.');
+    const response=await(options.fetch??globalThis.fetch.bind(globalThis))(`${transportBase(profile.url,options.transportBaseUrl)}/api/v1/auth/oidc/callback`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({...callback,clientKind:options.clientKind??'web',deviceLabel:'Avid'})});
+    if(!response.ok)throw await BookOrbitClient.responseError(response);
+    const auth=parse(authSchema.extend({mode:z.literal('login')}),await response.json(),'OIDC login');
+    return {profile:{...profile,url:normalizeServerUrl(profile.url),username:auth.user.username},userId:auth.user.id,accessToken:auth.accessToken,refreshToken:auth.refreshToken};
+  }
   private static async responseError(response: Response) {
     let detail: unknown;
     try { detail = await response.json(); } catch { /* Non-JSON reverse proxy response. */ }
@@ -186,7 +221,8 @@ export class BookOrbitClient {
     return parse(z.array(z.object({id:numericId,name:z.string()})),await this.json('libraries'),'libraries');
   }
   private mapBook(value: z.infer<typeof bookSchema>): Book {
-    const files = value.files.filter(f => ['primary','content'].includes(f.role)).flatMap(f => {
+    // The audiobook manifest service selects audio by format, independently of file role.
+    const files = value.files.filter(f => ['primary','content'].includes(f.role)||audioFormats.has(f.format?.toLowerCase()??'')).flatMap(f => {
       const mapped = format(f.format);
       return mapped ? [{id:f.id,name:f.filename ?? `${value.title ?? 'Book'}.${f.format}`,format:mapped,size:f.sizeBytes ?? undefined,url:this.fileUrl(f.id)}] : [];
     });
@@ -197,32 +233,72 @@ export class BookOrbitClient {
     return {id:value.id,title:value.title ?? 'Untitled',authors:value.authors.map(a=>typeof a==='string'?a:a.name),description:value.description ?? '',
       format:bookFormat,files,color:colors[Number(value.id)%colors.length],progress:Math.max(0,Math.min(1,(value.readingProgress ?? 0)/100)),
       status:status==='read' || status==='skimmed' ? 'finished' : ['reading','rereading','on_hold'].includes(status ?? '') ? 'reading' : 'unread',
-      series:value.seriesName ?? undefined,seriesIndex:value.seriesIndex==null?undefined:Number(value.seriesIndex),genres:value.genres,addedAt:value.addedAt,
+      serverStatus:serverStatusSchema.safeParse(status).success?status as BookOrbitReadStatus:undefined,
+      series:value.seriesName ?? undefined,seriesId:value.seriesId??undefined,seriesIndex:value.seriesIndex==null?undefined:Number(value.seriesIndex),genres:value.genres,addedAt:value.addedAt,
       coverUrl:value.hasCover===false?undefined:this.coverUrl(value.id,value.coverVersion),};
   }
   async listBooks(query: BookQuery = {}, signal?: AbortSignal): Promise<BooksPage> {
     const page = query.page ?? 1, size = Math.min(200,Math.max(1,query.size ?? 100));
     const value = await this.json(query.libraryId ? `libraries/${routeId(query.libraryId)}/books` : 'books/query', {
-      method:'POST',signal,body:JSON.stringify({sort:[{field:query.sort ?? 'addedAt',dir:query.direction ?? 'desc'}],pagination:{page,size},q:query.query ?? '',collapseSeries:false}),
+      method:'POST',signal,body:JSON.stringify(this.bookQueryBody({...query,page,size})),
     }); // POST query is explicitly read-only in the pinned controller.
     const result = parse(booksPageSchema,value,'books page');
-    return {...result,items:result.items.map(book=>this.mapBook(book))};
+    return {...result,page:result.page+1,items:result.items.map(book=>this.mapBook(book))};
+  }
+  private bookQueryBody(query:BookQuery):Record<string,unknown> {
+    const rules:Record<string,unknown>[]=[];
+    const formats=query.media==='audio'?[...audioFormats]:query.media==='comics'?['cbz','cbr','cb7']:query.media==='books'?['epub','kepub','mobi','azw3','azw','pdf']:undefined;
+    if(formats)rules.push({type:'rule',field:'format',operator:'includesAny',value:formats});
+    if(query.readStatuses?.length)rules.push({type:'rule',field:'readStatus',operator:'includesAny',value:query.readStatuses.map(status=>parse(serverStatusSchema,status,'reading status'))});
+    return {sort:[{field:query.sort??'addedAt',dir:query.direction??'desc'}],pagination:{page:serverPage(query.page),size:query.size??100},q:query.query??'',collapseSeries:false,...(rules.length?{filter:{type:'group',join:'AND',rules}}:{})};
   }
   async getBook(id: string): Promise<Book> { return this.mapBook(parse(bookSchema,await this.json(`books/${routeId(id)}`),'book')); }
+  async listSeries(options:{page?:number;size?:number;query?:string}={},signal?:AbortSignal):Promise<SeriesPage> {
+    const size=Math.min(100,Math.max(1,options.size??24));
+    const params=new URLSearchParams({page:String(serverPage(options.page)),size:String(size),sort:'name',order:'asc'});
+    if(options.query)params.set('q',options.query);
+    const value=parse(z.object({items:z.array(seriesSchema),total:z.number(),page:z.number(),size:z.number()}),await this.json(`series?${params}`,{signal}),'series page');
+    return {...value,page:value.page+1};
+  }
+  async getSeriesBooks(seriesId:string,page=1,size=48,signal?:AbortSignal):Promise<BooksPage> {
+    const result=parse(booksPageSchema,await this.json(`series/${routeId(seriesId)}/books?page=${serverPage(page)}&size=${Math.min(100,Math.max(1,size))}&sort=seriesIndex&order=asc`,{signal}),'series books');
+    return {...result,page:result.page+1,items:result.items.map(book=>this.mapBook(book))};
+  }
   async listCollections(): Promise<Collection[]> {
-    const items = parse(z.array(z.object({id:numericId,name:z.string(),mediaType:z.string().optional()})),await this.json('collections'),'collections');
+    const items = parse(z.array(collectionSchema),await this.json('collections'),'collections');
     return items.filter(c=>c.mediaType!=='podcasts').map(c=>({id:c.id,name:c.name,bookIds:[]}));
   }
-  async getCollectionBooks(id: string, page = 1, size = 100): Promise<BooksPage> {
-    const result = parse(booksPageSchema,await this.json(`collections/${routeId(id)}/books?page=${page}&size=${size}`),'collection books');
-    return {...result,items:result.items.map(b=>this.mapBook(b))};
+  /** Owned picker targets. bookIds describes only this selected book, not complete membership. */
+  async getBookCollections(bookId:string):Promise<Collection[]> {
+    const id=routeId(bookId);
+    const items=parse(z.array(collectionSchema.extend({memberCount:z.number().int().nonnegative()})),await this.json(`collections?bookIds=${id}`),'book collection membership');
+    return items.filter(c=>c.mediaType!=='podcasts').map(c=>({id:c.id,name:c.name,bookIds:c.memberCount>0?[id]:[]}));
+  }
+  async createCollection(input:{name:string;icon?:string;description?:string}):Promise<Collection> {
+    if(!input.name.trim()||input.name.trim().length>255)throw new ContractError('Collection names must contain 1 to 255 characters.');
+    const value=parse(collectionSchema,await this.json('collections',{method:'POST',body:JSON.stringify({name:input.name.trim(),icon:input.icon??'Library',description:input.description,mediaType:'books',isPublic:false,syncToKobo:false})},true),'created collection');
+    return {id:value.id,name:value.name,bookIds:[]};
+  }
+  async addCollectionBooks(id:string,bookIds:string[]):Promise<Collection> { return this.changeCollectionBooks(id,bookIds,'POST'); }
+  async removeCollectionBooks(id:string,bookIds:string[]):Promise<Collection> { return this.changeCollectionBooks(id,bookIds,'DELETE'); }
+  private async changeCollectionBooks(id:string,bookIds:string[],method:'POST'|'DELETE'):Promise<Collection> {
+    if(!bookIds.length)throw new ContractError('Select at least one book.');
+    const ids=[...new Set(bookIds.map(bookId=>Number(routeId(bookId))))];
+    const value=parse(collectionSchema,await this.json(`collections/${routeId(id)}/books`,{method,body:JSON.stringify({bookIds:ids})},true),'updated collection');
+    // Mutation returns a summary, not the complete member list. Caller reloads the selected collection page.
+    return {id:value.id,name:value.name,bookIds:[]};
+  }
+  async getCollectionBooks(id: string, page = 1, size = 100,query?:Pick<BookQuery,'query'|'sort'|'direction'|'media'|'readStatuses'>,signal?:AbortSignal): Promise<BooksPage> {
+    const value=query?await this.json(`collections/${routeId(id)}/books/query`,{method:'POST',signal,body:JSON.stringify(this.bookQueryBody({...query,page,size}))}):await this.json(`collections/${routeId(id)}/books?page=${serverPage(page)}&size=${size}`,{signal});
+    const result = parse(booksPageSchema,value,'collection books');
+    return {...result,page:result.page+1,items:result.items.map(b=>this.mapBook(b))};
   }
   async listSmartScopes(): Promise<{id:string;name:string}[]> {
     return parse(z.array(z.object({id:numericId,name:z.string()})),await this.json('smart-scopes'),'smart scopes');
   }
   async getSmartScopeBooks(id: string, page=1, size=100): Promise<BooksPage> {
-    const result=parse(booksPageSchema,await this.json(`smart-scopes/${routeId(id)}/books?page=${page}&size=${size}`),'smart scope books');
-    return {...result,items:result.items.map(b=>this.mapBook(b))};
+    const result=parse(booksPageSchema,await this.json(`smart-scopes/${routeId(id)}/books?page=${serverPage(page)}&size=${size}`),'smart scope books');
+    return {...result,page:result.page+1,items:result.items.map(b=>this.mapBook(b))};
   }
   fileUrl(id: string): string { return `${this.endpoint}/api/v1/books/files/${routeId(id)}/serve`; }
   coverUrl(id: string, version?: string): string { return `${this.endpoint}/api/v1/books/${routeId(id)}/cover${version?`?v=${encodeURIComponent(version)}`:''}`; }
@@ -239,11 +315,12 @@ export class BookOrbitClient {
       const asset=manifest.assets.find(a=>a.assetId===state.assetId);
       if(!asset) throw new ProgressConflictError('The saved audiobook asset is no longer available.');
       const position=audioPosition(manifest,{fileId:String(asset.fileId),locator:JSON.stringify({version:1,trackId:String(asset.fileId),trackTime:state.positionMs/1000})});
-      return {...identity,locator:JSON.stringify({version:1,trackId:String(asset.fileId),trackTime:state.positionMs/1000,time:position.time}),progress:state.percentage/100,updatedAt:state.capturedAt};
+      return {...identity,locator:JSON.stringify({version:1,trackId:String(asset.fileId),trackTime:state.positionMs/1000,time:position.time,manifestRevision:manifest.revision}),progress:state.percentage/100,updatedAt:state.capturedAt};
     }
     const value = await this.json(`books/files/${routeId(identity.fileId)}/progress`);
     if (value === null) return null;
     const p = parse(progressSchema,value,'progress');
+    if(p.currentFileId&&p.currentFileId!==identity.fileId)throw new ProgressConflictError('The saved reading position belongs to a different source file.');
     const locator = identity.kind==='epub' ? p.cfi : p.pageNumber;
     if (locator == null) return null;
     return {...identity,fileId:p.currentFileId ?? identity.fileId,locator:String(locator),progress:p.percentage/100,updatedAt:p.textUpdatedAt ?? p.updatedAt ?? ''};
@@ -274,7 +351,11 @@ export class BookOrbitClient {
     }
   }
   async setStatus(id: string, status: Book['status']|'want_to_read'|'abandoned'|'skimmed'): Promise<void> {
-    await this.json(`books/${routeId(id)}/status`,{method:'PATCH',body:JSON.stringify({status:status==='finished'?'read':status})},true);
+    await this.setReadStatus(id,status==='finished'?'read':status);
+  }
+  async setReadStatus(id:string,status:BookOrbitReadStatus):Promise<void> {
+    parse(serverStatusSchema,status,'reading status');
+    await this.json(`books/${routeId(id)}/status`,{method:'PATCH',body:JSON.stringify({status})},true);
   }
   async updateMetadata(id: string, fields: {title?:string;authors?:string[];description?:string;genres?:string[];seriesName?:string|null;publishedYear?:number|null}): Promise<Book> {
     return this.mapBook(parse(bookSchema,await this.json(`books/${routeId(id)}/metadata`,{method:'PATCH',body:JSON.stringify(fields)},true),'updated book'));
@@ -325,6 +406,21 @@ export class BookOrbitClient {
     if(options.endProgress!==undefined&&(!Number.isFinite(options.endProgress)||options.endProgress<0||options.endProgress>1)) throw new ContractError('Session progress must be between 0 and 1.');
     if(options.progressDelta!==undefined&&!Number.isFinite(options.progressDelta)) throw new ContractError('Session progress change must be finite.');
     await this.json(`books/files/${routeId(fileId)}/sessions`,{method:'POST',body:JSON.stringify({sessionId:session.id,startedAt:session.startedAt,endedAt,durationSeconds:Math.floor(session.duration),sessionType:{reading:'read',listening:'listen',speech:'tts'}[session.kind],...(options.endProgress==null?{}:{endProgress:options.endProgress*100}),...(options.progressDelta==null?{}:{progressDelta:options.progressDelta*100}),...(options.source?{source:options.source}:{})})},true);
+  }
+  /** Server-owned totals and calendar. Seconds stay seconds; no local-cache totals are blended in. */
+  async getReadingStatistics(year?:number):Promise<ServerReadingStatistics> {
+    if(year!==undefined&&(!Number.isInteger(year)||year<1970||year>2100))throw new ContractError('Choose a calendar year between 1970 and 2100.');
+    const [overview,summary]=await Promise.all([
+      this.json('user-statistics/activity-overview').then(value=>parse(activityOverviewSchema,value,'activity overview')),
+      this.json('user-statistics/summary').then(value=>parse(statisticsSummarySchema,value,'statistics summary')),
+    ]);
+    const calendar=year===undefined||year===overview.calendar.year?overview.calendar:parse(activityCalendarSchema,await this.json(`user-statistics/activity-calendar/${year}`),'activity calendar');
+    return {...overview,calendar,summary,currentCalendar:overview.calendar};
+  }
+  async getBookSessions(bookId:string,options:{page?:number;pageSize?:number}={}):Promise<ServerBookSessions> {
+    const page=options.page??1,pageSize=options.pageSize??25;
+    if(!Number.isInteger(page)||page<1||!Number.isInteger(pageSize)||pageSize<1||pageSize>100)throw new ContractError('Invalid reading-session pagination.');
+    return parse(bookSessionPageSchema,await this.json(`books/${routeId(bookId)}/sessions?page=${page}&pageSize=${pageSize}&sortBy=startedAt&sortDir=desc`),'book sessions');
   }
   async uploadBook(libraryId:string,file:File,signal?:AbortSignal):Promise<unknown> {
     const body=new FormData(); body.append('file',file);

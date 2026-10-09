@@ -1,5 +1,6 @@
 import Capacitor
 import Foundation
+import WebKit
 
 @objc(AvidPlaybackPlugin)
 public class AvidPlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -26,11 +27,14 @@ public class AvidPlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let rawURL = call.getString("url"), let url = URL(string: rawURL),
               let scope = call.getString("accountScope"), let bookId = call.getString("bookId"),
               let fileId = call.getString("fileId") else { call.reject("Missing playback identity or URL."); return }
-        DispatchQueue.main.async {
+        Task { @MainActor in
+            let cookieStore = self.webView?.configuration.websiteDataStore.httpCookieStore ?? WKWebsiteDataStore.default().httpCookieStore
+            let cookies = await cookieStore.allCookies()
             do {
                 try AvidPlaybackOwner.shared.load(scope: scope, bookId: bookId, fileId: fileId, url: url,
                     title: call.getString("title") ?? "", author: call.getString("author") ?? "",
-                    position: call.getDouble("position") ?? 0, rate: Float(call.getDouble("rate") ?? 1))
+                    position: call.getDouble("position") ?? 0, rate: Float(call.getDouble("rate") ?? 1),
+                    expiresAt: call.getString("expiresAt").flatMap { ISO8601DateFormatter().date(from: $0) }, cookies: cookies)
                 call.resolve()
             } catch { call.reject(error.localizedDescription) }
         }

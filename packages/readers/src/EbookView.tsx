@@ -1,10 +1,13 @@
+import { useReaderI18n, ReaderError, readerError } from './readerI18n';
 import { useEffect, useRef } from 'react';
 import type { EngineProps, SearchResult, SelectionAnchor, TocItem } from './contracts';
 import { themeColors } from './contracts';
 import { createDemoEpub } from './demo';
 import { sanitizeBookDocument } from './isolation';
 import { fontRules } from './fonts';
+import { clamp } from './anchors';
 import { publicationSource } from './publicationSource';
+import { buildSpeechText, speechBoundaryRange, nextLinearSection } from './speechText';
 import '../vendor/foliate/view.js';
 import { makeBook } from '../vendor/foliate/view.js';
 import { Overlayer } from '../vendor/foliate/overlayer.js';
@@ -12,6 +15,7 @@ import { Overlayer } from '../vendor/foliate/overlayer.js';
 // Foliate has no stable TypeScript surface. Keep its untyped API at this boundary.
 type FoliateView = HTMLElement & { [key: string]: any };
 export function EbookView(props: EngineProps) {
+  const { t, locale } = useReaderI18n();
   const container = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
   const current = useRef(props); current.current = props;
@@ -21,7 +25,7 @@ export function EbookView(props: EngineProps) {
     let loadedBook: any;
     const isolatedUrls = new Map<number, string>();
     const view = document.createElement('foliate-view') as FoliateView;
-    view.setAttribute('aria-label', 'Book reading area');
+    view.setAttribute('aria-label', t('readingArea'));
     container.current?.append(view); viewRef.current = view;
     const selection = (): SelectionAnchor | undefined => {
       for (const { doc, index } of view.renderer?.getContents?.() ?? []) {
@@ -37,7 +41,7 @@ export function EbookView(props: EngineProps) {
     };
     view.addEventListener('relocate', ((event: CustomEvent) => {
       const detail = event.detail;
-      current.current.onLocation(detail.cfi, Math.max(0, Math.min(1, detail.fraction ?? 0)), detail.tocItem?.label || 'Reading');
+      current.current.onLocation(detail.cfi, clamp(detail.fraction ?? 0), detail.tocItem?.label || t('reading'));
     }) as EventListener);
     view.addEventListener('load', ((event: CustomEvent) => {
       const { doc } = event.detail;
@@ -56,7 +60,7 @@ export function EbookView(props: EngineProps) {
     const stop = () => { speaking = false; speechGeneration++; globalThis.speechSynthesis?.cancel(); current.current.onSpeaking(false); };
     stopSpeech.current = stop;
     const speakSection = async (startFromSelection = true) => {
-      if (!('speechSynthesis' in window)) { current.current.onError('This browser does not provide installed speech voices.'); return; }
+      if (!('speechSynthesis' in window)) { current.current.onNotice(t('speechUnavailable')); return; }
       const generation = ++speechGeneration;
       speaking = true;
       const { doc, index } = view.renderer.getContents()[0] ?? {};
@@ -64,57 +68,40 @@ export function EbookView(props: EngineProps) {
       const selected = startFromSelection ? doc.getSelection() : undefined;
       const selectedRange = selected?.rangeCount ? selected.getRangeAt(0) : undefined;
       const startRange = selectedRange && !selectedRange.collapsed ? selectedRange : startFromSelection ? view.lastLocation?.range : undefined;
-      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-      const nodes: Text[] = [];
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        if (node.textContent?.trim() && !node.parentElement?.closest('script,style,head')) nodes.push(node as Text);
-      }
-      let started = !startRange;
-      const parts: { node: Text; start: number; text: string }[] = [];
-      for (const node of nodes) {
-        let start = 0;
-        if (!started && startRange) {
-          const range = doc.createRange(); range.selectNodeContents(node);
-          if (range.compareBoundaryPoints(Range.END_TO_START, startRange) <= 0) continue;
-          started = true;
-          if (node === startRange.startContainer) start = startRange.startOffset;
-        }
-        parts.push({ node, start, text: node.data.slice(start) });
-      }
-      const fullText = parts.map(part => part.text).join(' ');
-      if (!fullText.trim()) return stop();
+      const speech = buildSpeechText(doc, startRange);
+      const continueSection = async () => {
+        if (!speaking || generation !== speechGeneration) return;
+        const next = nextLinearSection(view.book.sections, index);
+        if (next === undefined) return stop();
+        await view.goTo(next);
+        if (!speaking || generation !== speechGeneration) return;
+        if (view.renderer.getContents()[0]?.index !== next) { stop(); current.current.onNotice(t('speechNextFailed')); return; }
+        void speakSection(false);
+      };
+      if (!speech.text.trim()) { await continueSection(); return; }
+      const fullText = speech.text;
       const utterance = new SpeechSynthesisUtterance(fullText);
       utterance.rate = current.current.settings.speechRate;
       utterance.voice = speechSynthesis.getVoices().find(voice => voice.voiceURI === current.current.settings.voice) ?? null;
       utterance.onboundary = event => {
         if (!speaking || generation !== speechGeneration || event.name !== 'word') return;
-        let offset = 0;
-        for (const part of parts) {
-          if (event.charIndex < offset + part.text.length) {
-            const range = doc.createRange();
-            const start = part.start + event.charIndex - offset;
-            range.setStart(part.node, Math.max(0, start));
-            const length = event.charLength || part.node.data.slice(start).match(/^\S+/)?.[0].length || 1;
-            range.setEnd(part.node, Math.min(part.node.length, start + length));
-            const selection = doc.getSelection(); selection.removeAllRanges(); selection.addRange(range);
-            view.renderer.scrollToAnchor?.(range, true);
-            break;
-          }
-          offset += part.text.length + 1;
-        }
+        const range = speechBoundaryRange(doc, speech, event.charIndex, event.charLength);
+        if (!range) return;
+        const selection = doc.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+        view.renderer.scrollToAnchor?.(range, true);
       };
       utterance.onstart = () => { if (speaking && generation === speechGeneration) current.current.onSpeaking(true); };
-      utterance.onerror = () => stop();
-      utterance.onend = async () => {
-        if (!speaking || generation !== speechGeneration) return;
-        if (index + 1 < view.book.sections.length) { await view.goTo(index + 1); if (speaking) void speakSection(false); }
-        else stop();
+      utterance.onerror = event => {
+        if (generation !== speechGeneration) return;
+        stop();
+        if (event.error !== 'canceled' && event.error !== 'interrupted') current.current.onNotice(t('speechFailed', { reason: event.error }));
       };
+      utterance.onend = continueSection;
       speechSynthesis.cancel(); speechSynthesis.speak(utterance);
     };
     const open = async () => {
       const source = props.source ?? props.file.url ?? (props.book.id.startsWith('demo-') ? createDemoEpub() : undefined);
-      if (!source) throw new Error('This file is not available. Connect to its server or import the book again.');
+      if (!source) throw new ReaderError('fileUnavailable');
       const input = publicationSource(source, props.file.name, props.file.format);
       loadedBook = await makeBook(input); if (cancelled) { loadedBook.destroy?.(); return; }
       loadedBook.transformTarget?.addEventListener('load', (event: CustomEvent) => { if (event.detail.isScript) event.detail.allow = false; });
@@ -136,18 +123,20 @@ export function EbookView(props: EngineProps) {
           return new DOMParser().parseFromString(sanitizeBookDocument(new XMLSerializer().serializeToString(doc)), 'application/xhtml+xml');
         };
       }
+      loadedBook.media ??= {};
+      loadedBook.media.activeClass ||= 'avid-narration-active';
       await view.open(loadedBook); if (cancelled) return;
       applyStyle(view, current.current.settings, props.accountScope);
       await view.init({ lastLocation: props.initialAnchor?.kind === 'epub' ? props.initialAnchor.locator : undefined, showTextStart: true });
-      if (cancelled) return;
+      if (cancelled) { view.close(); loadedBook.destroy?.(); return; }
       const overlay = view.mediaOverlay;
       let overlayStarted = false;
       if (overlay) {
-        const update = () => current.current.onMediaState({ available: true, playing: overlay.state === 'playing', seconds: overlay.currentTime ?? 0 });
+        const update = () => { if (overlay.state === 'stopped') overlayStarted = false; current.current.onMediaState({ available: true, playing: overlay.state === 'playing', seconds: overlay.currentTime ?? 0 }); };
         overlay.addEventListener('timeupdate', update);
         overlay.addEventListener('statechange', update);
         overlay.addEventListener('highlight', update);
-        overlay.addEventListener('error', (event: CustomEvent) => current.current.onError(event.detail?.message || 'Aligned narration could not play.'));
+        overlay.addEventListener('error', (event: CustomEvent) => current.current.onNotice(t('narrationFailed')));
         update();
       } else current.current.onMediaState({ available: false, playing: false, seconds: 0 });
       current.current.onReady({
@@ -156,7 +145,7 @@ export function EbookView(props: EngineProps) {
         search: async query => {
           const results: SearchResult[] = [];
           for await (const item of view.search({ query, matchCase: false })) {
-            for (const result of item?.subitems ?? (item?.cfi ? [item] : [])) results.push({ locator: result.cfi, label: item.label || 'Match', excerpt: typeof result.excerpt === 'string' ? result.excerpt : `${result.excerpt?.pre ?? ''}${result.excerpt?.match ?? ''}${result.excerpt?.post ?? ''}` });
+            for (const result of item?.subitems ?? (item?.cfi ? [item] : [])) results.push({ locator: result.cfi, label: item.label || t('match'), excerpt: typeof result.excerpt === 'string' ? result.excerpt : `${result.excerpt?.pre ?? ''}${result.excerpt?.match ?? ''}${result.excerpt?.post ?? ''}` });
             if (results.length >= 150) break;
           }
           return results;
@@ -178,15 +167,16 @@ export function EbookView(props: EngineProps) {
             }
           },
           pauseMedia: () => overlay.pause(),
-          mediaPrevious: () => overlay.prev(), mediaNext: () => overlay.next(),
+          mediaPrevious: () => { if (overlayStarted) overlay.prev(); }, mediaNext: () => { if (overlayStarted) overlay.next(); },
           setMediaFollow: (follow: boolean) => { view.mediaOverlayFollow = follow; },
           setMediaRate: (rate: number) => overlay.setRate(rate),
         } : {}),
       }, loadedBook.toc as TocItem[] ?? []);
     };
-    void open().catch(error => { if (!cancelled) current.current.onError(error instanceof Error ? error.message : 'Unable to open this ebook.'); });
+    void open().catch(error => { if (!cancelled) current.current.onError(readerError(error, 'ebookFailed')); });
     return () => { cancelled = true; stop(); view.mediaOverlay?.stop(); view.close?.(); view.remove(); loadedBook?.destroy?.(); for (const url of isolatedUrls.values()) URL.revokeObjectURL(url); viewRef.current = null; };
   }, [props.book.id, props.file.id, props.file.url, props.source]);
+  useEffect(() => { viewRef.current?.setAttribute('aria-label', t('readingArea')); }, [locale]);
   useEffect(() => { if (viewRef.current?.renderer) applyStyle(viewRef.current, props.settings, props.accountScope); }, [props.settings, props.accountScope]);
   useEffect(() => {
     const view = viewRef.current;

@@ -18,7 +18,7 @@ export interface SpeechRequest {
 }
 
 export interface SpeechSnapshot {
-  status: 'idle' | 'speaking' | 'paused' | 'failed';
+  status: 'idle' | 'loading' | 'speaking' | 'paused' | 'failed';
   boundary: SpeechBoundary | null;
   error: string | null;
 }
@@ -27,6 +27,7 @@ export interface SpeechSnapshot {
 export class SpeechController {
   private engine: SpeechSynthesis | null;
   private utterance: SpeechSynthesisUtterance | null = null;
+  private utteranceStarted = false;
   private snapshot: SpeechSnapshot = { status: 'idle', boundary: null, error: null };
   private listeners = new Set<() => void>();
   private generation = 0;
@@ -65,7 +66,9 @@ export class SpeechController {
       const voice = this.getVoices().find(item => item.voiceURI === request.voiceURI);
       if (voice) { utterance.voice = voice; utterance.lang = voice.lang; }
     }
-    utterance.onstart = () => { if (generation === this.generation) this.update({ status: 'speaking', error: null }); };
+    utterance.onstart = () => {
+      if (generation === this.generation) { this.utteranceStarted = true; this.update({ status: 'speaking', error: null }); }
+    };
     utterance.onboundary = event => {
       if (generation !== this.generation) return;
       const boundary: SpeechBoundary = { start: start + event.charIndex,
@@ -87,14 +90,15 @@ export class SpeechController {
       this.update({ status: 'failed', error });
       request.onError?.(error);
     };
-    this.update({ status: 'speaking', error: null });
+    this.update({ status: 'loading', error: null });
     this.engine.speak(utterance);
   }
   pause(): void { if (this.utterance) { this.engine?.pause(); this.update({ status: 'paused' }); } }
-  resume(): void { if (this.utterance) { this.engine?.resume(); this.update({ status: 'speaking' }); } }
+  resume(): void { if (this.utterance) { this.engine?.resume(); this.update({ status: this.utteranceStarted ? 'speaking' : 'loading' }); } }
   cancel(): void {
     this.generation++;
     this.utterance = null;
+    this.utteranceStarted = false;
     this.engine?.cancel();
     this.update({ status: 'idle', boundary: null, error: null });
   }

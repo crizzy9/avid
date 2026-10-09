@@ -10,6 +10,23 @@ let db:AvidDatabase,repo:LibraryRepository;
 beforeEach(()=>{db=new AvidDatabase(`test-${crypto.randomUUID()}`);repo=new LibraryRepository(db,session);});
 afterEach(async()=>{await db.delete();});
 describe('synchronization safety',()=>{
+  it('keeps a pending intent when account ownership changes during the read before a write',async()=>{
+    await repo.checkpoint(anchor);let active=true;
+    const client=new BookOrbitClient(session);
+    vi.spyOn(client,'getProgress').mockImplementation(async()=>{active=false;return null;});
+    const save=vi.spyOn(client,'saveProgress').mockResolvedValue();
+    expect((await new SyncCoordinator(repo,client,{isActive:()=>active}).flush()).sent).toBe(0);
+    expect(save).not.toHaveBeenCalled();expect((await repo.pendingOperations())[0].status).toBe('pending');
+  });
+  it('drains checkpoints committed while a shared flush is already running',async()=>{
+    await repo.checkpoint(anchor);const client=new BookOrbitClient(session);
+    vi.spyOn(client,'getProgress').mockResolvedValue(null);
+    const save=vi.spyOn(client,'saveProgress').mockImplementation(async value=>{
+      if(value.locator===anchor.locator)await repo.checkpoint({...anchor,locator:'epubcfi(/6/4)',progress:.3,updatedAt:'2026-10-09T10:01:00Z'});
+    });
+    expect((await new SyncCoordinator(repo,client).flush()).sent).toBe(2);
+    expect(save).toHaveBeenCalledTimes(2);expect(await repo.pendingOperations()).toEqual([]);
+  });
   it('never contacts the server to flush a read-only connection',async()=>{
     await repo.checkpoint(anchor);
     const transport=vi.fn();
@@ -81,5 +98,18 @@ describe('synchronization safety',()=>{
     await repo.putAnnotation(note);const [operation]=await repo.pendingOperations();await repo.updateOperation(operation.id,{status:'uncertain'});
     const client=new BookOrbitClient(session);vi.spyOn(client,'getAudioAnnotations').mockResolvedValue([]);const save=vi.spyOn(client,'saveAnnotation').mockResolvedValue(note);
     expect((await new SyncCoordinator(repo,client).flush()).sent).toBe(1);expect(save).toHaveBeenCalledWith(note);
+  });
+  it('shares in-flight work across coordinator instances for the same account',async()=>{
+    await repo.checkpoint(anchor);const client=new BookOrbitClient(session);
+    vi.spyOn(client,'getProgress').mockResolvedValue(null);const save=vi.spyOn(client,'saveProgress').mockResolvedValue();
+    const first=new SyncCoordinator(repo,client),second=new SyncCoordinator(repo,client);
+    const [a,b]=await Promise.all([first.flush(),second.flush()]);expect(a).toBe(b);expect(save).toHaveBeenCalledTimes(1);
+  });
+  it('does not steal a live IndexedDB mutation claim from another tab',async()=>{
+    await repo.checkpoint(anchor);const [operation]=await repo.pendingOperations();expect(await repo.claimOperation(operation.id)).toBeDefined();
+    const client=new BookOrbitClient(session),read=vi.spyOn(client,'getProgress');
+    const result=await new SyncCoordinator(repo,client).flush();expect(result.sent).toBe(0);expect(read).not.toHaveBeenCalled();
+    await repo.updateOperation(operation.id,{leaseUntil:'2000-01-01T00:00:00Z'});
+    read.mockResolvedValue(anchor);expect((await new SyncCoordinator(repo,client).flush()).sent).toBe(1);
   });
 });

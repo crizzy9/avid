@@ -24,6 +24,8 @@ export interface PlaybackBook {
   coverUrl?: string;
   tracks: AudioTrack[];
   chapters?: AudioChapter[];
+  /** Source edition identity supplied by the server, retained in exact checkpoints. */
+  manifestRevision?: string;
 }
 
 export interface PlaybackSnapshot {
@@ -57,6 +59,7 @@ export interface AudioLocator {
   trackId: string;
   trackTime: number;
   time: number;
+  manifestRevision?:string;
 }
 
 export type SleepTimer = { minutes: number } | { endOfChapter: true } | null;

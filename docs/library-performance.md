@@ -1,0 +1,9 @@
+# Large-library rendering
+
+The main library grid and list use a window-scrolling virtual view. CSS determines the responsive column count; a measured card determines row height. Two rows of overscan surround the viewport. Keyboard focus pins that book's DOM node even when scrolled offscreen. Arrow keys, Home/End and Page Up/Down navigate the complete loaded catalog; one tab stop enters the list and Tab leaves it. Collection pagination and the existing Load more button keep their server contract.
+
+Cover metadata registration does not issue network requests. Shared covers subscribe when they approach the viewport or gain keyboard focus. The account-owned cache allows four concurrent requests, keeps at most 96 blob URLs and 32 MiB of retained cover bytes, and revokes released least-recently-used URLs on eviction. Visible/focused covers are protected; a text cover remains if a new image cannot fit the budget. Account changes abort requests and revoke the old account's URLs. URLs live in the cover store, not durable book metadata or old book objects, so eviction cannot leave stale blob references in cards.
+
+`apps/web/src/VirtualBookGrid.test.tsx` exercises a synthetic 10,000-book catalog: fewer than 70 mounted cards while scrolling, focused-node identity preservation, keyboard navigation to book 10,000, zero eager cover fetches for 10,000 registered sources, eight fetches for eight intersecting covers, bounded cache eviction and URL cleanup. Hook tests also prove cover reuse across queries and release on account changes. These tests establish bounded DOM/media work; they are not a hardware FPS or native-device certification.
+
+Home shelves and book-detail covers use the same viewport-driven cache. The separate series browser is already paginated at 24 books. The app still retains metadata for loaded pages in memory; complete offline full-text indexing and media downloads remain outside this slice.

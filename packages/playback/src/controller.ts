@@ -116,6 +116,9 @@ export class PlaybackController {
   pause(): void {
     if (this.disposed) return;
     this.wantPlayback = false;
+    // Capture the final source timestamp rather than losing the time since the
+    // browser's most recent (usually throttled) timeupdate event.
+    this.timeUpdated();
     this.audio.pause();
     if (this.book) this.update({ status: 'paused' });
     this.checkpoint();
@@ -173,6 +176,7 @@ export class PlaybackController {
     const track = this.book.tracks[this.snapshot.trackIndex]!;
     const locator: AudioLocator = { version: 1, trackId: track.id,
       trackTime: Math.max(0, this.snapshot.currentTime - trackStart(this.book.tracks, this.snapshot.trackIndex)), time: this.snapshot.currentTime };
+    if(this.book.manifestRevision)locator.manifestRevision=this.book.manifestRevision;
     const checkpoint: AudioCheckpoint = {
       bookId: this.book.bookId, fileId: this.book.fileId, kind: 'audio',
       locator: JSON.stringify(locator), progress: this.snapshot.duration ? clamp(this.snapshot.currentTime / this.snapshot.duration, 0, 1) : 0,

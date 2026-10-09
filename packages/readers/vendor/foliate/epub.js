@@ -438,6 +438,7 @@ class MediaOverlay extends EventTarget {
         return this.#activeAudio?.items?.[this.#itemIndex]
     }
     #error(e) {
+        this.stop()
         console.error(e)
         this.dispatchEvent(new CustomEvent('error', { detail: e }))
     }
@@ -449,6 +450,8 @@ class MediaOverlay extends EventTarget {
     }
     async #play(audioIndex, itemIndex) {
         this.#stop()
+        this.#state = this.#state === 'paused' ? 'paused' : 'loading'
+        this.#stateChange()
         this.#audioIndex = audioIndex
         this.#itemIndex = itemIndex
         const src = this.#activeAudio?.src
@@ -489,11 +492,9 @@ class MediaOverlay extends EventTarget {
             audio.currentTime = this.#activeItem.begin ?? 0
         }
         else audio.addEventListener('canplaythrough', () => {
-            // for some reason need to seek in `canplaythrough`
+                // for some reason need to seek in `canplaythrough`
             // or it won't play when skipping in WebKit
             audio.currentTime = this.#activeItem.begin ?? 0
-            this.#state = 'playing'
-            this.#stateChange()
             audio.play().catch(e => this.#error(e))
         }, { once: true })
     }
@@ -522,7 +523,7 @@ class MediaOverlay extends EventTarget {
         this.#stateChange()
     }
     resume() {
-        this.#state = 'playing'
+        this.#state = 'loading'
         this.#stateChange()
         this.#audio?.play().catch(e => this.#error(e))
     }
@@ -547,7 +548,9 @@ class MediaOverlay extends EventTarget {
             this.start(this.#sectionIndex - 1, (_, i, items) => i === items.length - 1)
     }
     next() {
-        this.#play(this.#audioIndex, this.#itemIndex + 1)
+        return this.#activeAudio?.items[this.#itemIndex + 1]
+            ? this.#play(this.#audioIndex, this.#itemIndex + 1)
+            : this.#play(this.#audioIndex + 1, 0)
     }
     setVolume(volume) {
         this.#volume = volume

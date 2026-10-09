@@ -1,0 +1,46 @@
+/** One-time, deterministic target integration for a freshly generated Capacitor host. */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+const file = fileURLToPath(new URL('../ios/App/App.xcodeproj/project.pbxproj', import.meta.url));
+let text = readFileSync(file, 'utf8');
+if (text.includes('/* Avid native sources */')) process.exit(0);
+const id = (name) => createHash('sha256').update(`avid:${name}`).digest('hex').slice(0, 24).toUpperCase();
+const object = (name, value) => `\t\t${id(name)} /* ${name} */ = { ${value} };\n`;
+const insert = (section, value) => {
+ const end = `/* End ${section} section */`;
+ if (text.includes(end)) text = text.replace(end, value + end);
+ else text = text.replace('\tobjects = {', `\tobjects = {\n/* Begin ${section} section */\n${value}${end}\n`);
+};
+const appendArray = (objectId, property, value) => {
+ const pattern = new RegExp(`(${objectId}[^\\n]*= \\{[\\s\\S]*?${property} = \\()[\\s\\S]*?(\\n\\t\\t\\t\\);)`);
+ const match = text.match(pattern);
+ if (!match) throw new Error(`Missing ${objectId}.${property}`);
+ text = text.replace(match[0], match[0].slice(0, -match[2].length) + `\n\t\t\t\t${value}${match[2]}`);
+};
+const shared = ['Shared/AvidSharedStore.swift', 'Shared/AvidIntents.swift'];
+const app = ['AvidPlaybackOwner.swift', 'AvidPlaybackPlugin.swift', 'AvidPlaybackSourceStore.swift', 'AvidSystemSurfaces.swift', 'AvidSystemSurfacesPlugin.swift', 'AvidViewController.swift', ...shared];
+const widget = [...shared, 'Widgets/AvidContinueWidget.swift', 'Widgets/AvidWidgetBundle.swift'];
+const files = [...new Set([...app, ...widget])];
+insert('PBXFileReference', files.map(name => object(name, `isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "${name}"; sourceTree = "<group>";`)).join('') + object('AvidWidgets.appex', 'isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = AvidWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR;'));
+insert('PBXBuildFile', app.map(name => object(`app:${name}`, `isa = PBXBuildFile; fileRef = ${id(name)};`)).join('') + widget.map(name => object(`widget:${name}`, `isa = PBXBuildFile; fileRef = ${id(name)};`)).join('') + object('Embed AvidWidgets', `isa = PBXBuildFile; fileRef = ${id('AvidWidgets.appex')}; settings = { ATTRIBUTES = (RemoveHeadersOnCopy,); };`));
+insert('PBXGroup', object('Avid native sources', `isa = PBXGroup; children = (${files.map(id).join(',')},); name = "Avid native sources"; path = "../../native/ios"; sourceTree = "<group>";`));
+appendArray('504EC2FB1FED79650016851F', 'children', `${id('Avid native sources')} /* Avid native sources */,`);
+appendArray('504EC3051FED79650016851F', 'children', `${id('AvidWidgets.appex')},`);
+appendArray('504EC3001FED79650016851F', 'files', app.map(name => `${id(`app:${name}`)},`).join('\n\t\t\t\t'));
+insert('PBXSourcesBuildPhase', object('Widget Sources', `isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (${widget.map(name => id(`widget:${name}`)).join(',')},); runOnlyForDeploymentPostprocessing = 0;`));
+insert('PBXFrameworksBuildPhase', object('Widget Frameworks', 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;'));
+insert('PBXResourcesBuildPhase', object('Widget Resources', 'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;'));
+insert('PBXCopyFilesBuildPhase', object('Embed App Extensions', `isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (${id('Embed AvidWidgets')},); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0;`));
+insert('PBXContainerItemProxy', object('Widget Proxy', `isa = PBXContainerItemProxy; containerPortal = 504EC2FC1FED79650016851F; proxyType = 1; remoteGlobalIDString = ${id('AvidWidgets')}; remoteInfo = AvidWidgets;`));
+insert('PBXTargetDependency', object('Widget Dependency', `isa = PBXTargetDependency; target = ${id('AvidWidgets')}; targetProxy = ${id('Widget Proxy')};`));
+appendArray('504EC3031FED79650016851F', 'buildPhases', `${id('Embed App Extensions')},`);
+appendArray('504EC3031FED79650016851F', 'dependencies', `${id('Widget Dependency')},`);
+insert('PBXNativeTarget', object('AvidWidgets', `isa = PBXNativeTarget; buildConfigurationList = ${id('Widget Configurations')}; buildPhases = (${id('Widget Sources')},${id('Widget Frameworks')},${id('Widget Resources')},); buildRules = (); dependencies = (); name = AvidWidgets; productName = AvidWidgets; productReference = ${id('AvidWidgets.appex')}; productType = "com.apple.product-type.app-extension";`));
+appendArray('504EC2FC1FED79650016851F', 'targets', `${id('AvidWidgets')},`);
+const config = (name) => object(`Widget ${name}`, `isa = XCBuildConfiguration; buildSettings = { APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; CODE_SIGN_ENTITLEMENTS = "../../native/ios/Avid.entitlements"; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = "../../native/ios/Widgets/Info.plist"; INFOPLIST_KEY_CFBundleDisplayName = "Avid"; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)","@executable_path/Frameworks","@executable_path/../../Frameworks",); MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = app.avid.reader.widgets; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) AVID_WIDGET_EXTENSION"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = ${name};`);
+insert('XCBuildConfiguration', config('Debug') + config('Release'));
+insert('XCConfigurationList', object('Widget Configurations', `isa = XCConfigurationList; buildConfigurations = (${id('Widget Debug')},${id('Widget Release')},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;`));
+text = text.replaceAll('INFOPLIST_FILE = App/Info.plist;', 'INFOPLIST_FILE = App/Info.plist;\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = "../../native/ios/Avid.entitlements";').replaceAll('MARKETING_VERSION = 1.0;', 'MARKETING_VERSION = 0.1.0;');
+writeFileSync(file, text);
+console.log('Integrated native sources, shared App Intents, and embedded AvidWidgets extension.');

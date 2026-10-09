@@ -1,4 +1,4 @@
-export type AudioActivityKind = 'listening' | 'speech';
+export type AudioActivityKind = 'reading' | 'listening' | 'speech';
 
 export interface ActivitySession {
   id: string;
@@ -204,7 +204,7 @@ function isActivityChunk(value: unknown): value is ActivityChunk {
   const chunk = value as ActivityChunk;
   return typeof chunk.fileId === 'string' && !!chunk.fileId && typeof chunk.endedAt === 'string' && Number.isFinite(Date.parse(chunk.endedAt)) &&
     !!chunk.session && typeof chunk.session.id === 'string' && !!chunk.session.id && typeof chunk.session.bookId === 'string' && !!chunk.session.bookId &&
-    (chunk.session.kind === 'listening' || chunk.session.kind === 'speech') &&
+    (chunk.session.kind === 'reading' || chunk.session.kind === 'listening' || chunk.session.kind === 'speech') &&
     typeof chunk.session.startedAt === 'string' && Number.isFinite(Date.parse(chunk.session.startedAt)) &&
     Number.isSafeInteger(chunk.session.duration) && chunk.session.duration > 0 && Date.parse(chunk.endedAt) >= Date.parse(chunk.session.startedAt);
 }

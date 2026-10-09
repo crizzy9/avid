@@ -1,3 +1,4 @@
+import { useReaderI18n, ReaderError, readerError } from './readerI18n';
 import { useEffect, useRef, useState } from 'react';
 import { GlobalWorkerOptions, getDocument, TextLayer, type PDFDocumentProxy } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -6,6 +7,7 @@ import { detectContentBounds, pageLocator, parsePageAnchor } from './anchors';
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 const noCrop = { top: 0, right: 0, bottom: 0, left: 0 };
 export function PdfView(props: EngineProps) {
+  const { t } = useReaderI18n();
   const [pdf, setPdf] = useState<PDFDocumentProxy>();
   const [page, setPage] = useState(1);
   const [crop, setCrop] = useState(noCrop);
@@ -27,7 +29,7 @@ export function PdfView(props: EngineProps) {
     let task: ReturnType<typeof getDocument> | undefined;
     void (async () => {
       const source = props.source ? { data: new Uint8Array(await props.source.arrayBuffer()) } : props.file.url ? { url: props.file.url } : undefined;
-      if (!source) throw new Error('This PDF is unavailable. Connect to its server or import a PDF file.');
+      if (!source) throw new ReaderError('pdfUnavailable');
       task = getDocument({ ...source, useSystemFonts: true });
       const document = await task.promise;
       if (cancelled) { await document.destroy(); return; }
@@ -42,15 +44,16 @@ export function PdfView(props: EngineProps) {
             const content = await pdfPage.getTextContent();
             const value = content.items.map(item => 'str' in item ? item.str : '').join(' ');
             const index = value.toLowerCase().indexOf(query.toLowerCase());
-            if (index >= 0) results.push({ locator: pageLocator(number), label: `Page ${number}`, excerpt: value.slice(Math.max(0, index - 45), index + query.length + 90) });
+            if (number !== currentPage.current) pdfPage.cleanup();
+            if (index >= 0) results.push({ locator: pageLocator(number), label: t('page', { number }), pageNumber: number, excerpt: value.slice(Math.max(0, index - 45), index + query.length + 90) });
             if (results.length >= 100) break;
           }
           return results;
         },
         autoCrop: () => { const element = canvas.current; const context = element?.getContext('2d'); if (element && context) setCrop(detectContentBounds(context.getImageData(0, 0, element.width, element.height).data, element.width, element.height)); },
         resetCrop: () => setCrop(noCrop),
-      }, Array.from({ length: document.numPages }, (_, index) => ({ label: `Page ${index + 1}`, href: pageLocator(index + 1) })));
-    })().catch(error => { if (!cancelled) current.current.onError(error instanceof Error ? error.message : 'Unable to open this PDF.'); });
+      }, Array.from({ length: document.numPages }, (_, index) => ({ label: t('page', { number: index + 1 }), pageNumber: index + 1, href: pageLocator(index + 1) })));
+    })().catch(error => { if (!cancelled) current.current.onError(readerError(error, 'pdfFailed')); });
     return () => { cancelled = true; void task?.destroy(); };
   }, [props.book.id, props.file.id, props.file.url, props.source]);
   useEffect(() => {
@@ -76,9 +79,9 @@ export function PdfView(props: EngineProps) {
       if (cancelled) return;
       textLayer = new TextLayer({ textContentSource: await pdfPage.getTextContent(), container: text.current, viewport });
       await textLayer.render();
-      current.current.onLocation(pageLocator(page), (page - 1) / Math.max(1, pdf.numPages - 1), `Page ${page} of ${pdf.numPages}`);
+      current.current.onLocation(pageLocator(page), (page - 1) / Math.max(1, pdf.numPages - 1), t('pageOf', { number: page, count: pdf.numPages }));
     };
-    void render().catch(error => { if (!cancelled && error?.name !== 'RenderingCancelledException') current.current.onError(error instanceof Error ? error.message : 'Could not render page.'); });
+    void render().catch(error => { if (!cancelled && error?.name !== 'RenderingCancelledException') current.current.onError(readerError(error, 'renderFailed')); });
     return () => { cancelled = true; renderTask?.cancel(); textLayer?.cancel(); };
   }, [pdf, page]);
   useEffect(() => {
@@ -87,8 +90,8 @@ export function PdfView(props: EngineProps) {
     return () => document.removeEventListener('selectionchange', selected);
   }, []);
   return <div className="avid-pdf-scroll" ref={container}>
-    <div className="avid-pdf-crop-controls"><span>Trim margins</span>{(['top', 'right', 'bottom', 'left'] as const).map(side => <label key={side}>{side}<input aria-label={`Crop ${side}`} type="range" min="0" max="35" value={crop[side] * 100} onChange={event => setCrop(value => ({ ...value, [side]: Number(event.target.value) / 100 }))} /></label>)}</div>
-    <div className="avid-pdf-page" style={{ clipPath: `inset(${crop.top * 100}% ${crop.right * 100}% ${crop.bottom * 100}% ${crop.left * 100}%)` }}><canvas ref={canvas} aria-label={`PDF page ${page}`} /><div className="textLayer" ref={text} />
+    <div className="avid-pdf-crop-controls"><span>{t('trimMargins')}</span>{(['top', 'right', 'bottom', 'left'] as const).map(side => <label key={side}>{t(side)}<input aria-label={t('crop', { side: t(side) })} type="range" min="0" max="40" value={crop[side] * 100} onChange={event => setCrop(value => ({ ...value, [side]: Number(event.target.value) / 100 }))} /></label>)}</div>
+    <div className="avid-pdf-page" style={{ clipPath: `inset(${crop.top * 100}% ${crop.right * 100}% ${crop.bottom * 100}% ${crop.left * 100}%)` }}><canvas ref={canvas} aria-label={t('pdfPage', { number: page })} /><div className="textLayer" ref={text} />
       {props.annotations.filter(annotation => !annotation.deleted && annotation.bookId === props.book.id && annotation.fileId === props.file.id).map(annotation => {
         try { const locator = JSON.parse(annotation.locator); return locator.page === page ? (locator.rectangles ?? []).map((rect: { x: number; y: number; width: number; height: number }, index: number) => <span key={`${annotation.id}-${index}`} className="avid-pdf-highlight" style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%`, background: annotation.color }} />) : null; } catch { return null; }
       })}

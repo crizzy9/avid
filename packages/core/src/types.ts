@@ -1,11 +1,14 @@
 export type BookFormat = 'EPUB' | 'MOBI' | 'PDF' | 'CBZ' | 'CBR' | 'CB7' | 'AUDIO';
 export type BookStatus = 'unread' | 'reading' | 'finished';
+export type BookOrbitReadStatus = 'unread' | 'want_to_read' | 'reading' | 'on_hold' | 'rereading' | 'read' | 'skimmed' | 'abandoned';
 export interface BookFile { id: string; name: string; format: BookFormat; url?: string; size?: number }
 export interface AudioChapter { id: string; title: string; start: number; duration: number; url?: string }
 export interface Book {
   id: string; title: string; authors: string[]; description: string; format: BookFormat;
   coverUrl?: string; color: string; progress: number; status: BookStatus;
-  series?: string; seriesIndex?: number; genres: string[]; addedAt: string;
+  /** Exact server reading state; status remains the simplified three-state display grouping. */
+  serverStatus?: BookOrbitReadStatus;
+  series?: string; seriesId?:string; seriesIndex?: number; genres: string[]; addedAt: string;
   files: BookFile[]; chapters?: AudioChapter[];
 }
 export interface ServerProfile { id: string; name: string; url: string; username?: string; version?: string }

@@ -14,3 +14,7 @@ apps/mobile/android/.gradle/
 apps/mobile/ios/Pods/
 .agents/
 .codex/
+*.keystore
+*.jks
+*.p12
+*.mobileprovision

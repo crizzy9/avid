@@ -15,6 +15,7 @@ export interface OutboxOperation {
   key:string; scope:string; id:string; entityKey:string; payload:SyncPayload; occurredAt:string;
   status:OutboxStatus; attempts:number; error?:string; nextAttemptAt?:string;
   expectedRemoteUpdatedAt?:string;
+  leaseUntil?:string;
 }
 interface RecordRow<T> { key:string; scope:string; id:string; value:T; }
 export class AvidDatabase extends Dexie {
@@ -38,7 +39,10 @@ export class LibraryRepository {
   constructor(public readonly db:AvidDatabase,session:Pick<Session,'profile'|'userId'>) { this.scope=accountScope(session); }
   private key(id:string):string { return JSON.stringify([this.scope,id]); }
   private row<T>(id:string,value:T):RecordRow<T> { return {key:this.key(id),scope:this.scope,id,value}; }
-  async putBooks(books:Book[]):Promise<void> { await this.db.books.bulkPut(books.map(book=>this.row(book.id,book))); }
+  async putBooks(books:Book[]):Promise<void> {
+    // Object URLs belong to one document lifetime, never a durable metadata cache.
+    await this.db.books.bulkPut(books.map(book=>this.row(book.id,{...book,coverUrl:book.coverUrl?.startsWith('blob:')?undefined:book.coverUrl})));
+  }
   async getBooks():Promise<Book[]> { return (await this.db.books.where('scope').equals(this.scope).toArray()).map(row=>row.value); }
   async getBook(id:string):Promise<Book|undefined> { return (await this.db.books.get(this.key(id)))?.value; }
   async putCollections(collections:Collection[]):Promise<void> { await this.db.collections.bulkPut(collections.map(c=>this.row(c.id,c))); }
@@ -49,14 +53,23 @@ export class LibraryRepository {
   async checkpoint(anchor:ReadingAnchor,options:{readOnly?:boolean}={}):Promise<void> {
     requireTime(anchor.updatedAt);
     const id=anchorIdentity(anchor);
-    await this.db.transaction('rw',[this.db.anchors,this.db.outbox],async()=>{
+    await this.db.transaction('rw',[this.db.anchors,this.db.outbox,this.db.books],async()=>{
       const existing=await this.db.anchors.get(this.key(id));
       if (existing && Date.parse(existing.value.updatedAt)>Date.parse(anchor.updatedAt)) return;
       await this.db.anchors.put(this.row(id,anchor));
+      const book=await this.db.books.get(this.key(anchor.bookId));
+      if(book)await this.db.books.put({...book,value:{...book.value,progress:anchor.progress,status:anchor.progress>=.995?'finished':'reading'}});
       if (!options.readOnly) await this.enqueue(`progress:${id}`,{kind:'progress',anchor},anchor.updatedAt,true);
     });
   }
-  async importAnchor(anchor:ReadingAnchor):Promise<void> { await this.db.anchors.put(this.row(anchorIdentity(anchor),anchor)); }
+  async importAnchor(anchor:ReadingAnchor):Promise<void> {
+    requireTime(anchor.updatedAt);
+    await this.db.transaction('rw',this.db.anchors,async()=>{
+      const current=await this.db.anchors.get(this.key(anchorIdentity(anchor)));
+      if(current&&Date.parse(current.value.updatedAt)>=Date.parse(anchor.updatedAt))return;
+      await this.db.anchors.put(this.row(anchorIdentity(anchor),anchor));
+    });
+  }
   async getAnnotations(bookId?:string,includeDeleted=false):Promise<Annotation[]> {
     return (await this.db.annotations.where('scope').equals(this.scope).toArray()).map(row=>row.value).filter(a=>(!bookId||a.bookId===bookId)&&(includeDeleted||!a.deleted));
   }
@@ -72,7 +85,8 @@ export class LibraryRepository {
       for(const annotation of annotations) {
         const pending=await this.db.outbox.where('[scope+entityKey]').equals([this.scope,`annotation:${annotation.id}`]).count();
         const current=await this.db.annotations.get(this.key(annotation.id));
-        if (!pending && !current?.value.deleted) await this.db.annotations.put(this.row(annotation.id,annotation));
+        const newerLocal=current&&Date.parse(current.value.updatedAt)>=Date.parse(annotation.updatedAt);
+        if (!pending && !current?.value.deleted && !newerLocal) await this.db.annotations.put(this.row(annotation.id,annotation));
       }
     });
   }
@@ -119,7 +133,18 @@ export class LibraryRepository {
   }
   async pendingOperations():Promise<OutboxOperation[]> { return (await this.db.outbox.where('scope').equals(this.scope).toArray()).sort((a,b)=>Date.parse(a.occurredAt)-Date.parse(b.occurredAt)); }
   async getOperation(id:string):Promise<OutboxOperation|undefined> { return this.db.outbox.get(this.key(id)); }
-  async updateOperation(id:string,patch:Partial<Pick<OutboxOperation,'status'|'attempts'|'error'|'nextAttemptAt'>>):Promise<void> { await this.db.outbox.update(this.key(id),patch); }
+  /** IndexedDB transaction serializes claims across tabs; expired claims use uncertain-write recovery. */
+  async claimOperation(id:string):Promise<OutboxOperation|undefined> {
+    return this.db.transaction('rw',this.db.outbox,async()=>{
+      const current=await this.getOperation(id),now=Date.now();
+      if(!current||['failed','conflict'].includes(current.status))return undefined;
+      if(current.nextAttemptAt&&Date.parse(current.nextAttemptAt)>now)return undefined;
+      if(current.status==='syncing'&&current.leaseUntil&&Date.parse(current.leaseUntil)>now)return undefined;
+      await this.db.outbox.update(current.key,{status:'syncing',attempts:current.attempts+1,leaseUntil:new Date(now+60000).toISOString()});
+      return current;
+    });
+  }
+  async updateOperation(id:string,patch:Partial<Pick<OutboxOperation,'status'|'attempts'|'error'|'nextAttemptAt'|'leaseUntil'>>):Promise<void> { await this.db.outbox.update(this.key(id),patch); }
   async acknowledge(id:string):Promise<void> { await this.db.outbox.delete(this.key(id)); }
   async clearAccount():Promise<void> {
     const tables=[this.db.books,this.db.anchors,this.db.annotations,this.db.collections,this.db.sessions,this.db.preferences,this.db.outbox];

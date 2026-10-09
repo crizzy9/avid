@@ -17,9 +17,9 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.google.common.util.concurrent.ListenableFuture
-import java.time.Instant
 
 @CapacitorPlugin(name = "AvidPlayback")
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class AvidPlaybackPlugin : Plugin() {
     private var future: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
@@ -37,12 +37,23 @@ class AvidPlaybackPlugin : Plugin() {
         }, ContextCompat.getMainExecutor(context))
     }
 
-    private fun command(call: PluginCall, action: (MediaController) -> Unit) {
+    private fun connected(call: PluginCall, action: (MediaController) -> Unit) {
         activity.runOnUiThread {
-            val player = controller
-            if (player == null) { call.reject("Native playback service is not connected yet."); return@runOnUiThread }
-            try { action(player); call.resolve() } catch (error: Exception) { call.reject(error.message, error) }
+            val current = controller
+            if (current != null) {
+                try { action(current) } catch (error: Exception) { call.reject(error.message, error) }
+            } else {
+                val pending = future
+                if (pending == null) { call.reject("Native playback service is unavailable."); return@runOnUiThread }
+                pending.addListener({
+                    try { action(pending.get()) } catch (error: Exception) { call.reject(error.message, error) }
+                }, ContextCompat.getMainExecutor(context))
+            }
         }
+    }
+
+    private fun command(call: PluginCall, action: (MediaController) -> Unit) = connected(call) {
+        action(it); call.resolve()
     }
 
     @PluginMethod
@@ -81,9 +92,7 @@ class AvidPlaybackPlugin : Plugin() {
         command(call) { it.setPlaybackSpeed(rate.coerceIn(0.5, 3.0).toFloat()) }
     }
     @PluginMethod fun setSleepTimer(call: PluginCall) {
-        activity.runOnUiThread {
-            val player = controller
-            if (player == null) { call.reject("Native playback service is not connected yet."); return@runOnUiThread }
+        connected(call) { player ->
             val args = Bundle().apply {
                 call.getDouble("deadline")?.let { putLong("deadline", it.toLong()) }
                 call.getDouble("chapterEnd")?.let { putLong("chapterEndMs", (it * 1000).toLong()) }
@@ -97,9 +106,7 @@ class AvidPlaybackPlugin : Plugin() {
         }
     }
     @PluginMethod fun snapshot(call: PluginCall) {
-        activity.runOnUiThread {
-            controller?.let { call.resolve(state(it)) } ?: call.reject("Native playback service is not connected yet.")
-        }
+        connected(call) { call.resolve(state(it)) }
     }
     @PluginMethod fun clear(call: PluginCall) = command(call) {
         it.pause(); it.clearMediaItems()
@@ -115,7 +122,16 @@ class AvidPlaybackPlugin : Plugin() {
             put("position", player.currentPosition / 1000.0)
             put("duration", if (player.duration == C.TIME_UNSET) 0 else player.duration / 1000.0)
             put("rate", player.playbackParameters.speed); put("playing", player.isPlaying)
-            put("updatedAt", Instant.now().toString())
+            put("status", when {
+                player.playerError != null -> "failed"
+                player.playbackState == Player.STATE_BUFFERING -> "buffering"
+                player.isPlaying -> "playing"
+                player.playbackState == Player.STATE_IDLE -> "stopped"
+                else -> "paused"
+            })
+            put("error", player.playerError?.message ?: "")
+            put("ended", player.playbackState == Player.STATE_ENDED)
+            put("updatedAt", playbackTimestamp())
         }
     }
 

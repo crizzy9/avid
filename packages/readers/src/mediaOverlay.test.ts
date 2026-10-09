@@ -16,8 +16,8 @@ describe('existing EPUB media-overlay timing', () => {
     const xml: Record<string, string> = {
       'META-INF/container.xml': '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
       'book.opf': '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">aligned</dc:identifier><dc:title>Aligned fixture</dc:title><dc:language>en</dc:language></metadata><manifest><item id="c" href="chapter.xhtml" media-type="application/xhtml+xml" media-overlay="s"/><item id="s" href="timing.smil" media-type="application/smil+xml"/><item id="a" href="audio.wav" media-type="audio/wav"/></manifest><spine><itemref idref="c"/></spine></package>',
-      'chapter.xhtml': '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Aligned</title></head><body><p id="p1">First passage</p><p id="p2">Second passage</p></body></html>',
-      'timing.smil': '<smil xmlns="http://www.w3.org/ns/SMIL"><body><seq><par><text src="chapter.xhtml#p1"/><audio src="audio.wav" clipBegin="2s" clipEnd="5s"/></par><par><text src="chapter.xhtml#p2"/><audio src="audio.wav" clipBegin="5s" clipEnd="9s"/></par></seq></body></smil>',
+      'chapter.xhtml': '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Aligned</title></head><body><p id="p1">First passage</p><p id="p2">Second passage</p><p id="p3">Third passage</p></body></html>',
+      'timing.smil': '<smil xmlns="http://www.w3.org/ns/SMIL"><body><seq><par><text src="chapter.xhtml#p1"/><audio src="audio.wav" clipBegin="2s" clipEnd="5s"/></par><par><text src="chapter.xhtml#p2"/><audio src="audio.wav" clipBegin="5s" clipEnd="9s"/></par><par><text src="chapter.xhtml#p3"/><audio src="audio2.wav" clipBegin="0s" clipEnd="3s"/></par></seq></body></smil>',
     };
     const book = await new EPUB({ loadText: async (name: string) => xml[name] ?? null, loadBlob: async () => new Blob(['audio']), getSize: (name: string) => xml[name]?.length ?? 0 }).init();
     const overlay = book.getMediaOverlay();
@@ -31,6 +31,7 @@ describe('existing EPUB media-overlay timing', () => {
     expect(highlights.at(-1)).toBe('chapter.xhtml#p2');
     expect(overlay.currentTime).toBe(5.2);
     overlay.pause(); expect(overlay.state).toBe('paused'); expect(FakeAudio.last.paused).toBe(true);
+    await overlay.next(); expect(highlights.at(-1)).toBe('chapter.xhtml#p3'); expect(overlay.state).toBe('paused');
     overlay.resume(); expect(overlay.state).toBe('playing');
     overlay.stop(); book.destroy();
   });

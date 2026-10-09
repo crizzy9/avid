@@ -20,6 +20,8 @@ describe('account-scoped repository',()=>{
   });
   it('atomically stores the latest exact checkpoint and coalesces pending progress',async()=>{
     const repo=new LibraryRepository(db,session);
+    await repo.putBooks([{id:'4',title:'Book',authors:[],description:'',format:'EPUB',color:'sand',progress:0,status:'unread',genres:[],addedAt:anchor.updatedAt,files:[],coverUrl:'blob:expired-document'}]);
+    expect((await repo.getBook('4'))?.coverUrl).toBeUndefined();
     await repo.checkpoint(anchor);
     await repo.checkpoint({...anchor,locator:'epubcfi(/6/4)',progress:0.2,updatedAt:'2026-10-09T11:00:00Z'});
     expect((await repo.getAnchor(anchor))?.progress).toBe(0.2); // Backward seeks are valid.
@@ -27,6 +29,7 @@ describe('account-scoped repository',()=>{
     expect(pending[0].occurredAt).toBe('2026-10-09T11:00:00Z');
     await repo.checkpoint({...anchor,updatedAt:'2026-10-09T09:00:00Z'});
     expect((await repo.getAnchor(anchor))?.progress).toBe(0.2);
+    expect((await repo.getBook('4'))?.progress).toBe(0.2);
   });
   it('keeps read-only activity on-device without server mutation intents',async()=>{
     const repo=new LibraryRepository(db,session);
@@ -40,6 +43,18 @@ describe('account-scoped repository',()=>{
     await repo.importAnnotations([{...note,id:'12'}]);
     expect(await repo.getAnnotations()).toEqual([]);
     expect((await repo.getAnnotations(undefined,true))[0].deleted).toBe(true);
+  });
+  it('does not overwrite a read-only local edit or a newer checkpoint with an older remote response',async()=>{
+    const repo=new LibraryRepository(db,session);
+    await repo.checkpoint({...anchor,locator:'new local',updatedAt:'2026-10-09T11:00:00Z'},{readOnly:true});
+    await repo.importAnchor(anchor);
+    expect((await repo.getAnchor(anchor))?.locator).toBe('new local');
+    await repo.putAnnotation({...note,id:'12',text:'Local change',updatedAt:'2026-10-09T11:00:00Z'},{readOnly:true});
+    await repo.importAnnotations([{...note,id:'12'}]);
+    expect((await repo.getAnnotations())[0].text).toBe('Local change');
+    expect(await repo.pendingOperations()).toEqual([]);
+    await repo.importAnnotations([{...note,id:'12',text:'Newer server change',updatedAt:'2026-10-09T12:00:00Z'}]);
+    expect((await repo.getAnnotations())[0].text).toBe('Newer server change');
   });
   it('clears only the selected account',async()=>{
     const one=new LibraryRepository(db,session),two=new LibraryRepository(db,{...session,userId:'2'});

@@ -557,6 +557,7 @@ export class MOBI extends PDB {
     }
     async #setup() {
         const { palmdoc, mobi } = this.headers
+        if (palmdoc.encryption) throw new Error('This MOBI is DRM-protected. Avid can only open DRM-free publications.')
         this.#decoder = getDecoder(mobi.encoding)
         // `TextEncoder` only supports UTF-8
         // we are only encoding ASCII anyway, so I think it's fine

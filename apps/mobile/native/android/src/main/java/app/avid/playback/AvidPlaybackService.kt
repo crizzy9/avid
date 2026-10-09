@@ -3,6 +3,10 @@ package app.avid.playback
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.webkit.CookieManager
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
@@ -15,9 +19,9 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import org.json.JSONObject
 import java.security.MessageDigest
-import java.time.Instant
 
 /** Playback and checkpoints belong to the service, not to the WebView activity. */
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class AvidPlaybackService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
     private var session: MediaLibrarySession? = null
@@ -45,7 +49,13 @@ class AvidPlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        val authenticatedData = ResolvingDataSource.Factory(DefaultDataSource.Factory(this)) { spec ->
+            // Resolve cookies for this precise URL on every connection; never place credentials in metadata/preferences.
+            val cookie = if (spec.uri.scheme in listOf("https", "http")) CookieManager.getInstance().getCookie(spec.uri.toString()) else null
+            if (cookie.isNullOrBlank()) spec else spec.withAdditionalHeaders(mapOf("Cookie" to cookie))
+        }
         player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(authenticatedData))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
             .setHandleAudioBecomingNoisy(true)
@@ -89,7 +99,7 @@ class AvidPlaybackService : MediaLibraryService() {
             .put("fileId", item.mediaId).put("position", player.currentPosition / 1000.0)
             .put("duration", if (player.duration == C.TIME_UNSET) 0 else player.duration / 1000.0)
             .put("rate", player.playbackParameters.speed).put("playing", player.isPlaying)
-            .put("updatedAt", Instant.now().toString())
+            .put("updatedAt", playbackTimestamp())
         val hash = MessageDigest.getInstance("SHA-256").digest(scope.toByteArray()).joinToString("") { "%02x".format(it) }
         // Independent native recovery record. No media URLs or credentials are persisted.
         getSharedPreferences("avid-playback", MODE_PRIVATE).edit().putString(hash, value.toString()).apply()

@@ -1,0 +1,148 @@
+import { PlaybackController, chapterAtTime, clamp, validateTimeline, type AudioCheckpoint, type PlaybackBook, type PlaybackSnapshot, type SleepTimer } from '../../../packages/playback/src';
+import { createLazyPlaybackTransport } from './lazy-transport';
+import { getNativePlayback, type NativePlaybackPlugin, type NativePlaybackSnapshot } from './native-playback';
+
+/** Shared public transport shape; browser and native owners never run simultaneously. */
+export type PlaybackTransport = Pick<PlaybackController, keyof PlaybackController>;
+export interface NativeTransportOptions { accountScope: () => string | null }
+
+const initial: PlaybackSnapshot = { status: 'stopped', bookId: null, fileId: null, title: '', currentTime: 0, duration: 0, trackIndex: 0, chapterIndex: -1, rate: 1, sleepUntil: null, sleepAtChapterEnd: null, error: null };
+
+/** A native owner remains authoritative while JS is suspended. No HTMLAudioElement is created. */
+export class NativePlaybackTransport implements PlaybackTransport {
+  private state = { ...initial };
+  private book: PlaybackBook | null = null;
+  private scope: string | null = null;
+  private listeners = new Set<() => void>();
+  private checkpoints = new Set<(value: AudioCheckpoint) => void>();
+  private queue: Promise<void> = Promise.resolve();
+  private disposed = false;
+  private loaded = false;
+  private revision = 0;
+  private listener: ReturnType<NativePlaybackPlugin['addListener']>;
+  private poll: ReturnType<typeof setInterval>;
+  private refreshing = false;
+  private lastNativeTime: string | null = null;
+
+  constructor(private readonly plugin: NativePlaybackPlugin, private readonly options: NativeTransportOptions) {
+    this.listener = plugin.addListener('checkpoint', (value) => this.accept(value));
+    // Active UI progress. Background safety comes from the native service/AVPlayer, not this timer.
+    this.poll = setInterval(() => { void this.refresh(); }, 1000);
+    this.listener.catch(error => this.fail(error));
+  }
+  getSnapshot = (): PlaybackSnapshot => this.state;
+  getBook = (): PlaybackBook | null => this.book;
+  subscribe = (fn: () => void): (() => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
+  onCheckpoint = (fn: (value: AudioCheckpoint) => void): (() => void) => { this.checkpoints.add(fn); return () => { this.checkpoints.delete(fn); }; };
+
+  load(book: PlaybackBook, position = 0): void {
+    if (this.disposed) throw new Error('Playback transport has been destroyed.');
+    validateTimeline(book.tracks, book.chapters ?? []);
+    const scope = this.options.accountScope();
+    if (!scope) throw new Error('An account scope is required for native playback.');
+    // Background track transitions need a native queue implementation; never imply that JS timers provide one.
+    if (book.tracks.length !== 1) throw new Error('Native playback currently requires one audio file. Multi-file native queues are not yet available.');
+    if (!/^(https?|file|content):/i.test(book.tracks[0]!.url)) throw new Error('Native playback requires a server URL or native file URL. WebView blob URLs cannot be played by the native owner.');
+    this.checkpoint();
+    this.loaded = false;
+    this.scope = scope;
+    this.book = structuredClone(book);
+    const revision = ++this.revision;
+    this.lastNativeTime = null;
+    const rate = this.state.rate;
+    this.update({ ...initial, rate, bookId: book.bookId, fileId: book.fileId, title: book.title, currentTime: Math.max(0, position), duration: book.tracks[0]!.duration ?? 0, status: 'loading', chapterIndex: chapterAtTime(book.chapters ?? [], position) });
+    this.command(async () => {
+      if (revision !== this.revision) return;
+      try {
+        await this.plugin.load({ accountScope: scope, bookId: book.bookId, fileId: book.fileId, url: book.tracks[0]!.url, title: book.title, author: book.authors.join(', '), position, rate });
+        this.loaded = true;
+      } catch (error) { await this.plugin.clear().catch(() => {}); throw error; }
+    });
+  }
+  async play(): Promise<void> { await this.command(async () => { if (this.loaded) await this.plugin.play(); }); }
+  pause(): void { this.command(() => this.plugin.pause()); }
+  toggle(): Promise<void> | void { return this.state.status === 'playing' || this.state.status === 'loading' ? this.pause() : this.play(); }
+  seek(position: number): void {
+    if (!Number.isFinite(position)) return;
+    this.command(() => this.plugin.seek({ position: clamp(position, 0, this.state.duration || Infinity) }));
+  }
+  skip(delta: number): void { this.seek(this.state.currentTime + delta); }
+  goToChapter(id: string): void { const chapter = this.book?.chapters?.find(value => value.id === id); if (chapter) this.seek(chapter.start); }
+  setRate(rate: number): void {
+    if (!Number.isFinite(rate)) return;
+    const next = clamp(rate, .5, 3);
+    if (!this.book) { this.update({ rate: next }); return; }
+    this.command(() => this.plugin.setRate({ rate: next }));
+  }
+  setSleepTimer(timer: SleepTimer): void {
+    const chapter = this.book?.chapters?.[this.state.chapterIndex];
+    const deadline = timer && 'minutes' in timer && Number.isFinite(timer.minutes) && timer.minutes > 0 ? Date.now() + Math.min(1440, timer.minutes) * 60_000 : undefined;
+    const chapterEnd = timer && 'endOfChapter' in timer ? chapter ? chapter.start + chapter.duration : this.state.duration || undefined : undefined;
+    this.command(async () => {
+      await this.plugin.setSleepTimer({ deadline, chapterEnd });
+      this.update({ sleepUntil: deadline ?? null, sleepAtChapterEnd: chapterEnd ?? null });
+    });
+  }
+  checkpoint(): AudioCheckpoint | null {
+    if (!this.book || this.scope !== this.options.accountScope()) return null;
+    const value: AudioCheckpoint = { bookId: this.book.bookId, fileId: this.book.fileId, kind: 'audio',
+      locator: JSON.stringify({ version: 1, trackId: this.book.tracks[0]!.id, trackTime: this.state.currentTime, time: this.state.currentTime, ...(this.book.manifestRevision ? { manifestRevision: this.book.manifestRevision } : {}) }),
+      progress: this.state.duration > 0 ? clamp(this.state.currentTime / this.state.duration, 0, 1) : 0,
+      updatedAt: this.lastNativeTime ?? new Date().toISOString() };
+    this.checkpoints.forEach(fn => fn(value));
+    return value;
+  }
+  destroy(): void {
+    if (this.disposed) return;
+    this.checkpoint();
+    this.disposed = true;
+    this.revision++;
+    clearInterval(this.poll);
+    void this.listener.then(handle => handle.remove()).catch(() => {});
+    // Explicit app teardown/account transition must clear the native source too.
+    void this.queue.then(() => this.plugin.clear()).catch(() => {});
+    this.listeners.clear(); this.checkpoints.clear();
+  }
+  private command(action: () => Promise<void>): Promise<void> {
+    const revision = this.revision;
+    this.queue = this.queue.then(async () => {
+      if (this.disposed || revision !== this.revision) return;
+      if (this.scope && this.scope !== this.options.accountScope()) {
+        await this.plugin.clear(); this.loaded = false; this.book = null; this.scope = null; this.update({ ...initial }); return;
+      }
+      await action();
+      await this.refresh();
+    }).catch(error => { if (!this.disposed && revision === this.revision) this.fail(error); });
+    return this.queue;
+  }
+  private async refresh(): Promise<void> {
+    if (this.disposed || this.refreshing || !this.book || !this.loaded) return;
+    this.refreshing = true;
+    try { this.accept(await this.plugin.snapshot()); }
+    catch (error) { this.fail(error); }
+    finally { this.refreshing = false; }
+  }
+  private accept(value: NativePlaybackSnapshot): void {
+    if (this.disposed || !this.book || this.scope !== this.options.accountScope() || value.accountScope !== this.scope || value.bookId !== this.book.bookId || value.fileId !== this.book.fileId) return;
+    if (!Number.isFinite(value.position) || !Number.isFinite(value.duration) || !Number.isFinite(value.rate)) return;
+    // Ignore stale native callbacks from a previous command/load generation.
+    if (this.lastNativeTime && value.updatedAt < this.lastNativeTime) return;
+    this.lastNativeTime = value.updatedAt;
+    const currentTime = Math.max(0, value.position);
+    const duration = Math.max(0, value.duration || this.state.duration);
+    const asleep = (this.state.sleepUntil !== null && Date.now() >= this.state.sleepUntil) || (this.state.sleepAtChapterEnd !== null && currentTime >= this.state.sleepAtChapterEnd);
+    this.update({ currentTime, duration, rate: value.rate, chapterIndex: chapterAtTime(this.book.chapters ?? [], currentTime),
+      status: value.status ?? (value.playing ? 'playing' : 'paused'), error: value.error || null,
+      ...(asleep ? { sleepUntil: null, sleepAtChapterEnd: null } : {}) });
+    this.checkpoint();
+  }
+  private fail(error: unknown): void { if (!this.disposed) this.update({ status: 'failed', error: error instanceof Error ? error.message : String(error) }); }
+  private update(value: Partial<PlaybackSnapshot>): void { this.state = { ...this.state, ...value }; this.listeners.forEach(fn => fn()); }
+}
+
+export function createPlaybackTransport(options: NativeTransportOptions): PlaybackTransport {
+  return createLazyPlaybackTransport(() => {
+    const native = getNativePlayback();
+    return native ? new NativePlaybackTransport(native, options) : new PlaybackController();
+  });
+}

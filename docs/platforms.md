@@ -1,119 +1,106 @@
 # Avid platform implementation and release evidence
 
-Recorded October 9, 2026. A web implementation, a shell configuration, and native source are different levels of evidence. This repository does **not** yet establish the six-platform Phase 1 release gate. No signed mobile build, desktop installer, physical-device background run, or car entitlement approval has been produced in this environment.
+Recorded October 9, 2026. Native source, a successful build, and device qualification are different evidence. Android produces a debug APK and Linux produces a linked Tauri development binary in this environment. iOS has generated host and widget targets with integrated source, but no Apple SDK is available here. No signed release, physical-device background run, desktop installer, or car entitlement approval is claimed.
 
-## Implemented playback surface
-
-`packages/playback` provides the browser audio owner, immutable transport snapshots, track/chapter timelines, 0.5–3× pitch-preserving playback, configurable skip commands, duration and chapter-end sleep, Media Session metadata and controls, exact track-relative checkpoints, installed-voice browser speech, actual speech boundary callbacks, and validated text/audio alignment lookup. Public integration examples are in `packages/playback/README.md`.
-
-Browser controller tests cover cross-track seeking and restoration, track completion, rate retention, both sleep modes, old asynchronous play rejection, external interruption, incomplete total duration, and edition/timing guards. These tests inject a media-element test double; they prove controller behavior, not the browser's decoding or the operating system's lifecycle. Test commands:
-
-```sh
-pnpm exec vitest run --root . packages/playback/test
-pnpm exec tsc --noEmit -p packages/playback/tsconfig.json
-```
-
-## Platform matrix
+## Current host and transport matrix
 
 | Surface | Browser | iOS / Android | macOS / Windows / Linux |
 | --- | --- | --- | --- |
-| Shared reading/library UI | Shared React app | Capacitor configuration points to the same build | Tauri configuration points to the same build |
-| Audio | HTML media controller implemented | AVPlayer / Media3 native owner source included; target integration and shared-UI routing remain | HTML media path while the app runs; OS media-key qualification remains |
-| Lock-screen/system controls | Conditional Media Session | Native remote-command / session source included, not device qualified | Media Session where the embedded engine supplies it; native media-control adapters remain |
-| Sleep timer | Browser-owned timer and chapter threshold | Native-owned timer source included; locked-screen proof remains | Browser controller while process runs; suspension qualification remains |
-| Speech | Browser installed voices and actual callback ranges | Native speech adapter remains | Native OS speech adapter remains |
-| Car surfaces | Not available | CarPlay and Android Auto browsing/entitlements remain | Not applicable |
-| Widget / quick action / system intent | In-app equivalents only | Native extensions and intents remain | Tray/recent-book surfaces remain |
-| Spotlight | In-app search | Apple native indexing remains | macOS indexing remains |
+| Shared React reader/library | Implemented | Generated Capacitor 8.5.3 hosts bundle the same frontend | Tauri 2 host bundles the same frontend |
+| Audio owner | HTMLAudioElement controller | Registered AVPlayer / Media3 owner selected by the shared transport factory; one-file sources | HTML media backend while process runs |
+| System transport | Conditional Media Session | Now Playing / MPRemoteCommandCenter and Media3 session/notification source | Embedded-engine Media Session; target-specific qualification remains |
+| Sleep | Browser duration/chapter threshold | Native wall-clock deadline and source-position threshold | Browser controller; suspension qualification remains |
+| Speech | Installed browser voices and real callback boundaries | Shared browser speech; native speech engines remain | Shared browser speech; native OS voice adapters remain |
+| Continue widget / actions | In-app surface | iOS WidgetKit, App Intents, quick actions, controls, Spotlight sources integrated into targets; Android widget remains | Native tray/recent-book actions remain |
+| Car surfaces | Unavailable | CarPlay entitlement and browse templates / Android Auto catalog remain | Not applicable |
 | Complete offline library | Phase 2 | Phase 2 | Phase 2 |
 
-`getPlatformCapabilities()` deliberately reports native guarantees as unavailable in the current web build. Installed browser APIs are detected at runtime. An API existing is not treated as a device certification.
+The mobile factory in `apps/mobile/src/native-transport.ts` returns the structural `PlaybackTransport` API consumed by the shared application. It creates exactly one backend. A lazy facade avoids allocating audio, native listeners or timers in abandoned React StrictMode render initializers. The native adapter serializes commands, uses owner snapshots/events for state and checkpoints, checks server/account/book/file identity, and ignores stale callbacks. Native load failure clears the source and cannot accidentally play the previously loaded book. Account changes clear native state.
 
-## Mobile shell and native audio source
+Native playback explicitly rejects WebView `blob:` URLs and multi-file books. Those require a native file/export route and native queue respectively. They do not silently fall back to a second WebView audio owner. Playback status distinguishes actual playback, buffering and failures; native source timing is authoritative. UI polling smooths foreground progress; it does not provide background execution.
 
-`apps/mobile/capacitor.config.ts` names the app **Avid**, uses `app.avid.reader`, and bundles the root `dist` output. Capacitor 8 dependencies are recorded in the mobile package. Generate platform targets on an SDK-equipped machine:
+## Playback verification
+
+`packages/playback` implements chapter/track timelines, 0.5–3× playback, skip, both sleep modes, Media Session, exact track-relative checkpoints, browser speech boundaries, alignment validation, and durable activity chunks. Its README describes the public API and scope of the browser tests.
+
+Mobile adapter tests verify serialized load/play, source-relative checkpoints, stale and wrong-account callbacks, native sleep arguments, unsupported sources, failed-load behavior, teardown, and lazy allocation. These are bridge doubles, not device tests.
+
+```sh
+pnpm exec vitest run --root . packages/playback/test apps/mobile/src
+pnpm --filter @avid/mobile typecheck
+pnpm --filter @avid/mobile verify:ios
+```
+
+## Mobile builds
+
+Both host projects are checked in at `apps/mobile/android` and `apps/mobile/ios`; do not regenerate over their integrated native target configuration. After frontend changes:
 
 ```sh
 pnpm install
 pnpm build
-pnpm --filter @avid/mobile add:ios
-pnpm --filter @avid/mobile add:android
 pnpm --filter @avid/mobile sync
+pnpm --filter @avid/mobile build:android
+pnpm --filter @avid/mobile open:ios
 ```
 
-The generation commands are one-time steps per missing target. For iOS use Xcode and the required signing team; for Android use the supported JDK/Android SDK. Those toolchains were not available on the implementation host. Follow the version-specific [Capacitor environment requirements](https://capacitorjs.com/docs/getting-started/environment-setup).
+The generated hosts identify as **Avid**, `app.avid.reader`. Launcher icons derive from Avid's existing SVG. Local-machine build output, copied frontend assets, credentials, Android signing keys and Apple provisioning files are ignored. The checked-in Gradle wrapper is a build tool, not a signing secret.
 
-### iOS integration
+### Android evidence
 
-1. Add `apps/mobile/native/ios/*.swift` to the generated App target. Set its bridge view controller class in the generated storyboard to `AvidViewController` so the local `AvidPlayback` plugin registers.
-2. Merge `Info.plist.fragment` into the generated app's Info.plist. Enable the Audio background mode and configure the real signing team.
-3. Use `getNativePlayback()` from `apps/mobile/src/native-playback.ts`. It returns `null` unless the native plugin is actually installed. Route shared UI commands and authoritative state to this native owner before describing the mobile UI as background capable.
-4. Supply the verified streaming URL for the current account. Auth-header renewal and native credential storage are not implemented. Clear the owner on account change; never send its checkpoint under another account.
-5. Run the device scenarios below before enabling the native capability flag.
+A real `:app:assembleDebug` completed with Capacitor 8.5.3, Gradle 8.14.3, Android Gradle Plugin 8.13.0, Kotlin 2.2.20, JDK 21, compile/target SDK 36 and minimum SDK 24. The APK is generated at `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk` and is not committed. This is a debug-key artifact, not a store-ready release.
 
-The Swift owner uses a process singleton, AVPlayer, an AVAudioSession playback category, remote play/pause/skip/seek handlers, interruption and route-change handling, native sleep state, Now Playing metadata, and account-hashed local checkpoints. It currently accepts **one audio file**. Native track queues, chapter metadata/artwork, persisted checkpoint retrieval, source-item error reporting, credential renewal, and repository replay integration still require implementation. UserDefaults checkpoints are recovery records, not the planned transactional SQLite outbox. The plugin is source, not a signed or compiled release.
+The Linux host's temporary SDK was installed from Google's command-line tools archive `commandlinetools-linux-15859902_latest.zip`; SHA-256 was checked against Google's published value `4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583`. NixOS requires an ELF interpreter adjustment for Google's AAPT2. The build used a temporary patched copy via `-Pandroid.aapt2FromMavenOverride=/tmp/aapt2`; this machine-specific path is not in the repository. On an ordinary SDK-equipped Linux/macOS host the standard Gradle command applies.
 
-Registration follows [Capacitor local iOS plugins](https://capacitorjs.com/docs/ios/custom-code). The [Apple audio-session documentation](https://developer.apple.com/documentation/avfaudio/avaudiosession) describes the playback/background category requirement.
+`MainActivity` registers the native plugin. The app source set includes the shared Kotlin source under `native/android`; the manifest installs the non-exported MediaLibraryService and media foreground/wake permissions. ExoPlayer owns audio focus, noisy-route handling, media session, sleep and checkpoints independently of the activity. Its interface releases only the MediaController connection on WebView destruction.
 
-### Android integration
+Native HTTP media requests resolve the WebView CookieManager's cookies for the exact requested URL through a Media3 ResolvingDataSource. Cookies do not enter media metadata or SharedPreferences. The media bridge currently supports cookie-authenticated streaming; Bearer-only media endpoints need a supported native resource loader and are not claimed. Authentication renewal and actual protected-server behavior still need device validation. Android Auto catalog browsing, native queues, chapter/artwork notification metadata, secure cold-start session restoration and durable native-to-repository outbox replay remain.
 
-1. Copy `apps/mobile/native/android/src/main/java/app/avid/playback` into the generated app's Kotlin source set. Enable Kotlin and merge `dependencies.gradle.kts.fragment` into its Gradle dependencies.
-2. Merge the manifest fragment: the app needs the media-playback foreground service permissions and service declaration. The supplied service is not exported. Android Auto browsing is intentionally unavailable until the catalog and controller permission contract is implemented.
-3. Register `AvidPlaybackPlugin` in `MainActivity` before `super.onCreate(savedInstanceState)` using `registerPlugin(AvidPlaybackPlugin::class.java)` in Kotlin or `registerPlugin(AvidPlaybackPlugin.class)` in Java.
-4. Route UI commands through the installed plugin and validate state/credential/journal handling as on iOS. The current plugin rejects commands until its service controller connects.
-5. Run the device scenarios below and configure a release signing key before enabling the native capability flag.
+References: [Android background playback](https://developer.android.com/media/media3/session/background-playback), [Media3 ResolvingDataSource](https://developer.android.com/reference/androidx/media3/datasource/ResolvingDataSource), [Capacitor local Android plugins](https://capacitorjs.com/docs/android/custom-code).
 
-The Media3 `MediaLibraryService` owns ExoPlayer, audio focus, noisy-route handling, native sleep checks, a MediaSession, and account-hashed recovery records independent of the activity. Media3 supplies the notification/transport foundation. The plugin's controller connects to the service and releases only the interface connection at destruction. It currently accepts one audio file. Library-browse callbacks, notification artwork, native track queues, credential renewal, persisted checkpoint retrieval, and transactional repository replay remain. SharedPreferences checkpoints are not a server-sync acknowledgement.
+### iOS host and system surfaces
 
-Service ownership and foreground permissions follow [Android background playback](https://developer.android.com/media/media3/session/background-playback). Local registration follows [Capacitor Android plugins](https://capacitorjs.com/docs/android/custom-code). The source pins [Media3 1.8.0](https://developer.android.com/jetpack/androidx/releases/media3#1.8.0); it needs a native compilation run before qualification.
+The generated app target includes `AvidViewController`, the native playback and system-surface plugins, the AVPlayer singleton and Keychain source store. SceneDelegate installs the correct bridge controller and handles cold/warm `avid://resume` links, Spotlight activities and quick actions. The Info.plist enables background audio, the custom scheme and the local-network usage description. HTTPS remains the supported default; broad ATS/mixed-content exceptions are not enabled.
 
-## Desktop shell
+The Xcode project embeds the **AvidWidgets** extension, with iOS 17 minimum for interactive widgets. Shared store and App Intent source belongs to both targets; playback/Keychain source belongs only to the application. iOS 18 gates the Control Center/Lock Screen control. Both targets declare `group.app.avid.reader`; a real signing team must enable this App Group on both identifiers. `verify:ios` parses the PBX project and verifies target references, source files, widget embedding, deep links, background mode and entitlement declarations. It cannot typecheck Swift, resolve Apple frameworks or validate signing. Xcode compilation is still required; a shared `App` scheme is checked in. On macOS, an unsigned simulator check is `xcodebuild -project apps/mobile/ios/App/App.xcodeproj -scheme App -destination "generic/platform=iOS Simulator" CODE_SIGNING_ALLOWED=NO build`.
 
-`apps/desktop/src-tauri` contains a Tauri 2 Rust application, a restricted default capability, shared-client dev/build paths, and a content security policy. It does not grant filesystem, process execution, shell, or remote-page IPC privileges. Remote book content must continue to be isolated by the reader engine. Native API access must never be enabled for a book frame.
+Implemented source flows:
+
+- **Spotlight:** explicit indexing of title/author metadata into account-specific domains, checked deep-link lookup, and deletion on removal/logout. Batches are limited to 500 entries. No book content, cover credentials or streaming URLs enter the search index.
+- **Continue Reading widget:** active-account recent metadata and progress from App Group storage; tapping restores a validated book/file. Widgets can directly invoke audiobook pause/resume intents.
+- **Quick actions:** up to four current-account recent books, using the same validated navigation route.
+- **App Intents and Shortcuts:** entity queries expose the current account's recent books; resume/pause intents use the app-process native audio owner; Continue Reading opens the application and queues navigation. A control uses the same resume intent on iOS 18.
+- **Cold native resume:** audiobook source descriptors live in app Keychain with `AfterFirstUnlockThisDeviceOnly` access. Shared widget storage contains metadata only. Expired explicitly dated sources refuse resume. Native playback reads cookies from WKHTTPCookieStore into the supported AVURLAssetHTTPCookiesKey option; cookies are not duplicated in shared defaults. Logged-out or different-account actions reject lookup.
+
+`getNativeSystemSurfaces()` returns a bridge only when the actual Capacitor plugin is registered. `capabilities()` reports whether the signed App Group is available, Spotlight indexing exists, the widget extension is actually embedded and OS intent/control versions apply. These runtime checks are prerequisites, not a device certification.
+
+The AVPlayer owner publishes Now Playing, handles remote play/pause/skip/seek and interruptions/headphone removal, maintains native sleep and writes scoped checkpoints. Browser login is currently memory-owned; complete secure account restoration, native credential renewal and native journal replay are outstanding. Keychain media-source storage alone is not complete secure session restoration.
+
+References: [Capacitor local iOS plugins](https://capacitorjs.com/docs/ios/custom-code), [AVURLAsset cookie option](https://developer.apple.com/documentation/avfoundation/avurlassethttpcookieskey), [interactive widgets and app-process AudioPlaybackIntent](https://developer.apple.com/documentation/widgetkit/adding-interactivity-to-widgets-and-live-activities), [system controls](https://developer.apple.com/documentation/widgetkit/creating-controls-to-perform-actions-across-the-system), [Core Spotlight](https://developer.apple.com/documentation/corespotlight).
+
+## Desktop evidence
+
+The Tauri 2 application includes shared frontend paths, Avid icon assets, a committed Cargo.lock, CSP and a restricted main-window capability. No filesystem, shell/process or remote-page IPC permission is granted. Book frames must remain isolated from native APIs.
+
+Linux `cargo check --locked` and `cargo build --locked` completed using Rust/Cargo 1.98.1 and GTK3/WebKitGTK 4.1 development libraries. The host's Nix packages required explicit pkg-config paths and the WebKit/sysprof development outputs. These compile dependencies were provided without writing host-specific paths into project configuration. The linked ELF binary is at `apps/desktop/src-tauri/target/debug/avid` (ignored build output). It has not been launched or packaged as an installer here.
 
 ```sh
 pnpm --filter @avid/desktop dev
 pnpm --filter @avid/desktop build
 ```
 
-Tauri invokes the root frontend build. Rust, OS WebView development libraries, and platform SDKs are required. This host has no Rust toolchain, so no desktop compile result is claimed. Installer bundling is disabled until icons, signing/notarization, installer metadata, and actual target builds are configured. The configuration alone does not meet the installable desktop gate. See [Tauri configuration](https://v2.tauri.app/reference/config/).
+Tauri runs the root frontend build. Installer bundling remains disabled pending real target builds, signing/notarization and packaging validation. No macOS or Windows native compiler run has occurred here. Native desktop media control, credential/SQLite storage, tray actions and OS speech adapters remain. See [Tauri requirements](https://v2.tauri.app/start/prerequisites/) and [Tauri configuration](https://v2.tauri.app/reference/config/).
 
-The desktop app currently uses the shared HTML audio backend. Dedicated macOS/Windows/Linux media controls, OS credentials, SQLite, tray actions, and installed-system speech adapters remain.
+## Phase 1 platform acceptance gates
 
-## Phase 1 feature evidence
-
-| Requirement | Present evidence | Still required for the research acceptance gate |
+| IDs | Implemented evidence | Remaining release evidence |
 | --- | --- | --- |
-| F24 Audiobooks | Browser transport + codec preflight; native owner source | Real supported-format/range/auth fixtures; mobile integration and UI-suspension validation |
-| F25 Chapters | Ordered timeline and exact track-relative restore tested in browser controller | Real server chapter fixture, native track queues, native chapter metadata |
-| F26 Speed | Browser rate changes tested; native source clamps and applies rate | Persist account preference; physical native pitch/timing verification |
-| F27 Sleep | Browser duration and chapter-end stops tested; native timer source | Locked-screen/native deadline tests; process lifecycle and interruptions |
-| F28 CarPlay | Capability unavailable | Audio entitlement, native browse/transport templates, simulator and real-car run |
-| F29 Lock Screen | Browser Media Session; native metadata/session source | Cover/chapter metadata completeness; suspended-interface physical-device control |
-| F30 Remote skipping | Browser handlers; iOS/Android native skip source | Configurable native policy and Bluetooth/wired/car validation |
-| F31 Read and Listen | Validated real-locator alignment model and duration sanity helper | Verified server overlay/bridge discovery and resource access; usable-file fixture |
-| F32 Mode handoff | Exact text locator ↔ source timestamp lookup | Reader integration and bidirectional handoff on matched and mismatched editions |
-| F33 Sentence highlight | Half-open interval lookup, gap handling, overlap/identity rejection tests | Native-timestamp reader rendering/auto-follow within timing budget on devices |
-| F34 Speak | Installed browser voices; speech controller | Native iOS/Android/desktop speech adapters and selection start on tested engines |
-| F35 Word highlight | True engine boundary offsets; no fabricated timing | Reader range mapping across every supported engine; capability evidence where missing |
-| F36 Speech page turns | Speech `onEnd`/boundary integration hooks | Reader chaining and cross-chapter continuation without duplication on supported engines |
-| F50 Spotlight | Capability unavailable | Account-safe native indexing, deep links, permission removal and logout cleanup |
-| F51 Continue widget | Capability unavailable | WidgetKit/Android widgets and persisted shared snapshots |
-| F52 Widget playback | Capability unavailable | Direct native-owner actions while the main interface is closed |
-| F53 Quick actions | Capability unavailable | Recent-book/app-action routing with server/account identity |
-| F54 System controls | Capability unavailable | iOS Control Center/Lock Screen controls and Action button intents |
-| F55 Shortcuts | Capability unavailable | App Intents and closed-interface playback/resume tests |
+| F24–F27 | Browser transport tests, active native adapter, one-file owner/chapters/speed/sleep source, Android debug build | Native queue; authenticated real-codec/range fixtures; physical seek/rate/sleep and suspension tests |
+| F28 | Explicit unavailable capability | CarPlay entitlement/browse templates and actual car run; Android Auto browse contract |
+| F29–F30 | Native remote commands/MediaSession and notification foundations | Full artwork/chapter metadata, configurable remote skip policy, Bluetooth/wired controls on devices |
+| F31–F36 | Shared reader alignment/speech integration and playback timing primitives | Device timing budget, native speech adapters, background reader/speech continuity qualification |
+| F50 | iOS account-scoped Spotlight indexing/deletion/navigation source integrated | Xcode compile, permission/account deletion scenarios; macOS index implementation |
+| F51–F52 | Embedded iOS widget source and app-process playback intents with shared metadata | Xcode compile/signing, widget launch and locked-interface physical tests; Android widget |
+| F53 | iOS dynamic recent-book quick actions and cold/warm routing source | Installed-device account isolation and launch verification |
+| F54–F55 | iOS 18 control plus shared App Intents/Shortcuts source | Xcode compile, Action button/Control Center/Shortcuts locked/cold scenarios |
 
-This table describes playback/platform package evidence. A shared UI can consume these interfaces without satisfying every end-to-end acceptance row.
-
-## Required qualification run
-
-- Use real MP3/M4B and any other claimed codec fixture. Play, seek backward, cross tracks, restore exact file-relative positions, change rate, and expire each sleep mode.
-- Run a 60-minute locked-screen session on physical iOS and Android devices. Interrupt with a call, unplug headphones, change network, expire credentials, and restart the interface without replacing the native owner.
-- Confirm checkpoints are durable while the WebView is suspended; integrate source timestamps into the account-scoped transactional journal. Test logout and account switching during playback.
-- Verify Now Playing artwork/chapter/position and headset, keyboard, wired, Bluetooth, car, and widget actions on their actual supported surfaces.
-- Use aligned, unaligned, and wrong-edition fixtures. Record timing at different rates and ensure gaps never jump to a guessed percentage.
-- Exercise speech with an engine that reports ranges and one that does not. Verify text range offsets, page/chapter continuation, cancellation, and reader focus.
-- Compile and sign actual iOS/Android targets and build the three desktop platforms. Record SDK/OS versions, device models, codecs, test dates, observed outcomes, and known exceptions in the release record.
-
-CarPlay entitlement approval, physical devices/car access, actual server credentials/contracts, Apple signing identity, Android signing credentials, and platform SDK runners are external inputs. No claim of complete Phase 1 parity should be made until all applicable feature rows and the release gates have evidence.
+Required qualification includes a 60-minute locked-screen audio run on physical iOS and Android devices; interruption, route/network change, expiry and account switch; exact checkpoint recovery and journal replay while JS is suspended; widget and headset transport; matched/wrong-edition alignment; speech with/without true ranges; and signed builds on all six targets. Native checkpoints are local recovery evidence, not server-sync acknowledgements. No complete Phase 1 parity claim follows from host generation or debug compilation alone.
