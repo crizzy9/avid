@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.local
+*.log
+.DS_Store
+coverage/
+test-results/
+playwright-report/
+apps/desktop/src-tauri/target/
+apps/mobile/android/.gradle/
+apps/mobile/ios/Pods/
+.agents/
+.codex/

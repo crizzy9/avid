@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "Avid shell window permissions. Reader book frames receive no native capability.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -1,0 +1,5 @@
+<!-- Merge these keys into the generated App/Info.plist. -->
+<key>UIBackgroundModes</key>
+<array><string>audio</string></array>
+<key>NSLocalNetworkUsageDescription</key>
+<string>Avid connects to the BookOrbit library server you choose on your local network.</string>

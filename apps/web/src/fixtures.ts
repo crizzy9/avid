@@ -1,0 +1,29 @@
+import type { Book } from '../../../packages/core/src/types';
+
+const seeds = [
+  ['dracula', 'Dracula', 'Bram Stoker', '#9e344a', 'Gothic fiction', 'A young solicitor travels to Transylvania, where an invitation to a remote castle draws him into the dark world of Count Dracula. A story of courage, friendship, and the things that wait beyond the light.', 0.32],
+  ['dorian', 'The Picture of Dorian Gray', 'Oscar Wilde', '#286e62', 'Literary fiction', 'In Victorian London, a beautiful young man makes a wish that will change the course of his life. Wilde’s only novel is a dazzling meditation on art, beauty, and the price of eternal youth.', 0.19],
+  ['sherlock', 'The Adventures of Sherlock Holmes', 'Arthur Conan Doyle', '#d49b3f', 'Mystery', 'Join Sherlock Holmes and Dr. Watson at 221B Baker Street for twelve mysteries, where a curious detail can reveal a whole hidden world.', 0.57],
+  ['alice', 'Alice’s Adventures in Wonderland', 'Lewis Carroll', '#b86076', 'Fantasy', 'Down a rabbit hole and into a world where nothing is quite as it seems. Follow Alice through a dreamlike landscape of impossible conversations and wonderful surprises.', 0.12],
+  ['moby', 'Moby-Dick', 'Herman Melville', '#36658c', 'Adventure', 'Call me Ishmael. An unforgettable voyage aboard the Pequod, in pursuit of the elusive white whale and the mysteries of the sea.', 0.08],
+  ['sleepy', 'The Legend of Sleepy Hollow', 'Washington Irving', '#65537b', 'Gothic fiction', 'In a quiet valley along the Hudson, a schoolmaster encounters an old legend on a moonlit road.', 0.44],
+  ['treasure', 'Treasure Island', 'Robert Louis Stevenson', '#267682', 'Adventure', 'A map, a sea chest, and a voyage into the unknown. Young Jim Hawkins sets sail in search of buried treasure, with danger following close behind.', 0],
+  ['frankenstein', 'Frankenstein', 'Mary Shelley', '#697746', 'Gothic fiction', 'A scientist brings a new being into the world, then recoils from what he has created. A profound story of ambition, belonging, and responsibility.', 0],
+  ['twocities', 'A Tale of Two Cities', 'Charles Dickens', '#b36043', 'Historical fiction', 'Two cities, two lives, and a time of extraordinary upheaval. Dickens tells a story of love and sacrifice in the shadow of the French Revolution.', 0],
+  ['timemachine', 'The Time Machine', 'H. G. Wells', '#635797', 'Science fiction', 'An inventor journeys far beyond his own century and discovers the strange fate of humanity in the distant future.', 0],
+  ['pride', 'Pride and Prejudice', 'Jane Austen', '#7c8892', 'Classics', 'Elizabeth Bennet meets the proud Mr. Darcy, and first impressions give way to a sharper understanding of love, family, and oneself.', 0],
+  ['garden', 'The Secret Garden', 'Frances Hodgson Burnett', '#6d826c', 'Classics', 'Behind a locked door on a Yorkshire estate, a forgotten garden waits to come alive again.', 1],
+] as const;
+
+export const demoBooks: Book[] = seeds.map(([slug,title,author,color,genre,description,progress],i) => ({
+  id:`demo-${slug}`, title, authors:[author], description, format:'EPUB', color,
+  coverUrl:`/covers/${slug}.svg`, progress, status:progress === 1 ? 'finished' : progress > 0 ? 'reading' : 'unread',
+  genres:[genre,'Classics'], addedAt:new Date(Date.UTC(2026,9,9-i)).toISOString(),
+  files:[{id:`demo-${slug}-epub`,name:`${title}.epub`,format:'EPUB'},...(i===0?[{id:'demo-narration',name:'Avid narration sample.wav',format:'AUDIO' as const,url:'/samples/narration.wav'}]:[])],
+}));
+
+export const demoCollections = [
+  {id:'queue',name:'Reading queue',bookIds:demoBooks.slice(6,10).map(b=>b.id)},
+  {id:'classics',name:'The classics',bookIds:demoBooks.map(b=>b.id)},
+  {id:'adventure',name:'A little adventure',bookIds:['demo-treasure','demo-moby','demo-timemachine']},
+];
