@@ -11,8 +11,10 @@ const project = xcode.project(path); project.parseSync();
 const objects = project.hash.project.objects;
 const nativeGroup = Object.entries(objects.PBXGroup).find(([, value]) => value.name === '"Avid native sources"')[0];
 const app = Object.entries(objects.PBXNativeTarget).find(([, value]) => value.name === 'App')[0];
-if (!Object.values(objects.PBXFileReference).some(value => String(value.path).includes('AvidCarPlaySceneDelegate.swift'))) {
-  project.addSourceFile('AvidCarPlaySceneDelegate.swift', { target: app }, nativeGroup);
+for (const file of ['AvidCarPlaySceneDelegate.swift', 'AvidPlaybackJournal.swift']) {
+  if (!Object.values(objects.PBXFileReference).some(value => String(value.path).includes(file))) {
+    project.addSourceFile(file, { target: app }, nativeGroup);
+  }
 }
 const reference = value => typeof value === 'string' ? value : value.value;
 for (const [key, list] of Object.entries(objects.XCConfigurationList)) {

@@ -8,6 +8,7 @@ export interface NativePlaybackLoad {
   url: string;
   tracks?: { id: string; url: string; duration?: number }[];
   manifestRevision?: string;
+  readOnly?: boolean;
   title: string;
   author: string;
   position?: number;
@@ -22,9 +23,13 @@ export interface NativePlaybackSnapshot {
   fileId: string;
   position: number;
   trackId?: string;
+  trackIds?: string[];
   trackIndex?: number;
   trackTime?: number;
   manifestRevision?: string;
+  readOnly?: boolean;
+  sleepUntil?: number | null;
+  sleepAtChapterEnd?: number | null;
   duration: number;
   rate: number;
   playing: boolean;
@@ -51,4 +56,12 @@ const plugin = registerPlugin<NativePlaybackPlugin>('AvidPlayback');
 /** No silent HTML fallback: a native owner must be installed before using this adapter. */
 export function getNativePlayback(): NativePlaybackPlugin | null {
   return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('AvidPlayback') ? plugin : null;
+}
+
+/** Identity only, without media URLs or credentials. Does not load, seek or start audio. */
+export async function readOwnerSnapshot(): Promise<NativePlaybackSnapshot | null> {
+  const native = getNativePlayback();
+  if (!native) return null;
+  const value = await native.snapshot();
+  return value.bookId && value.fileId && value.accountScope ? value : null;
 }

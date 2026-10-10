@@ -54,6 +54,7 @@ class AvidPlaybackPlugin : Plugin() {
     }
 
     private fun command(call: PluginCall, action: (MediaController) -> Unit) = connected(call) {
+        runCatching { AvidPlaybackJournal.flush() }
         action(it); call.resolve()
     }
 
@@ -79,7 +80,7 @@ class AvidPlaybackPlugin : Plugin() {
                 .put("manifestRevision", call.getString("manifestRevision"))
             AvidQueue.tracks(source)
             AvidAudioCatalog.prepare(scope, bookId, fileId, url, call.getString("title") ?: "", call.getString("author") ?: "",
-                (call.getDouble("position") ?: 0.0).coerceAtLeast(0.0), (call.getDouble("rate") ?: 1.0).coerceIn(0.5, 3.0), tracks, call.getString("manifestRevision"))
+                (call.getDouble("position") ?: 0.0).coerceAtLeast(0.0), (call.getDouble("rate") ?: 1.0).coerceIn(0.5, 3.0), tracks, call.getString("manifestRevision"), call.getBoolean("readOnly") ?: true)
             val prepared = AvidAudioCatalog.get(AvidAudioCatalog.id(scope, bookId, fileId))!!
             player.setMediaItems(AvidQueue.items(prepared))
             player.prepare()
@@ -130,8 +131,13 @@ class AvidPlaybackPlugin : Plugin() {
             put("fileId", item?.mediaMetadata?.extras?.getString("fileId") ?: item?.mediaId ?: "")
             put("position", AvidQueue.position(player))
             put("trackTime", player.currentPosition / 1000.0)
+            put("readOnly", (item?.mediaMetadata?.extras?.getBoolean("readOnly", true) ?: true) || AvidSessionStore.readOnly(context, item?.mediaMetadata?.extras?.getString("accountScope") ?: ""))
             put("trackId", item?.mediaMetadata?.extras?.getString("trackId"))
             put("trackIndex", item?.mediaMetadata?.extras?.getInt("trackIndex") ?: 0)
+            put("trackIds", org.json.JSONArray((0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaMetadata.extras?.getString("trackId") ?: "" }))
+            val session = (player as? MediaController)?.sessionExtras
+            put("sleepUntil", if (session?.containsKey("deadline") == true) session.getLong("deadline") else org.json.JSONObject.NULL)
+            put("sleepAtChapterEnd", if (session?.containsKey("chapterEndMs") == true) session.getLong("chapterEndMs") / 1000.0 else org.json.JSONObject.NULL)
             item?.mediaMetadata?.extras?.getString("manifestRevision")?.let { put("manifestRevision", it) }
             put("duration", AvidQueue.duration(player))
             put("rate", player.playbackParameters.speed); put("playing", player.isPlaying)

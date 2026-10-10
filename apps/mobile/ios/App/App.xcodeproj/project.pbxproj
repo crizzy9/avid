@@ -62,6 +62,7 @@
 		3419BDDEACEECE2E69CFA2BB /* widget:Widgets/AvidWidgetBundle.swift */ = {isa = PBXBuildFile; fileRef = 20F96303DF029D6E1DE51286; };
 		2F8312690AD0FDDE3BBC0141 /* Embed AvidWidgets */ = {isa = PBXBuildFile; fileRef = 78BA6F44DDA93672B79403C7; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CD0190FD2EEA4E1EBB4E840A /* AvidCarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15C50C173FFD449582C6DE3A /* AvidCarPlaySceneDelegate.swift */; };
+		C12AAA93117342ACB27373FC /* AvidPlaybackJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD9AB5B48294EE1A63F11A5 /* AvidPlaybackJournal.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -88,6 +89,7 @@
 		20F96303DF029D6E1DE51286 /* Widgets/AvidWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Widgets/AvidWidgetBundle.swift"; sourceTree = "<group>"; };
 		78BA6F44DDA93672B79403C7 /* AvidWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = AvidWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		15C50C173FFD449582C6DE3A /* AvidCarPlaySceneDelegate.swift */ = {isa = PBXFileReference; name = "AvidCarPlaySceneDelegate.swift"; path = "AvidCarPlaySceneDelegate.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		4CD9AB5B48294EE1A63F11A5 /* AvidPlaybackJournal.swift */ = {isa = PBXFileReference; name = "AvidPlaybackJournal.swift"; path = "AvidPlaybackJournal.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -158,6 +160,7 @@
 				70E82546FF6C0AE871EE7EE9,
 				20F96303DF029D6E1DE51286,
 				15C50C173FFD449582C6DE3A /* AvidCarPlaySceneDelegate.swift */,
+				4CD9AB5B48294EE1A63F11A5 /* AvidPlaybackJournal.swift */,
 			);
 			name = "Avid native sources";
 			path = "../../native/ios";
@@ -282,6 +285,7 @@
 				B9928DB926D6CC4BF93B2477,
 				D42232302CAD259C2C71C1D3,
 				CD0190FD2EEA4E1EBB4E840A /* AvidCarPlaySceneDelegate.swift in Sources */,
+				C12AAA93117342ACB27373FC /* AvidPlaybackJournal.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

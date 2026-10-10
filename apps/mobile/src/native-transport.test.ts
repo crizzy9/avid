@@ -89,4 +89,33 @@ describe('native authoritative playback transport', () => {
     transport.destroy(); await drain();
     expect(plugin.clear).toHaveBeenCalledTimes(2); expect(remove).toHaveBeenCalledOnce();
   });
+  it('adopts the live native owner without loading, seeking, playing or losing native sleep state', async () => {
+    const { transport, plugin, emit } = setup(); transports.push(transport);
+    emit({ position: 88, trackId: 't', trackIds: ['t'], trackTime: 88, playing: true, status: 'playing', rate: 1.6, sleepAtChapterEnd: 120, updatedAt: new Date(9000).toISOString() });
+    expect(await transport.adoptNative(book)).toBe(true);
+    expect(transport.getSnapshot()).toMatchObject({ currentTime: 88, rate: 1.6, status: 'playing', sleepAtChapterEnd: 120 });
+    expect(plugin.load).not.toHaveBeenCalled(); expect(plugin.seek).not.toHaveBeenCalled(); expect(plugin.play).not.toHaveBeenCalled();
+    expect(JSON.parse(transport.checkpoint()!.locator).trackTime).toBe(88);
+    expect(transport.checkpoint()!.updatedAt).toBe(new Date(9000).toISOString());
+  });
+  it('refuses to adopt a different edition, reordered source queue or logged-out owner', async () => {
+    const { transport, emit, account } = setup(); transports.push(transport);
+    emit({ trackIds: ['t'], trackId: 't', manifestRevision: 'changed' });
+    expect(await transport.adoptNative(book)).toBe(false);
+    emit({ manifestRevision: undefined, trackIds: ['other'] });
+    expect(await transport.adoptNative(book)).toBe(false);
+    emit({ trackIds: ['t'] }); account('account-b');
+    expect(await transport.adoptNative(book)).toBe(false);
+    expect(transport.getBook()).toBeNull();
+  });
+  it('cannot adopt an owner after account scope changes during its snapshot request', async () => {
+    const { transport, plugin, account } = setup(); transports.push(transport);
+    let deliver!: (snapshot: NativePlaybackSnapshot) => void;
+    vi.mocked(plugin.snapshot).mockImplementationOnce(() => new Promise(resolve => { deliver = resolve; }));
+    const adoption = transport.adoptNative(book);
+    account('account-b');
+    deliver({ accountScope: 'account-a', bookId: 'b', fileId: 'f', position: 40, duration: 120, rate: 1, playing: true, updatedAt: new Date().toISOString(), trackId: 't', trackIds: ['t'] });
+    expect(await adoption).toBe(false);
+    expect(transport.getBook()).toBeNull();
+  });
 });

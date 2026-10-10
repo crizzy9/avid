@@ -17,6 +17,7 @@ export function createLazyPlaybackTransport(factory: () => PlaybackTransport): P
     subscribe: (listener: () => void) => active().subscribe(listener),
     onCheckpoint: (listener: (value: AudioCheckpoint) => void) => active().onCheckpoint(listener),
     load: (book: PlaybackBook, position?: number) => active().load(book, position),
+    adoptNative: (book: PlaybackBook) => active().adoptNative?.(book) ?? Promise.resolve(false),
     play: () => active().play(),
     pause: () => owner?.pause(),
     toggle: () => active().toggle(),

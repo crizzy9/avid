@@ -26,6 +26,7 @@ object AvidQueue {
         return tracks.mapIndexed { index, track ->
             val extras = Bundle().apply {
                 putString("accountScope", AvidAudioCatalog.scope); putString("bookId", source.getString("bookId")); putString("fileId", source.getString("fileId"))
+                putBoolean("readOnly", source.optBoolean("readOnly", true))
                 putString("trackId", track.getString("id")); putInt("trackIndex", index); putInt("trackCount", tracks.size)
                 putDouble("trackStart", AudioTimeline.start(durations, index)); putDouble("timelineDuration", total)
                 duration(track)?.let { putDouble("trackDuration", it) }

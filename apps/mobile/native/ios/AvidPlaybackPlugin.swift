@@ -40,7 +40,7 @@ public class AvidPlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
                 try AvidPlaybackOwner.shared.load(scope: scope, bookId: bookId, fileId: fileId, url: url,
                     title: call.getString("title") ?? "", author: call.getString("author") ?? "",
                     position: call.getDouble("position") ?? 0, rate: Float(call.getDouble("rate") ?? 1),
-                    expiresAt: call.getString("expiresAt").flatMap { ISO8601DateFormatter().date(from: $0) }, cookies: cookies, tracks: tracks, manifestRevision: call.getString("manifestRevision"))
+                    expiresAt: call.getString("expiresAt").flatMap { ISO8601DateFormatter().date(from: $0) }, cookies: cookies, tracks: tracks, manifestRevision: call.getString("manifestRevision"), readOnly: call.getBool("readOnly") ?? true)
                 call.resolve()
             } catch { call.reject(error.localizedDescription) }
         }

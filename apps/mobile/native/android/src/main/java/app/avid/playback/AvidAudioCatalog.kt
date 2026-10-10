@@ -80,12 +80,12 @@ object AvidAudioCatalog {
         document.put("books", JSONArray(values.values.toList()))
         persist(); observers.toList().forEach { it(false) }; return ids
     }
-    fun prepare(accountScope: String, bookId: String, fileId: String, url: String, title: String, author: String, position: Double, rate: Double, tracks: JSONArray? = null, manifestRevision: String? = null) {
+    fun prepare(accountScope: String, bookId: String, fileId: String, url: String, title: String, author: String, position: Double, rate: Double, tracks: JSONArray? = null, manifestRevision: String? = null, readOnly: Boolean = true) {
         activate(accountScope)
         val key = id(scope, bookId, fileId)
         val values = books().filter { it.optString("id") != key }.toMutableList()
         values.add(JSONObject().put("id", key).put("bookId", bookId).put("fileId", fileId).put("title", title).put("author", author)
-            .put("url", url).put("tracks", tracks).put("manifestRevision", manifestRevision).put("position", position).put("rate", rate).put("updatedAt", System.currentTimeMillis()))
+            .put("readOnly", readOnly).put("url", url).put("tracks", tracks).put("manifestRevision", manifestRevision).put("position", position).put("rate", rate).put("updatedAt", System.currentTimeMillis()))
         document.put("books", JSONArray(values)); persist(); observers.toList().forEach { it(false) }
     }
     fun checkpoint(accountScope: String, bookId: String, fileId: String, position: Double, rate: Double) {

@@ -3,8 +3,11 @@ import { createLazyPlaybackTransport } from './lazy-transport';
 import { getNativePlayback, type NativePlaybackPlugin, type NativePlaybackSnapshot } from './native-playback';
 
 /** Shared public transport shape; browser and native owners never run simultaneously. */
-export type PlaybackTransport = Pick<PlaybackController, keyof PlaybackController>;
-export interface NativeTransportOptions { accountScope: () => string | null }
+export type PlaybackTransport = Pick<PlaybackController, keyof PlaybackController> & {
+  /** Attach to a verified live native owner without replacing its newer position or play state. */
+  adoptNative?(book: PlaybackBook): Promise<boolean>;
+};
+export interface NativeTransportOptions { accountScope: () => string | null; readOnly?: () => boolean }
 
 const initial: PlaybackSnapshot = { status: 'stopped', bookId: null, fileId: null, title: '', currentTime: 0, duration: 0, trackIndex: 0, chapterIndex: -1, rate: 1, sleepUntil: null, sleepAtChapterEnd: null, error: null };
 
@@ -35,6 +38,26 @@ export class NativePlaybackTransport implements PlaybackTransport {
   subscribe = (fn: () => void): (() => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
   onCheckpoint = (fn: (value: AudioCheckpoint) => void): (() => void) => { this.checkpoints.add(fn); return () => { this.checkpoints.delete(fn); }; };
 
+  async adoptNative(book: PlaybackBook): Promise<boolean> {
+    if (this.disposed || this.book) return false;
+    validateTimeline(book.tracks, book.chapters ?? []);
+    const scope = this.options.accountScope();
+    const revision = this.revision;
+    if (!scope) return false;
+    const value = await this.plugin.snapshot();
+    if (this.disposed || this.book || revision !== this.revision || scope !== this.options.accountScope() || value.accountScope !== scope ||
+      value.bookId !== book.bookId || value.fileId !== book.fileId || value.manifestRevision !== book.manifestRevision ||
+      !value.trackIds || value.trackIds.length !== book.tracks.length || value.trackIds.some((id, index) => id !== book.tracks[index]!.id) ||
+      !value.trackId || !book.tracks.some(track => track.id === value.trackId) || !Number.isFinite(value.position) || !Number.isFinite(value.duration) || !Number.isFinite(value.rate)) return false;
+    this.scope = scope;
+    this.book = structuredClone(book);
+    this.loaded = true;
+    this.lastNativeTime = null;
+    this.update({ ...initial, bookId: book.bookId, fileId: book.fileId, title: book.title });
+    this.accept(value);
+    return true;
+  }
+
   load(book: PlaybackBook, position = 0): void {
     if (this.disposed) throw new Error('Playback transport has been destroyed.');
     validateTimeline(book.tracks, book.chapters ?? []);
@@ -48,12 +71,13 @@ export class NativePlaybackTransport implements PlaybackTransport {
     const revision = ++this.revision;
     this.lastNativeTime = null;
     const rate = this.state.rate;
+    const readOnly = this.options.readOnly?.() ?? true;
     const duration = book.tracks.every(track => track.duration !== undefined) ? book.tracks.reduce((sum, track) => sum + track.duration!, 0) : 0;
     this.update({ ...initial, rate, bookId: book.bookId, fileId: book.fileId, title: book.title, currentTime: Math.max(0, position), duration, trackIndex: trackAtTime(book.tracks, position).index, status: 'loading', chapterIndex: chapterAtTime(book.chapters ?? [], position) });
     this.command(async () => {
       if (revision !== this.revision) return;
       try {
-        await this.plugin.load({ accountScope: scope, bookId: book.bookId, fileId: book.fileId, url: book.tracks[0]!.url, tracks: book.tracks.map(({ id, url, duration }) => ({ id, url, duration })), manifestRevision: book.manifestRevision, title: book.title, author: book.authors.join(', '), position, rate });
+        await this.plugin.load({ accountScope: scope, bookId: book.bookId, fileId: book.fileId, url: book.tracks[0]!.url, tracks: book.tracks.map(({ id, url, duration }) => ({ id, url, duration })), manifestRevision: book.manifestRevision, readOnly, title: book.title, author: book.authors.join(', '), position, rate });
         this.loaded = true;
       } catch (error) { await this.plugin.clear().catch(() => {}); throw error; }
     });
@@ -133,10 +157,9 @@ export class NativePlaybackTransport implements PlaybackTransport {
     this.lastNativeTime = value.updatedAt;
     const currentTime = Math.max(0, value.position);
     const duration = Math.max(0, value.duration || this.state.duration);
-    const asleep = (this.state.sleepUntil !== null && Date.now() >= this.state.sleepUntil) || (this.state.sleepAtChapterEnd !== null && currentTime >= this.state.sleepAtChapterEnd);
     this.update({ currentTime, duration, trackIndex, rate: value.rate, chapterIndex: chapterAtTime(this.book.chapters ?? [], currentTime),
       status: value.status ?? (value.playing ? 'playing' : 'paused'), error: value.error || null,
-      ...(asleep ? { sleepUntil: null, sleepAtChapterEnd: null } : {}) });
+      sleepUntil: value.sleepUntil ?? null, sleepAtChapterEnd: value.sleepAtChapterEnd ?? null });
     this.checkpoint();
   }
   private fail(error: unknown): void { if (!this.disposed) this.update({ status: 'failed', error: error instanceof Error ? error.message : String(error) }); }

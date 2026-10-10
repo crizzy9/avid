@@ -15,6 +15,7 @@ final class AvidPlaybackOwner: NSObject {
     private var activeIndex = 0
     private var finalPosition: Double?
     private var manifestRevision: String?
+    private var sourceReadOnly = true
     private var assetCookies: [HTTPCookie] = []
     private var currentItemObservation: NSKeyValueObservation?
     private var seekGeneration: UInt = 0
@@ -39,6 +40,7 @@ final class AvidPlaybackOwner: NSObject {
         player.automaticallyWaitsToMinimizeStalling = true
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main) { [weak self] _ in
             guard let self else { return }
+            try? AvidPlaybackJournal.shared.sample(self.snapshot())
             self.enforceSleep()
             self.publishNowPlaying()
             if Date().timeIntervalSince(self.lastCheckpoint) >= 5 { self.checkpoint() }
@@ -56,7 +58,7 @@ final class AvidPlaybackOwner: NSObject {
         configureRemoteCommands()
     }
 
-    func load(scope: String, bookId: String, fileId: String, url: URL, title: String, author: String, position: Double, rate: Float, expiresAt: Date? = nil, cookies: [HTTPCookie] = [], tracks requestedTracks: [AvidAudioTrack]? = nil, manifestRevision: String? = nil) throws {
+    func load(scope: String, bookId: String, fileId: String, url: URL, title: String, author: String, position: Double, rate: Float, expiresAt: Date? = nil, cookies: [HTTPCookie] = [], tracks requestedTracks: [AvidAudioTrack]? = nil, manifestRevision: String? = nil, readOnly: Bool = true) throws {
         guard !scope.isEmpty, !bookId.isEmpty, !fileId.isEmpty else { throw PlaybackError.invalidIdentity }
         let newTracks = requestedTracks ?? [AvidAudioTrack(id: fileId, url: url, duration: nil)]
         guard !newTracks.isEmpty, Set(newTracks.map(\.id)).count == newTracks.count,
@@ -66,7 +68,7 @@ final class AvidPlaybackOwner: NSObject {
                   (track.duration == nil || (track.duration!.isFinite && track.duration! > 0))
               }) else { throw PlaybackError.invalidTimeline }
         let source = AvidStoredAudioSource(accountScope: scope, bookId: bookId, fileId: fileId, url: url,
-            tracks: newTracks, manifestRevision: manifestRevision, title: title, author: author, rate: rate, expiresAt: expiresAt)
+            tracks: newTracks, manifestRevision: manifestRevision, readOnly: readOnly, title: title, author: author, rate: rate, expiresAt: expiresAt)
         if let expiresAt, expiresAt <= Date() { throw AvidSurfaceError.expiredSource }
         try AvidPlaybackSourceStore.save(source)
         checkpoint()
@@ -88,6 +90,7 @@ final class AvidPlaybackOwner: NSObject {
         preferredRate = min(3, max(0.5, rate))
         self.tracks = newTracks
         self.manifestRevision = manifestRevision
+        sourceReadOnly = readOnly
         assetCookies = cookies
         finalPosition = nil
         player.removeAllItems()
@@ -109,6 +112,8 @@ final class AvidPlaybackOwner: NSObject {
     }
 
     func pause() {
+        try? AvidPlaybackJournal.shared.sample(snapshot())
+        try? AvidPlaybackJournal.shared.flush()
         desiredPlaying = false
         player.pause()
         checkpoint()
@@ -122,7 +127,7 @@ final class AvidPlaybackOwner: NSObject {
             let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
             guard AvidSharedStore.shared.activeScopeHash == source.scopeHash else { throw AvidSurfaceError.unavailableBook }
             try load(scope: source.accountScope, bookId: source.bookId, fileId: source.fileId, url: source.url,
-                title: source.title, author: source.author, position: book.audioPosition ?? 0, rate: source.rate, expiresAt: source.expiresAt, cookies: cookies, tracks: source.tracks, manifestRevision: source.manifestRevision)
+                title: source.title, author: source.author, position: book.audioPosition ?? 0, rate: source.rate, expiresAt: source.expiresAt, cookies: cookies, tracks: source.tracks, manifestRevision: source.manifestRevision, readOnly: source.readOnly ?? true)
         }
         try play()
     }
@@ -179,6 +184,7 @@ final class AvidPlaybackOwner: NSObject {
     }
     func seek(_ seconds: Double) {
         guard seconds.isFinite, !tracks.isEmpty else { return }
+        try? AvidPlaybackJournal.shared.flush()
         seekGeneration &+= 1
         let generation = seekGeneration
         var remaining = max(0, seconds)
@@ -240,6 +246,10 @@ final class AvidPlaybackOwner: NSObject {
             value["trackTime"] = max(0, position - trackStart(currentTrackIndex))
         }
         if let manifestRevision { value["manifestRevision"] = manifestRevision }
+        value["trackIds"] = tracks.map(\.id)
+        value["readOnly"] = sourceReadOnly || AvidSessionStore.readOnly(scope: scope)
+        value["sleepUntil"] = deadline.map { $0.timeIntervalSince1970 * 1000 } as Any? ?? NSNull()
+        value["sleepAtChapterEnd"] = chapterEnd as Any? ?? NSNull()
         return value
     }
 
@@ -258,9 +268,11 @@ final class AvidPlaybackOwner: NSObject {
     private func checkpoint() {
         guard !scope.isEmpty, !bookId.isEmpty else { return }
         let value = snapshot()
+        try? AvidPlaybackJournal.shared.sample(value)
+        try? AvidPlaybackJournal.shared.recordProgress(value)
         let hash = SHA256.hash(data: Data(scope.utf8)).map { String(format: "%02x", $0) }.joined()
         // Native checkpoint remains available while the WebView is suspended.
-        // A server-sync journal is a separate integration; this is not a sync acknowledgement.
+        // SQLite events are replayed into the repository outbox on JS return; this record is not a server acknowledgement.
         UserDefaults.standard.set(value, forKey: "avid.playback.\(hash)")
         lastCheckpoint = Date()
         if AvidSharedStore.shared.activeScopeHash == hash {
