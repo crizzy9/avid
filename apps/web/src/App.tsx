@@ -84,10 +84,18 @@ import { startNativeAuthentication } from "./nativeAuthentication";
 import { setNativeAppearance } from "../../mobile/src/native-appearance";
 import { useImportedBooks } from "./useImportedBooks";
 import { useHomeShelves, uniqueBooks } from "./useHomeShelves";
+import { useDesktopSurfaces } from "./useDesktopSurfaces";
+import { SyncRecoveryPanel } from "./SyncRecoveryPanel";
+import { readRemotePolicy } from "../../../packages/playback/src/remotePolicy";
+import { createBookOrbitReaderPreferences } from "./readerPreferences";
+import { recoveryTranslate } from "./recoveryMessages";
 import { importAo3Edition, type ImportedAo3Edition } from "./localEditions";
 import { usePlaybackActivity } from "./usePlaybackActivity";
 import { createPlaybackTransport } from "../../mobile/src/native-transport";
-import { readOwnerSnapshot } from "../../mobile/src/native-playback";
+import {
+  getNativePlayback,
+  readOwnerSnapshot,
+} from "../../mobile/src/native-playback";
 import { useNativeSurfaces } from "./useNativeSurfaces";
 import { usePlatformCapabilities } from "./usePlatformCapabilities";
 import type { NativeNavigation } from "../../mobile/src/native-surfaces";
@@ -122,6 +130,7 @@ type Dialog =
   | "upload"
   | "integrations"
   | "collection"
+  | "recovery"
   | null;
 type ReaderState = {
   ownerScope: string;
@@ -281,10 +290,32 @@ export default function App() {
   accountScope.current = library.repo.scope;
   const readOnlyConnection = useRef(true);
   readOnlyConnection.current = library.client?.readOnly !== false;
+  const readerPreferences = useMemo(
+    () =>
+      reader && library.client
+        ? createBookOrbitReaderPreferences({
+            repo: library.repo,
+            client: library.client,
+            bookId: reader.book.id,
+            file: reader.file,
+            isActive: () => accountScope.current === reader.ownerScope,
+            onQueued: library.recoverSync,
+          })
+        : undefined,
+    [
+      reader?.ownerScope,
+      reader?.book.id,
+      reader?.file.id,
+      library.repo,
+      library.client,
+      library.recoverSync,
+    ],
+  );
   const [controller] = useState(() =>
     createPlaybackTransport({
       accountScope: () => accountScope.current,
       readOnly: () => readOnlyConnection.current,
+      remotePolicy: readRemotePolicy(localStorage),
     }),
   );
   const playback = useSyncExternalStore(
@@ -390,7 +421,7 @@ export default function App() {
     };
   }, [nativeAuth, sessionPersistence]);
 
-  const publishNativeRecent = useNativeSurfaces(
+  const publishMobileRecent = useNativeSurfaces(
     library.repo.scope,
     !!library.client,
     catalogBooks,
@@ -399,6 +430,24 @@ export default function App() {
     },
     notify,
   );
+  const publishDesktopRecent = useDesktopSurfaces({
+    repo: library.repo,
+    connected: !!library.client,
+    controller,
+    mediaScope: playbackScope.current,
+    onOpen: (request) => {
+      void openNativeBook(request);
+    },
+    onError: notify,
+  });
+  function publishNativeRecent(
+    book: Book,
+    file: BookFile,
+    anchor?: ReadingAnchor,
+  ) {
+    publishMobileRecent(book, file, anchor);
+    publishDesktopRecent(book, file, anchor);
+  }
   const changeReadingActivity = useReadingActivity(
     reader,
     library.recordSession,
@@ -809,6 +858,7 @@ export default function App() {
       return false;
     }
     setReadingBusy(true);
+    let bundledAudioUrl: string | undefined;
     try {
       const remoteClient = book.id.startsWith("local-") ? null : library.client;
       const playbackSource = remoteClient
@@ -822,6 +872,25 @@ export default function App() {
         throw new Error(appT("audioNoteSource"));
       let url = file.url;
       if (!playbackSource && !url) throw new Error(appT("noAudioSource"));
+      if (
+        getNativePlayback() &&
+        book.id.startsWith("demo-") &&
+        url === "/samples/narration.wav"
+      ) {
+        const host = globalThis as typeof globalThis & {
+          CapacitorWebFetch?: typeof fetch;
+        };
+        const webFetch =
+          host.CapacitorWebFetch?.bind(globalThis) ??
+          globalThis.fetch.bind(globalThis);
+        const response = await webFetch(url, { signal: request.signal });
+        if (!response.ok) throw new Error(appT("audioLoadFailed"));
+        const blob = await response.blob();
+        if (scope !== accountScope.current || request.signal.aborted)
+          return false;
+        bundledAudioUrl = URL.createObjectURL(blob);
+        url = bundledAudioUrl;
+      }
       let saved =
         requestedAnchor ??
         (await library.repo.getAnchor({
@@ -880,6 +949,7 @@ export default function App() {
         notify(e instanceof Error ? e.message : appT("audioLoadFailed"));
       return false;
     } finally {
+      if (bundledAudioUrl) URL.revokeObjectURL(bundledAudioUrl);
       if (scope === accountScope.current && openRequest.current === request)
         setReadingBusy(false);
     }
@@ -958,7 +1028,9 @@ export default function App() {
     });
     setNoteText("");
   }
-  async function openNativeBook(request: NativeNavigation) {
+  async function openNativeBook(
+    request: Pick<NativeNavigation, "bookId" | "fileId" | "kind">,
+  ) {
     const scope = accountScope.current;
     try {
       const book =
@@ -1287,6 +1359,19 @@ export default function App() {
                 ? `${library.client.session.profile.name} · ${syncMessage ? appT(syncMessage) : library.syncStatus}`
                 : appT("homeLibraryHint")}
             </span>
+            {library.client &&
+              ["Needs review", "Sync failed"].includes(library.syncStatus) && (
+                <button
+                  className="text-button"
+                  onClick={() => {
+                    controller.pause();
+                    setReader(null);
+                    setDialog("recovery");
+                  }}
+                >
+                  {recoveryTranslate("title")}
+                </button>
+              )}
             <button
               className="text-button"
               onClick={() => setDialog(library.client ? "settings" : "connect")}
@@ -1521,6 +1606,7 @@ export default function App() {
                     <button
                       key={id}
                       className={format === id ? "active" : ""}
+                      aria-pressed={format === id}
                       onClick={() => setFormat(id)}
                     >
                       {label}
@@ -2026,6 +2112,7 @@ export default function App() {
             }
           >
             <Reader
+              preferences={readerPreferences}
               key={`${reader.ownerScope}:${reader.book.id}:${reader.file.id}`}
               onAlignmentReady={setReaderAlignment}
               modeControls={
@@ -2169,6 +2256,22 @@ export default function App() {
             />
           </Modal>
         )}
+        {dialog === "recovery" && library.client && (
+          <Modal
+            title={recoveryTranslate("title")}
+            onClose={() => setDialog(null)}
+            wide
+          >
+            <SyncRecoveryPanel
+              repo={library.repo}
+              client={library.client}
+              onResolved={async () => {
+                await library.recoverSync();
+                setHomeRevision((value) => value + 1);
+              }}
+            />
+          </Modal>
+        )}
         {dialog === "settings" && (
           <Modal title={t("settings.heading")} onClose={() => setDialog(null)}>
             <div className="settings-panel">
@@ -2208,6 +2311,7 @@ export default function App() {
                     <button
                       key={id as string}
                       className={theme === id ? "active" : ""}
+                      aria-pressed={theme === id}
                       onClick={() => setTheme(id as string)}
                     >
                       {typeof Icon !== "string" && <Icon size={22} />}
@@ -2250,6 +2354,18 @@ export default function App() {
                   {library.client ? t("connect.another") : t("connect.short")}
                   <ArrowUpRight size={15} />
                 </button>
+                {library.client && (
+                  <button
+                    className="secondary-button"
+                    onClick={() => {
+                      controller.pause();
+                      setReader(null);
+                      setDialog("recovery");
+                    }}
+                  >
+                    {recoveryTranslate("title")}
+                  </button>
+                )}
               </section>
               <section>
                 <h3>{t("settings.capabilities")}</h3>

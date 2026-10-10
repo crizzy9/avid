@@ -83,7 +83,10 @@ class AvidPlaybackPlugin : Plugin() {
             call.reject("A valid audio URL and stable account, book, and file identities are required."); return
         }
         val generation = AvidAudioCatalog.accountGeneration
+        val vaultGeneration = try { AvidSessionStore.read(context).getString("generation") }
+        catch (_: Exception) { call.reject("The secure account record is unavailable. Reconnect before loading audio."); return }
         command(call) { player ->
+            require(vaultGeneration == AvidSessionStore.read(context).getString("generation")) { "The account changed while audio was loading." }
             require(generation == AvidAudioCatalog.accountGeneration || AvidAudioCatalog.scope == scope) {
                 "The account changed while the native playback service was connecting."
             }
@@ -91,11 +94,13 @@ class AvidPlaybackPlugin : Plugin() {
             player.sendCustomCommand(SessionCommand(AvidPlaybackService.SLEEP_COMMAND, Bundle.EMPTY), Bundle.EMPTY)
             val tracks = call.getArray("tracks")
             val source = org.json.JSONObject().put("bookId", bookId).put("fileId", fileId).put("url", url).put("tracks", tracks)
-                .put("manifestRevision", call.getString("manifestRevision"))
-            AvidQueue.tracks(source)
+                .put("manifestRevision", call.getString("manifestRevision")).put("chapters", call.getArray("chapters"))
+            AvidQueue.validateSources(context, source, scope)
+            if (Uri.parse(url).scheme in listOf("file", "content")) require(AvidQueue.tracks(source).first().getString("url") == url)
             AvidAudioCatalog.prepare(scope, bookId, fileId, url, call.getString("title") ?: "", call.getString("author") ?: "",
-                (call.getDouble("position") ?: 0.0).coerceAtLeast(0.0), (call.getDouble("rate") ?: 1.0).coerceIn(0.5, 3.0), tracks, call.getString("manifestRevision"), call.getBoolean("readOnly") ?: true)
+                (call.getDouble("position") ?: 0.0).coerceAtLeast(0.0), (call.getDouble("rate") ?: 1.0).coerceIn(0.5, 3.0), tracks, call.getString("manifestRevision"), call.getBoolean("readOnly") ?: true, call.getArray("chapters"))
             val prepared = AvidAudioCatalog.get(AvidAudioCatalog.id(scope, bookId, fileId))!!
+            call.getString("coverUrl")?.let { AvidArtwork.fetch(context, scope, bookId, fileId, it) }
             player.setMediaItems(AvidQueue.items(prepared))
             player.prepare()
             AvidQueue.seek(player, call.getDouble("position") ?: 0.0)
@@ -129,6 +134,17 @@ class AvidPlaybackPlugin : Plugin() {
             }, ContextCompat.getMainExecutor(context))
         }
     }
+    @PluginMethod fun configureRemote(call: PluginCall) = connected(call) { player ->
+        val mode = call.getString("mode") ?: ""
+        val seconds = call.getDouble("seconds") ?: Double.NaN
+        require(mode in setOf("time", "chapter") && seconds.isFinite() && seconds in 1.0..300.0)
+        val pending = player.sendCustomCommand(SessionCommand(AvidPlaybackService.REMOTE_COMMAND, Bundle.EMPTY),
+            Bundle().apply { putString("mode", mode); putDouble("seconds", seconds) })
+        pending.addListener({
+            try { if (pending.get().resultCode == 0) call.resolve() else call.reject("Native service rejected the remote policy.") }
+            catch (error: Exception) { call.reject(error.message, error) }
+        }, ContextCompat.getMainExecutor(context))
+    }
     @PluginMethod fun snapshot(call: PluginCall) {
         connected(call) { call.resolve(state(it)) }
     }
@@ -148,6 +164,11 @@ class AvidPlaybackPlugin : Plugin() {
             put("readOnly", (item?.mediaMetadata?.extras?.getBoolean("readOnly", true) ?: true) || AvidSessionStore.readOnly(context, item?.mediaMetadata?.extras?.getString("accountScope") ?: ""))
             put("trackId", item?.mediaMetadata?.extras?.getString("trackId"))
             put("trackIndex", item?.mediaMetadata?.extras?.getInt("trackIndex") ?: 0)
+            val source = item?.mediaId?.let { AvidAudioCatalog.get(it) }
+            val chapters = source?.let { AvidQueue.chapters(it) }.orEmpty()
+            val chapterIndex = RemotePlaybackPolicy.chapter(chapters, AvidQueue.position(player))
+            put("chapterIndex", chapterIndex)
+            put("chapterTitle", chapters.getOrNull(chapterIndex)?.title ?: "")
             put("trackIds", org.json.JSONArray((0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaMetadata.extras?.getString("trackId") ?: "" }))
             val session = (player as? MediaController)?.sessionExtras
             put("sleepUntil", if (session?.containsKey("deadline") == true) session.getLong("deadline") else org.json.JSONObject.NULL)

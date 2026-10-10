@@ -5,6 +5,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { BookOrbitClient, ReadOnlyError } from "../packages/core/src/bookorbit";
+import "fake-indexeddb/auto";
+import {
+  AvidDatabase,
+  LibraryRepository,
+} from "../packages/core/src/repository";
+import { createBookOrbitReaderPreferences } from "../apps/web/src/readerPreferences";
 import type {
   Annotation,
   Book,
@@ -319,12 +325,36 @@ async function main() {
       assert.equal((await client.getBook(epub.id)).serverStatus, "reading");
     },
   );
-  await check("reader preference patch/read", async () => {
-    await client.patchPreferences(epubFile.id, { fontSize: 21 });
-    const preferences = await client.getReaderPreferences(epubFile.id);
-    assert(preferences.isCustomized);
-    assert.equal(preferences.settings?.fontSize, 21);
-  });
+  await check(
+    "reader preference sparse patch/read through the durable reader adapter",
+    async () => {
+      await client.patchPreferences(epubFile.id, { fontSize: 21 });
+      const preferences = await client.getReaderPreferences(epubFile.id);
+      assert(preferences.isCustomized);
+      assert.equal(preferences.settings?.fontSize, 21);
+      const local = new AvidDatabase(`smoke-preferences-${runId}`);
+      try {
+        const repo = new LibraryRepository(local, session);
+        const reader = createBookOrbitReaderPreferences({
+          repo,
+          client,
+          bookId: epub.id,
+          file: epubFile,
+        })!;
+        assert.equal((await reader.load()).fontSize, 21);
+        // A different client owns line height. The Avid patch must preserve it.
+        await client.patchPreferences(epubFile.id, { lineHeight: 1.9 });
+        await reader.patch({ fontSize: 24, margin: 9 });
+        assert.equal((await repo.pendingOperations()).length, 0);
+        const actual = await client.getReaderPreferences(epubFile.id);
+        assert.equal(actual.settings?.fontSize, 24);
+        assert.equal(actual.settings?.lineHeight, 1.9);
+        assert.equal(actual.settings?.gap, 0.09);
+      } finally {
+        await local.delete();
+      }
+    },
+  );
   await check(
     "activity source timestamps, retry idempotence, and server statistics",
     async () => {
@@ -356,6 +386,15 @@ async function main() {
       );
       const statistics = await client.getReadingStatistics();
       assert(statistics.snapshot.today.readingSeconds >= 42);
+      const timeline = await client.getSessionTimeline();
+      assert(
+        timeline.items.some(
+          (row) =>
+            row.bookId === epub.id &&
+            row.durationSeconds === 42 &&
+            Date.parse(row.startedAt) === Date.parse(activity.startedAt),
+        ),
+      );
     },
   );
   await check(

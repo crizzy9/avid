@@ -12,6 +12,7 @@ final class AvidViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(AvidAppearancePlugin())
         bridge?.registerPluginInstance(AvidAuthPlugin())
         bridge?.registerPluginInstance(AvidSpeechPlugin())
+        bridge?.registerPluginInstance(AvidMediaStorePlugin())
         AvidAppearance.apply(to: self)
     }
     override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); AvidAppearance.apply(to: self) }

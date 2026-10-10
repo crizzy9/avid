@@ -7,6 +7,9 @@ import {
 } from "../../../packages/core/src/bookorbit";
 import type { Book, ReadingSession } from "../../../packages/core/src/types";
 import { formatTime } from "./ui";
+import { activitySeconds, dateKey, recentDateKeys } from "./activityData";
+import { useActivityI18n } from "./activityMessages";
+import { ServerActivityHistory } from "./ServerActivityHistory";
 
 export function Activity({
   client,
@@ -18,12 +21,14 @@ export function Activity({
   sessions: ReadingSession[];
 }) {
   const { t, locale, setLocale } = useI18n();
+  const a = useActivityI18n();
 
   const [stats, setStats] = useState<ServerReadingStatistics | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [kind, setKind] = useState<"all" | "reading" | "listening">("all");
   const [year, setYear] = useState<number | undefined>();
+  const [source, setSource] = useState("all");
   useEffect(() => {
     let active = true;
     setStats(null);
@@ -50,45 +55,52 @@ export function Activity({
       kind === "all" ||
       (kind === "listening" ? s.kind === "listening" : s.kind !== "listening"),
   );
-  const seconds = stats
+  const allSeconds = stats
     ? kind === "all"
       ? stats.snapshot.lastSevenDays.totalSeconds
       : kind === "reading"
         ? stats.snapshot.lastSevenDays.readingSeconds
         : stats.snapshot.lastSevenDays.listeningSeconds
     : filtered.reduce((sum, s) => sum + s.duration, 0);
-  const dayKey = (date: Date, timezone?: string) =>
-    new Intl.DateTimeFormat("en-CA", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      timeZone: timezone,
-    }).format(date);
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date(stats?.generatedAt ?? Date.now());
-    date.setDate(date.getDate() - 6 + i);
-    const key = dayKey(date, stats?.timezone);
-    const serverDay = stats?.currentCalendar.days.find((d) => d.day === key);
+  const days = recentDateKeys(
+    stats?.generatedAt ?? new Date().toISOString(),
+    stats?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+  ).map((key) => {
+    const date = new Date(`${key}T12:00:00Z`);
+    const serverDay = (stats?.recentDays ?? stats?.currentCalendar.days)?.find(
+      (d) => d.day === key,
+    );
     const value = client
-      ? serverDay
-        ? kind === "all"
-          ? serverDay.totalSeconds
-          : kind === "reading"
-            ? serverDay.readingSeconds
-            : serverDay.listeningSeconds
-        : 0
+      ? activitySeconds(serverDay, kind, source)
       : filtered
-          .filter((s) => dayKey(new Date(s.startedAt)) === key)
+          .filter(
+            (s) =>
+              dateKey(
+                new Date(s.startedAt),
+                Intl.DateTimeFormat().resolvedOptions().timeZone,
+              ) === key,
+          )
           .reduce((total, s) => total + s.duration, 0);
     return {
       key,
       label: date.toLocaleDateString(locale, {
         weekday: "short",
-        timeZone: stats?.timezone,
+        timeZone: "UTC",
       }),
       seconds: value,
     };
   });
+  const seconds =
+    stats && source !== "all"
+      ? days.reduce((sum, day) => sum + day.seconds, 0)
+      : allSeconds;
+  const sources = [
+    ...new Set([
+      ...(stats?.sources.slices.map((slice) => slice.bucket) ?? []),
+      ...(stats?.calendar.days.flatMap((day) => Object.keys(day.bySource)) ??
+        []),
+    ]),
+  ].sort();
   const max = Math.max(60, ...days.map((d) => d.seconds));
   return (
     <>
@@ -113,12 +125,34 @@ export function Activity({
             <button
               key={value}
               className={kind === value ? "active" : ""}
-              onClick={() => setKind(value as typeof kind)}
+              onClick={() => {
+                setKind(value as typeof kind);
+                setSource("all");
+              }}
             >
               {label}
             </button>
           ))}
         </div>
+        {stats && (
+          <label>
+            {a("source")}{" "}
+            <select
+              value={source}
+              onChange={(event) => {
+                setSource(event.target.value);
+                setKind("all");
+              }}
+            >
+              <option value="all">{a("allSources")}</option>
+              {sources.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {stats && (
           <select
             aria-label={t("activity.year")}
@@ -133,6 +167,7 @@ export function Activity({
           </select>
         )}
       </div>
+      {stats && <p className="muted">{a("sourceHint")}</p>}
       {error && (
         <div className="error-banner" role="alert">
           {t("activity.error", { error })}
@@ -160,6 +195,7 @@ export function Activity({
                 <span>
                   {client ? t("activity.completed") : t("activity.explored")}
                 </span>
+                {client && <small>{a("allTime")}</small>}
                 <strong>
                   {stats?.summary.completedBooks ??
                     new Set(filtered.map((s) => s.bookId)).size}
@@ -169,6 +205,7 @@ export function Activity({
                 <span>
                   {client ? t("activity.streak") : t("activity.sessions")}
                 </span>
+                {client && <small>{a("allTime")}</small>}
                 <strong>
                   {stats?.snapshot.currentStreak ?? filtered.length}
                   {client && <small>{t("common.days")}</small>}
@@ -207,17 +244,12 @@ export function Activity({
                 <h2>{t("activity.calendar", { year: stats.calendar.year })}</h2>
                 <p className="muted">
                   {t("activity.yearSummary", {
-                    days: stats.calendar.days.filter((d) => d.totalSeconds > 0)
-                      .length,
+                    days: stats.calendar.days.filter(
+                      (d) => activitySeconds(d, kind, source) > 0,
+                    ).length,
                     minutes: Math.round(
                       stats.calendar.days.reduce(
-                        (sum, d) =>
-                          sum +
-                          (kind === "all"
-                            ? d.totalSeconds
-                            : kind === "reading"
-                              ? d.readingSeconds
-                              : d.listeningSeconds),
+                        (sum, d) => sum + activitySeconds(d, kind, source),
                         0,
                       ) / 60,
                     ),
@@ -225,21 +257,15 @@ export function Activity({
                 </p>
                 <div className="activity-calendar">
                   {stats.calendar.days
-                    .filter((d) => d.totalSeconds > 0)
+                    .filter((d) => activitySeconds(d, kind, source) > 0)
                     .map((day) => (
                       <span
                         key={day.day}
-                        title={`${day.day}: ${t("common.minutes", { count: Math.round(day.totalSeconds / 60) })}`}
+                        title={`${day.day}: ${t("common.minutes", { count: Math.round(activitySeconds(day, kind, source) / 60) })}`}
                       >
                         {day.day}
                         <strong>
-                          {Math.round(
-                            (kind === "all"
-                              ? day.totalSeconds
-                              : kind === "reading"
-                                ? day.readingSeconds
-                                : day.listeningSeconds) / 60,
-                          )}{" "}
+                          {Math.round(activitySeconds(day, kind, source) / 60)}{" "}
                           {t("common.min")}
                         </strong>
                       </span>
@@ -250,8 +276,15 @@ export function Activity({
           </>
         )
       )}
+      {client && (
+        <ServerActivityHistory
+          client={client}
+          source={source}
+          timezone={stats?.timezone}
+        />
+      )}
       <section className="activity-history">
-        <h2>{t("activity.recent")}</h2>
+        <h2>{client ? a("local") : t("activity.recent")}</h2>
         {filtered.length ? (
           [...filtered]
             .reverse()

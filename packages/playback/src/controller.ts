@@ -1,5 +1,6 @@
 import { chapterAtTime, clamp, trackAtTime, trackStart, validateTimeline } from './timeline';
 import type { AudioCheckpoint, AudioElement, AudioLocator, PlaybackBook, PlaybackOptions, PlaybackSnapshot, SleepTimer } from './types';
+import {normalizeRemotePolicy,remoteSkipPosition,type RemoteSkipPolicy} from './remotePolicy';
 
 const initial: PlaybackSnapshot = {
   status: 'stopped', bookId: null, fileId: null, title: '', currentTime: 0,
@@ -24,9 +25,11 @@ export class PlaybackController {
   private disposed = false;
   private generation = 0;
   private declaredDurations = new Map<string, number>();
+  private remotePolicy: RemoteSkipPolicy;
 
   constructor(options: PlaybackOptions = {}) {
     this.options = options;
+    this.remotePolicy = normalizeRemotePolicy(options.remotePolicy ?? {seconds:options.skipSeconds});
     this.audio = options.audio ?? new Audio();
     this.media = options.mediaSession !== undefined ? options.mediaSession :
       (typeof navigator !== 'undefined' && 'mediaSession' in navigator ? navigator.mediaSession : null);
@@ -67,6 +70,9 @@ export class PlaybackController {
 
   getSnapshot = (): PlaybackSnapshot => this.snapshot;
   getBook = (): PlaybackBook | null => this.book;
+  getRemotePolicy = (): RemoteSkipPolicy => ({...this.remotePolicy});
+  configureRemote(policy:RemoteSkipPolicy):void {this.remotePolicy=normalizeRemotePolicy(policy);}
+  remoteSkip(direction:1|-1):void {this.seek(remoteSkipPosition(this.book,this.snapshot,direction,this.remotePolicy));}
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
@@ -292,21 +298,13 @@ export class PlaybackController {
   }
   private bindMediaSession(): void {
     if (!this.media) return;
-    const skip = this.options.skipSeconds ?? 30;
     const actions: Partial<Record<MediaSessionAction, MediaSessionActionHandler>> = {
       play: () => { void this.play(); }, pause: () => this.pause(), stop: () => this.pause(),
-      seekbackward: details => this.skip(-(details.seekOffset ?? skip)),
-      seekforward: details => this.skip(details.seekOffset ?? skip),
+      seekbackward: () => this.remoteSkip(-1),
+      seekforward: () => this.remoteSkip(1),
       seekto: details => { if (details.seekTime != null) this.seek(details.seekTime); },
-      previoustrack: () => {
-        const chapters = this.book?.chapters ?? [];
-        const current = chapters[this.snapshot.chapterIndex];
-        this.seek(current && this.snapshot.currentTime - current.start > 3 ? current.start : chapters[Math.max(0, this.snapshot.chapterIndex - 1)]?.start ?? 0);
-      },
-      nexttrack: () => {
-        const next = this.book?.chapters?.[this.snapshot.chapterIndex + 1];
-        if (next) this.seek(next.start); else this.skip(skip);
-      },
+      previoustrack: () => this.remoteSkip(-1),
+      nexttrack: () => this.remoteSkip(1),
     };
     for (const [action, handler] of Object.entries(actions)) {
       try { this.media.setActionHandler(action as MediaSessionAction, handler!); } catch { /* optional OS action */ }

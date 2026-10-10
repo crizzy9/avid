@@ -7,3 +7,4 @@ export * from './standalone-alignment';
 export * from './capabilities';
 export * from './codecs';
 export * from './activity';
+export * from './remotePolicy';

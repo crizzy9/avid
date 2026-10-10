@@ -10,6 +10,7 @@ import { publicationSource } from './publicationSource';
 import { buildSpeechText, speechBoundaryRange, nextLinearSection } from './speechText';
 import { alignedPassageAtRange, verifyPublicationAudiobook } from './alignedPassage';
 import { alignmentSha256 } from '../../playback/src/standalone-alignment';
+import { speechProvider } from '../../playback/src/speechRuntime';
 import '../vendor/foliate/view.js';
 import { makeBook } from '../vendor/foliate/view.js';
 import { Overlayer } from '../vendor/foliate/overlayer.js';
@@ -60,10 +61,12 @@ export function EbookView(props: EngineProps) {
     view.addEventListener('draw-annotation', ((event: CustomEvent) => event.detail.draw(Overlayer.highlight, { color: event.detail.annotation.color || '#d2aa59' })) as EventListener);
     let speaking = false;
     let speechGeneration = 0;
-    const stop = () => { speaking = false; speechGeneration++; globalThis.speechSynthesis?.cancel(); current.current.onSpeaking(false); };
+    const speechService = speechProvider();
+    const speaker = speechService.createPlayer();
+    const stop = () => { speaking = false; speechGeneration++; speaker.cancel(); current.current.onSpeaking(false); };
     stopSpeech.current = stop;
     const speakSection = async (startFromSelection = true) => {
-      if (!('speechSynthesis' in window)) { current.current.onNotice(t('speechUnavailable')); return; }
+      if (!speechService.available) { current.current.onNotice(t('speechUnavailable')); return; }
       const generation = ++speechGeneration;
       speaking = true;
       const { doc, index } = view.renderer.getContents()[0] ?? {};
@@ -83,24 +86,26 @@ export function EbookView(props: EngineProps) {
       };
       if (!speech.text.trim()) { await continueSection(); return; }
       const fullText = speech.text;
-      const utterance = new SpeechSynthesisUtterance(fullText);
-      utterance.rate = current.current.settings.speechRate;
-      utterance.voice = speechSynthesis.getVoices().find(voice => voice.voiceURI === current.current.settings.voice) ?? null;
-      utterance.onboundary = event => {
-        if (!speaking || generation !== speechGeneration || event.name !== 'word') return;
-        const range = speechBoundaryRange(doc, speech, event.charIndex, event.charLength);
+      speaker.speak({
+        text: fullText,
+        rate: current.current.settings.speechRate,
+        voiceURI: current.current.settings.voice,
+        lang: doc.documentElement.lang || (Array.isArray(view.book.metadata?.language) ? view.book.metadata.language[0] : view.book.metadata?.language),
+        onBoundary: event => {
+        if (!speaking || generation !== speechGeneration || event.kind !== 'word') return;
+        const range = speechBoundaryRange(doc, speech, event.start, event.end - event.start);
         if (!range) return;
         const selection = doc.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
         view.renderer.scrollToAnchor?.(range, true);
-      };
-      utterance.onstart = () => { if (speaking && generation === speechGeneration) current.current.onSpeaking(true); };
-      utterance.onerror = event => {
+      },
+      onStart: () => { if (speaking && generation === speechGeneration) current.current.onSpeaking(true); },
+      onError: error => {
         if (generation !== speechGeneration) return;
         stop();
-        if (event.error !== 'canceled' && event.error !== 'interrupted') current.current.onNotice(t('speechFailed', { reason: event.error }));
-      };
-      utterance.onend = continueSection;
-      speechSynthesis.cancel(); speechSynthesis.speak(utterance);
+        if (error !== 'canceled' && error !== 'interrupted') current.current.onNotice(t('speechFailed', { reason: error }));
+      },
+      onEnd: continueSection,
+      });
     };
     const open = async () => {
       const source = props.source ?? props.file.url ?? (props.book.id.startsWith('demo-') ? createDemoEpub() : undefined);
@@ -214,7 +219,7 @@ export function EbookView(props: EngineProps) {
       }, loadedBook.toc as TocItem[] ?? []);
     };
     void open().catch(error => { if (!cancelled) current.current.onError(readerError(error, 'ebookFailed')); });
-    return () => { cancelled = true; current.current.onAlignmentReady?.(null); stop(); view.mediaOverlay?.stop(); view.close?.(); view.remove(); loadedBook?.destroy?.(); for (const url of isolatedUrls.values()) URL.revokeObjectURL(url); viewRef.current = null; };
+    return () => { cancelled = true; current.current.onAlignmentReady?.(null); stop(); speaker.destroy(); view.mediaOverlay?.stop(); view.close?.(); view.remove(); loadedBook?.destroy?.(); for (const url of isolatedUrls.values()) URL.revokeObjectURL(url); viewRef.current = null; };
   }, [props.book.id, props.file.id, props.file.url, props.source, props.accountScope]);
   useEffect(() => { viewRef.current?.setAttribute('aria-label', t('readingArea')); }, [locale]);
   useEffect(() => { if (viewRef.current?.renderer) applyStyle(viewRef.current, props.settings, props.accountScope); }, [props.settings, props.accountScope]);
@@ -230,9 +235,9 @@ export function EbookView(props: EngineProps) {
 function applyStyle(view: FoliateView, settings: EngineProps['settings'], scope = 'local') {
   const colors = themeColors(settings);
   view.renderer.setAttribute('flow', settings.flow);
-  view.renderer.setAttribute('gap', String(settings.margin));
-  view.renderer.setAttribute('margin', '36');
-  view.renderer.setAttribute('max-inline-size', '740');
+  view.renderer.setAttribute('gap', `${settings.margin}%`);
+  view.renderer.setAttribute('margin', '36px');
+  view.renderer.setAttribute('max-inline-size', '740px');
   view.renderer.setAttribute('max-column-count', '2');
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   view.renderer.toggleAttribute('animated', settings.animation === 'slide' && !reduced);

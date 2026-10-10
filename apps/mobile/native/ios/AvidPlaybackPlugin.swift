@@ -14,6 +14,7 @@ public class AvidPlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "play", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pause", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seek", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "configureRemote", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setRate", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setSleepTimer", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "snapshot", returnType: CAPPluginReturnPromise),
@@ -51,11 +52,16 @@ public class AvidPlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
                     guard let id = value["id"] as? String, let raw = value["url"] as? String, let url = URL(string: raw) else { throw AvidPlaybackOwner.PlaybackError.invalidTimeline }
                     return AvidAudioTrack(id: id, url: url, duration: value["duration"] as? Double)
                 }
+                let chapters = try call.getArray("chapters", JSObject.self)?.map { value -> AvidAudioChapter in
+                    guard let id = value["id"] as? String, let title = value["title"] as? String,
+                          let start = value["start"] as? Double, let duration = value["duration"] as? Double else { throw AvidPlaybackOwner.PlaybackError.invalidTimeline }
+                    return AvidAudioChapter(id: id, title: title, start: start, duration: duration)
+                } ?? []
                 if generation != AvidSharedStore.shared.accountGeneration && AvidSharedStore.shared.activeScopeHash != AvidSharedStore.scopeHash(scope) { throw AvidSurfaceError.unavailableBook }
                 try AvidPlaybackOwner.shared.load(scope: scope, bookId: bookId, fileId: fileId, url: url,
                     title: call.getString("title") ?? "", author: call.getString("author") ?? "",
                     position: call.getDouble("position") ?? 0, rate: Float(call.getDouble("rate") ?? 1),
-                    expiresAt: call.getString("expiresAt").flatMap { ISO8601DateFormatter().date(from: $0) }, cookies: cookies, tracks: tracks, manifestRevision: call.getString("manifestRevision"), readOnly: call.getBool("readOnly") ?? true)
+                    expiresAt: call.getString("expiresAt").flatMap { ISO8601DateFormatter().date(from: $0) }, cookies: cookies, tracks: tracks, manifestRevision: call.getString("manifestRevision"), readOnly: call.getBool("readOnly") ?? true, chapters: chapters, coverURL: call.getString("coverUrl"))
                 call.resolve()
             } catch { call.reject(error.localizedDescription) }
         }
@@ -69,6 +75,13 @@ public class AvidPlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func seek(_ call: CAPPluginCall) {
         guard let position = call.getDouble("position"), position.isFinite else { call.reject("A finite position is required."); return }
         DispatchQueue.main.async { AvidPlaybackOwner.shared.seek(position); call.resolve() }
+    }
+    @objc func configureRemote(_ call: CAPPluginCall) {
+        guard let mode = call.getString("mode"), let seconds = call.getDouble("seconds") else { call.reject("A remote control policy is required."); return }
+        Task { @MainActor in
+            do { try AvidPlaybackOwner.shared.configureRemote(mode: mode, seconds: seconds); call.resolve() }
+            catch { call.reject(error.localizedDescription) }
+        }
     }
     @objc func setRate(_ call: CAPPluginCall) {
         guard let rate = call.getDouble("rate"), rate.isFinite else { call.reject("A finite playback rate is required."); return }

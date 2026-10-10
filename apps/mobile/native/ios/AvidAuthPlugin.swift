@@ -91,7 +91,11 @@ final class AvidAuthCoordinator {
         let oldScope = AvidSharedStore.shared.activeScopeHash
         let next = try AvidSessionStore.clear(expected: expected)
         AvidPlaybackOwner.shared.clear()
-        if let oldScope { AvidPlaybackSourceStore.removeAccount(scopeHash: oldScope) }
+        if let oldScope {
+            AvidPlaybackSourceStore.removeAccount(scopeHash: oldScope)
+            AvidMediaStore.shared.removeAccount(scopeHash: oldScope)
+            AvidArtwork.removeAccount(scopeHash: oldScope)
+        }
         AvidSharedStore.shared.clearActiveAccount()
         AvidSystemSurfaces.refresh()
         if let oldScope { AvidSystemSurfaces.removeAccount(oldScope) { _ in } }

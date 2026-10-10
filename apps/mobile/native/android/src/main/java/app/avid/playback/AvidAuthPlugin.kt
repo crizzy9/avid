@@ -132,11 +132,13 @@ internal object AvidAuth {
         commits.submit { done ->
             try {
                 if (expected != null) require(AvidSessionStore.read(context).getString("generation") == expected)
+                val clearedScope = AvidSessionStore.read(context).optJSONObject("session")?.let { scope(it) } ?: MediaTransferStore.DEMO_SCOPE
                 // Stop protected sources before replacing cookies. A late network response will fail CAS.
                 runCatching { AvidPlaybackJournal.flush() }
                 AvidAudioCatalog.initialize(context); AvidAudioCatalog.clear()
                 runCatching { AvidContinueStore.clear(context); AvidContinueWidget.refresh(context) }
                 val cleared = AvidSessionStore.clear(context, expected)
+                runCatching { AvidMediaStore.clearScope(context, clearedScope); AvidArtwork.clearScope(context, clearedScope) }
                 val manager = CookieManager.getInstance()
                 manager.removeAllCookies {
                     try {

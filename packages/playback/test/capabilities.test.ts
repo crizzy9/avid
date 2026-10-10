@@ -8,6 +8,12 @@ const row = (evidence: PlatformCapabilityEvidence, id: PlatformCapabilityId) => 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('installed platform capability evidence', () => {
+  it('uses the installed speech owner report without silently substituting browser voices', () => {
+    const evidence={browser:{...browser,installedVoices:2},speech:{installed:true,report:{speechAvailable:false}}};
+    expect(row(evidence,'speech').available).toBe(false);
+    expect(row({...evidence,speech:{installed:true,report:{speechAvailable:true}}},'speech').available).toBe(true);
+    expect(row({...evidence,speech:{installed:true,report:{speechAvailable:'true'}}},'speech').available).toBe(false);
+  });
   it('does not claim speech voices just because the speech API exists', () => {
     expect(row({ browser }, 'speech')).toMatchObject({ available: false, detail: capabilityEnglish.speechEmpty });
     expect(row({ browser: { ...browser, installedVoices: 2 } }, 'speech').available).toBe(true);

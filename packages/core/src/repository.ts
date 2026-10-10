@@ -10,6 +10,7 @@ export type OutboxStatus='pending'|'syncing'|'conflict'|'failed'|'uncertain';
 export type SyncPayload =
   | {kind:'progress';anchor:ReadingAnchor}
   | {kind:'annotation';annotation:Annotation}
+  | {kind:'preferences';bookId:string;fileId:string;set:Record<string,unknown>;unset:string[];localSet:Record<string,unknown>}
   | {kind:'session';session:ReadingSession;fileId:string;endedAt:string};
 export interface OutboxOperation {
   key:string; scope:string; id:string; entityKey:string; payload:SyncPayload; occurredAt:string;
@@ -147,6 +148,32 @@ export class LibraryRepository {
   async patchPreferences(set:Record<string,unknown>,id='reader'):Promise<void> {
     await this.db.transaction('rw',this.db.preferences,async()=>{await this.db.preferences.put(this.row(id,{...await this.getPreferences(id),...set}));});
   }
+  /** Persist device overrides and a sparse server patch together; read-only edits never create an intent. */
+  async saveReaderPreferencePatch(bookId:string,fileId:string,patch:{deviceSet:Record<string,unknown>;deviceUnset:string[];set:Record<string,unknown>;unset:string[];localSet:Record<string,unknown>},options:{readOnly:boolean}):Promise<void> {
+    await this.db.transaction('rw',this.db.preferences,this.db.outbox,async()=>{
+      const id=`reader-file-overrides:${fileId}`;
+      const current={...await this.getPreferences(id)};
+      for(const name of patch.deviceUnset) delete current[name];
+      Object.assign(current,patch.deviceSet);
+      await this.db.preferences.put(this.row(id,current));
+      if(!options.readOnly&&(Object.keys(patch.set).length||patch.unset.length)) {
+        // A later explicit setting supersedes that field in older unsent patches,
+        // including failed ones. Retain unrelated fields and every in-flight claim.
+        const changed=new Set([...Object.keys(patch.set),...patch.unset]);
+        const previous=await this.db.outbox.where('[scope+entityKey]').equals([this.scope,`preferences:${fileId}`]).toArray();
+        for(const operation of previous) {
+          if(operation.status==='syncing'||operation.payload.kind!=='preferences')continue;
+          const set=Object.fromEntries(Object.entries(operation.payload.set).filter(([name])=>!changed.has(name)));
+          const unset=operation.payload.unset.filter(name=>!changed.has(name));
+          const localSet=Object.fromEntries(Object.entries(operation.payload.localSet).filter(([name])=>!Object.hasOwn(patch.localSet,name)));
+          if(!Object.keys(set).length&&!unset.length)await this.db.outbox.delete(operation.key);
+          else await this.db.outbox.update(operation.key,{payload:{...operation.payload,set,unset,localSet}});
+        }
+        const occurredAt=new Date().toISOString();
+        await this.enqueue(`preferences:${fileId}`,{kind:'preferences',bookId,fileId,set:patch.set,unset:patch.unset,localSet:patch.localSet},occurredAt,false);
+      }
+    });
+  }
   private async enqueue(entityKey:string,payload:SyncPayload,occurredAt:string,coalesce:boolean):Promise<void> {
     // Never rewrite an in-flight operation; it may already be acknowledged by the server.
     if(coalesce) {
@@ -165,6 +192,8 @@ export class LibraryRepository {
       if(!current||['failed','conflict'].includes(current.status))return undefined;
       if(current.nextAttemptAt&&Date.parse(current.nextAttemptAt)>now)return undefined;
       if(current.status==='syncing'&&current.leaseUntil&&Date.parse(current.leaseUntil)>now)return undefined;
+      const otherClaim=await this.db.outbox.where('[scope+entityKey]').equals([this.scope,current.entityKey]).filter(operation=>operation.id!==id&&operation.status==='syncing'&&Date.parse(operation.leaseUntil??'')>now).count();
+      if(otherClaim)return undefined;
       await this.db.outbox.update(current.key,{status:'syncing',attempts:current.attempts+1,leaseUntil:new Date(now+60000).toISOString()});
       return current;
     });

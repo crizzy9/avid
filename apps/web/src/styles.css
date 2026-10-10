@@ -1738,7 +1738,7 @@ blockquote {
 }
 .player-options {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
   padding: 18px 0;
   border-top: 1px solid var(--line);
@@ -1754,11 +1754,18 @@ blockquote {
   font-weight: 400;
 }
 .player-options select {
+  width: 100%;
+  min-width: 0;
   font-size: 11px;
   padding: 8px;
   text-align: center;
   border: 0;
   background: var(--paper);
+}
+.player-policy-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 .player-bottom {
   display: flex;

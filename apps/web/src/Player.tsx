@@ -12,9 +12,14 @@ import {
   Headphones,
   BookOpen,
 } from "lucide-react";
-import type {PlaybackTransport} from '../../mobile/src/native-transport';
+import type { PlaybackTransport } from "../../mobile/src/native-transport";
 import type { Book } from "../../../packages/core/src/types";
 import { Cover, formatTime } from "./ui";
+import {
+  remotePolicyKey,
+  type RemoteSkipPolicy,
+} from "../../../packages/playback/src/remotePolicy";
+import { useRemoteI18n } from "./remoteMessages";
 
 export function Player({
   controller,
@@ -27,8 +32,27 @@ export function Player({
   onNote: () => void;
   onRead?: () => void;
 }) {
-  const { t, locale, setLocale } = useI18n();
+  const { t, locale } = useI18n();
   const { t: alignmentText } = useAlignmentI18n();
+  const remoteText = useRemoteI18n();
+  const [remotePolicy, setRemotePolicy] = useState(() =>
+    controller.getRemotePolicy(),
+  );
+  const [preferenceError, setPreferenceError] = useState(false);
+  function changeRemote(value: string) {
+    const policy: RemoteSkipPolicy =
+      value === "chapter"
+        ? { ...remotePolicy, mode: "chapter" }
+        : { mode: "time", seconds: Number(value) };
+    controller.configureRemote(policy);
+    setRemotePolicy(policy);
+    try {
+      localStorage.setItem(remotePolicyKey, JSON.stringify(policy));
+      setPreferenceError(false);
+    } catch {
+      setPreferenceError(true);
+    }
+  }
 
   const state = useSyncExternalStore(
     controller.subscribe,
@@ -36,6 +60,8 @@ export function Player({
   );
   const [chapters, setChapters] = useState(false);
   const chapterList = controller.getBook()?.chapters ?? [];
+  const chapterSkipping =
+    remotePolicy.mode === "chapter" && chapterList.length > 0;
   return (
     <div className="player-view">
       <div className="player-art">
@@ -68,11 +94,15 @@ export function Player({
       <div className="player-transport">
         <button
           className="icon-button skip-button"
-          onClick={() => controller.skip(-30)}
-          aria-label={t("player.back")}
+          onClick={() => controller.remoteSkip(-1)}
+          aria-label={
+            chapterSkipping
+              ? remoteText("previous")
+              : remoteText("back", { seconds: remotePolicy.seconds })
+          }
         >
           <RotateCcw />
-          <small>30</small>
+          <small>{chapterSkipping ? "|" : remotePolicy.seconds}</small>
         </button>
         <button
           className="play-button"
@@ -89,11 +119,15 @@ export function Player({
         </button>
         <button
           className="icon-button skip-button"
-          onClick={() => controller.skip(30)}
-          aria-label={t("player.forward")}
+          onClick={() => controller.remoteSkip(1)}
+          aria-label={
+            chapterSkipping
+              ? remoteText("next")
+              : remoteText("forward", { seconds: remotePolicy.seconds })
+          }
         >
           <RotateCw />
-          <small>30</small>
+          <small>{chapterSkipping ? "|" : remotePolicy.seconds}</small>
         </button>
       </div>
       {state.error && (
@@ -102,6 +136,24 @@ export function Player({
         </div>
       )}
       <div className="player-options">
+        <label>
+          <span>{remoteText("controls")}</span>
+          <select
+            value={
+              remotePolicy.mode === "chapter"
+                ? "chapter"
+                : String(remotePolicy.seconds)
+            }
+            onChange={(event) => changeRemote(event.target.value)}
+          >
+            {[10, 15, 30, 45, 60].map((seconds) => (
+              <option key={seconds} value={seconds}>
+                {remoteText("seconds", { seconds })}
+              </option>
+            ))}
+            <option value="chapter">{remoteText("chapter")}</option>
+          </select>
+        </label>
         <label>
           <span>{t("player.speed")}</span>
           <select
@@ -161,7 +213,22 @@ export function Player({
           </select>
         </label>
       </div>
-      {onRead && <button className="secondary-button full-width" onClick={onRead}><BookOpen size={18} />{alignmentText('read')}</button>}
+      {preferenceError && (
+        <p role="alert" className="error-banner">
+          {remoteText("save")}
+        </p>
+      )}
+      {remotePolicy.mode === "chapter" && !chapterSkipping && (
+        <p className="player-policy-note">
+          {remoteText("fallback", { seconds: remotePolicy.seconds })}
+        </p>
+      )}
+      {onRead && (
+        <button className="secondary-button full-width" onClick={onRead}>
+          <BookOpen size={18} />
+          {alignmentText("read")}
+        </button>
+      )}
       <div className="player-bottom">
         <button className="text-button" onClick={onNote}>
           <BookmarkPlus size={18} />

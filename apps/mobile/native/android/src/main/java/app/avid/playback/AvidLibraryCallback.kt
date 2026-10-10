@@ -19,12 +19,13 @@ import org.json.JSONObject
 
 /** The same catalog contract serves Media3 browsers and Android Auto's legacy MediaBrowserService bridge. */
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
-class AvidLibraryCallback(private val allowed: (MediaSession.ControllerInfo) -> Boolean, private val sleep: (Bundle) -> Unit) : MediaLibrarySession.Callback {
+class AvidLibraryCallback(private val context: android.content.Context, private val allowed: (MediaSession.ControllerInfo) -> Boolean,
+    private val remote: (Bundle) -> Unit, private val sleep: (Bundle) -> Unit) : MediaLibrarySession.Callback {
     private fun own(controller: MediaSession.ControllerInfo) = controller.uid == Process.myUid()
     override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
         if (!allowed(controller)) return MediaSession.ConnectionResult.reject()
         val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
-        if (own(controller)) commands.add(SessionCommand(AvidPlaybackService.SLEEP_COMMAND, Bundle.EMPTY))
+        if (own(controller)) { commands.add(SessionCommand(AvidPlaybackService.SLEEP_COMMAND, Bundle.EMPTY)); commands.add(SessionCommand(AvidPlaybackService.REMOTE_COMMAND, Bundle.EMPTY)) }
         val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
         // Car clients select a book; they cannot append/reorder/remove the private source-track queue.
         if (!own(controller)) playerCommands.remove(Player.COMMAND_CHANGE_MEDIA_ITEMS)
@@ -32,8 +33,15 @@ class AvidLibraryCallback(private val allowed: (MediaSession.ControllerInfo) -> 
             .setAvailablePlayerCommands(playerCommands.build()).build()
     }
     override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo, command: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
-        if (!own(controller) || command.customAction != AvidPlaybackService.SLEEP_COMMAND) return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
-        sleep(args); return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        if (!own(controller)) return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+        return try {
+            when (command.customAction) {
+                AvidPlaybackService.SLEEP_COMMAND -> sleep(args)
+                AvidPlaybackService.REMOTE_COMMAND -> remote(args)
+                else -> return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+            }
+            Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        } catch (_: Exception) { Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE)) }
     }
     override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, params: LibraryParams?): ListenableFuture<LibraryResult<MediaItem>> {
         return Futures.immediateFuture(LibraryResult.ofItem(folder(ROOT, "Avid"), params))
@@ -99,6 +107,8 @@ class AvidLibraryCallback(private val allowed: (MediaSession.ControllerInfo) -> 
     override fun onPlaybackResumption(session: MediaSession, controller: MediaSession.ControllerInfo): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
         val recent = AvidAudioCatalog.playable(recent = true).firstOrNull()
             ?: return Futures.immediateFailedFuture(IllegalStateException("Open an audiobook in Avid before resuming it from the car."))
+        try { AvidQueue.validateSources(context, recent, AvidAudioCatalog.scope) }
+        catch (error: Exception) { return Futures.immediateFailedFuture(error) }
         sleep(Bundle.EMPTY)
         val target = AudioTimeline.locate(AvidQueue.tracks(recent).map { if (it.has("duration")) it.getDouble("duration") else null }, recent.optDouble("position", 0.0))
         session.player.setPlaybackSpeed(recent.optDouble("rate", 1.0).coerceIn(0.5, 3.0).toFloat())
@@ -108,7 +118,13 @@ class AvidLibraryCallback(private val allowed: (MediaSession.ControllerInfo) -> 
         require(values.isNotEmpty())
         if (!(own(controller) && values.all { it.localConfiguration != null })) require(values.size == 1) { "Choose one audiobook at a time." }
         return values.flatMap { value ->
-            if (own(controller) && value.localConfiguration != null) listOf(value)
+            if (own(controller) && value.localConfiguration != null) {
+                val extra = value.mediaMetadata.extras
+                val url = value.localConfiguration!!.uri.toString()
+                if (value.localConfiguration!!.uri.scheme in listOf("file", "content")) require(AvidMediaStore.validate(context, url,
+                    MediaIdentity(extra?.getString("accountScope") ?: "", extra?.getString("bookId") ?: "", extra?.getString("fileId") ?: "", extra?.getString("trackId") ?: "")))
+                listOf(value)
+            }
             else {
                 val query = value.requestMetadata.searchQuery
                 val source = if (!query.isNullOrBlank()) {
@@ -118,6 +134,7 @@ class AvidLibraryCallback(private val allowed: (MediaSession.ControllerInfo) -> 
                 } else AvidAudioCatalog.get(value.mediaId)
                 if (source == null) throw IllegalArgumentException("Unknown, ambiguous, or different-account audio ID.")
                 require(source.optString("url").isNotBlank()) { "Open this audiobook in Avid first." }
+                AvidQueue.validateSources(context, source, AvidAudioCatalog.scope)
                 AvidQueue.items(source)
             }
         }

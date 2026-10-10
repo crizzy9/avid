@@ -6,7 +6,7 @@ The contract is pinned to commit `e767358443419253eeed782518d6fc4f675d69fd`. Rel
 
 ## Deployment requirement
 
-BookOrbit accepts its configured `APP_URL` plus `/oauth2-callback`, or the **exact** configured `NATIVE_OIDC_REDIRECT_URI`. The provider must also register the selected callback. The API URL does not establish `APP_URL`, and neither a local Vite callback nor an arbitrary Avid deep link is automatically supported. A same-origin API proxy does not change this server allowlist.
+BookOrbit accepts its configured `APP_URL` plus `/oauth2-callback`, or the **exact** configured `NATIVE_REDIRECT_URI`. The provider must also register the selected callback. The API URL does not establish `APP_URL`, and neither a local Vite callback nor an arbitrary Avid deep link is automatically supported. A same-origin API proxy does not change this server allowlist.
 
 The caller must supply confirmed `redirectPolicy` values for the selected server. Avid cannot discover those deployment values from `login-options`. The helper checks its explicit policy; it cannot verify an operator's settings remotely. Use HTTPS deployment and provider endpoints. The helper accepts HTTP for explicitly configured development deployments, which still require a secure context providing Web Crypto.
 
@@ -15,15 +15,18 @@ For a web deployment, Avid must actually own the allowlisted callback route and 
 ## Integration API
 
 ```ts
-import { OidcLoginFlow, createSessionOidcStorage } from '../packages/core/src/oidc';
+import {
+  OidcLoginFlow,
+  createSessionOidcStorage,
+} from "../packages/core/src/oidc";
 
 const flow = new OidcLoginFlow({
   profile: selectedServerProfile,
-  redirectUri: 'https://books.example/oauth2-callback',
-  redirectPolicy: { appUrl: 'https://books.example' }, // Confirmed deployment APP_URL.
+  redirectUri: "https://books.example/oauth2-callback",
+  redirectPolicy: { appUrl: "https://books.example" }, // Confirmed deployment APP_URL.
   storage: createSessionOidcStorage(window.sessionStorage),
-  launchAuthorization: url => window.location.assign(url),
-  clientOptions: { clientKind: 'web' },
+  launchAuthorization: (url) => window.location.assign(url),
+  clientOptions: { clientKind: "web" },
 });
 
 await flow.begin(selectedProviderSlug);

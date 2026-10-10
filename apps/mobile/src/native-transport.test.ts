@@ -16,6 +16,7 @@ function setup() {
     pause: vi.fn(async () => { state = { ...state, playing: false, status: 'paused' }; }),
     seek: vi.fn(async ({ position }) => { state = { ...state, position }; }),
     setRate: vi.fn(async ({ rate }) => { state = { ...state, rate }; }),
+    configureRemote: vi.fn(async () => {}),
     setSleepTimer: vi.fn(async () => {}), snapshot: vi.fn(async () => state), clear: vi.fn(async () => { operations.push('clear'); }),
     addListener: vi.fn(async (_, fn) => { listener = fn; return { remove }; }),
   };
@@ -71,8 +72,21 @@ describe('native authoritative playback transport', () => {
   it('rejects unsupported sources without loading either native or browser audio', () => {
     const { transport, plugin } = setup(); transports.push(transport);
     expect(() => transport.load({ ...book, tracks: [{ id: 'one', url: 'https://books.test/one' }, { id: 'two', url: 'https://books.test/two' }] })).toThrow('Track durations');
-    expect(() => transport.load({ ...book, tracks: [{ id: 'blob', url: 'blob:https://books.test/id' }] })).toThrow('blob URLs');
+    expect(() => transport.load({ ...book, tracks: [{ id: 'bad', url: 'data:audio/wav;base64,AAAA' }] })).toThrow('requires a server URL');
     expect(plugin.load).not.toHaveBeenCalled();
+  });
+  it('sends the selected skip policy and source chapters to the native owner', async () => {
+    const { transport, plugin, emit } = setup(); transports.push(transport);
+    transport.configureRemote({mode:'chapter',seconds:15});
+    transport.load({...book,coverUrl:'https://books.test/cover'}); await transport.play();
+    expect(plugin.configureRemote).toHaveBeenLastCalledWith({mode:'chapter',seconds:15});
+    expect(plugin.load).toHaveBeenCalledWith(expect.objectContaining({chapters:book.chapters,coverUrl:'https://books.test/cover'}));
+    emit({position:72,updatedAt:new Date(5000).toISOString()});
+    transport.remoteSkip(-1);await drain();
+    expect(plugin.seek).toHaveBeenLastCalledWith({position:60});
+    transport.configureRemote({mode:'time',seconds:15});
+    transport.remoteSkip(1);await drain();
+    expect(plugin.seek).toHaveBeenLastCalledWith({position:75});
   });
   it('hands the complete queue to native and preserves boundary source identity, revision, seek and rate', async () => {
     const { transport, plugin, emit } = setup(); transports.push(transport);

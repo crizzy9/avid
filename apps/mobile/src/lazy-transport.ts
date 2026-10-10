@@ -14,6 +14,9 @@ export function createLazyPlaybackTransport(factory: () => PlaybackTransport): P
   return {
     getSnapshot: () => owner?.getSnapshot() ?? empty,
     getBook: () => owner?.getBook() ?? null,
+    getRemotePolicy: () => active().getRemotePolicy(),
+    configureRemote: policy => active().configureRemote(policy),
+    remoteSkip: direction => active().remoteSkip(direction),
     subscribe: (listener: () => void) => active().subscribe(listener),
     onCheckpoint: (listener: (value: AudioCheckpoint) => void) => active().onCheckpoint(listener),
     load: (book: PlaybackBook, position?: number) => active().load(book, position),

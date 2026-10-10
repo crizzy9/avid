@@ -50,8 +50,10 @@ const statisticsSummarySchema=z.object({trackedBooks:z.number(),startedBooks:z.n
 const activityOverviewSchema=z.object({generatedAt:z.string(),timezone:z.string(),snapshot:z.object({today:durationBreakdownSchema,lastSevenDays:durationBreakdownSchema,previousSevenDays:durationBreakdownSchema,currentStreak:z.number(),longestStreak:z.number(),completedBooksYtd:z.number()}),calendar:activityCalendarSchema,sources:z.object({windowDays:z.number(),totals:durationBreakdownSchema,slices:z.array(z.object({bucket:z.string(),totalSeconds:z.number()}))})});
 const bookSessionSchema=z.object({id:numericId,bookFileId:numericId.nullable(),startedAt:z.string(),endedAt:z.string(),durationSeconds:z.number(),progressDelta:z.number().nullable(),endProgress:z.number().nullable(),format:z.string().nullable(),source:z.string().nullable(),sessionType:z.enum(['read','tts','listen']).optional()});
 const bookSessionPageSchema=z.object({items:z.array(bookSessionSchema),total:z.number(),page:z.number(),pageSize:z.number(),stats:z.object({totalSessions:z.number(),totalSeconds:z.number(),avgDurationSeconds:z.number(),firstSessionAt:z.string().nullable(),lastSessionAt:z.string().nullable(),dailySummary:z.array(z.object({day:z.string(),totalMinutes:z.number()}))}).passthrough()});
-export type ServerReadingStatistics=z.infer<typeof activityOverviewSchema>&{summary:z.infer<typeof statisticsSummarySchema>;currentCalendar:z.infer<typeof activityCalendarSchema>};
+export type ServerReadingStatistics=z.infer<typeof activityOverviewSchema>&{summary:z.infer<typeof statisticsSummarySchema>;currentCalendar:z.infer<typeof activityCalendarSchema>;recentDays?:z.infer<typeof activityDaySchema>[]};
 export type ServerBookSessions=z.infer<typeof bookSessionPageSchema>;
+const sessionTimelineSchema=z.object({year:z.number().int(),week:z.number().int().min(1).max(53),weekStart:z.string(),weekEnd:z.string(),items:z.array(z.object({sessionId:numericId,bookId:numericId,bookTitle:z.string().nullable(),bookFormat:z.string().nullable(),bookSource:z.string(),startedAt:z.string(),endedAt:z.string(),durationSeconds:z.number().nonnegative()}))});
+export type ServerSessionTimeline=z.infer<typeof sessionTimelineSchema>;
 export interface OidcCallback {code:string;state:string;codeVerifier:string;nonce:string;redirectUri:string;}
 
 export function normalizeServerUrl(input: string): string {
@@ -441,6 +443,9 @@ export class BookOrbitClient {
   async getReaderPreferences(fileId:string): Promise<{settings:Record<string,unknown>|null;isCustomized:boolean}> {
     return parse(z.object({settings:z.record(z.string(),z.unknown()).nullable(),isCustomized:z.boolean()}),await this.json(`reader/preferences/${routeId(fileId)}`),'reader preferences');
   }
+  async getReaderDefaults():Promise<Record<string,Record<string,unknown>>> {
+    return parse(z.record(z.string(),z.record(z.string(),z.unknown())),await this.json('reader/defaults'),'reader defaults');
+  }
   async patchPreferences(fileId:string,set:Record<string,unknown>,unset:string[]=[]): Promise<void> { await this.json(`reader/preferences/${routeId(fileId)}`,{method:'PATCH',body:JSON.stringify({set,unset})},true); }
   async saveReadingSession(session:ReadingSession,fileId:string,options:{endedAt?:string;endProgress?:number;progressDelta?:number;source?:'ios'|'android'|'watchos'}={}):Promise<void> {
     const startedAt=new Date(session.startedAt);
@@ -459,12 +464,29 @@ export class BookOrbitClient {
       this.json('user-statistics/summary').then(value=>parse(statisticsSummarySchema,value,'statistics summary')),
     ]);
     const calendar=year===undefined||year===overview.calendar.year?overview.calendar:parse(activityCalendarSchema,await this.json(`user-statistics/activity-calendar/${year}`),'activity calendar');
-    return {...overview,calendar,summary,currentCalendar:overview.calendar};
+    const parts=new Intl.DateTimeFormat('en',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:overview.timezone}).formatToParts(new Date(overview.generatedAt));
+    const part=(type:string)=>parts.find(value=>value.type===type)!.value;
+    const firstDay=new Date(`${part('year')}-${part('month')}-${part('day')}T12:00:00Z`);firstDay.setUTCDate(firstDay.getUTCDate()-6);
+    const previousYear=firstDay.getUTCFullYear();
+    let recentDays=overview.calendar.days;
+    if(previousYear<overview.calendar.year){
+      const previous=calendar.year===previousYear?calendar:parse(activityCalendarSchema,await this.json(`user-statistics/activity-calendar/${previousYear}`),'activity calendar');
+      recentDays=[...previous.days,...recentDays];
+    }
+    return {...overview,calendar,summary,currentCalendar:overview.calendar,recentDays};
   }
   async getBookSessions(bookId:string,options:{page?:number;pageSize?:number}={}):Promise<ServerBookSessions> {
     const page=options.page??1,pageSize=options.pageSize??25;
     if(!Number.isInteger(page)||page<1||!Number.isInteger(pageSize)||pageSize<1||pageSize>100)throw new ContractError('Invalid reading-session pagination.');
     return parse(bookSessionPageSchema,await this.json(`books/${routeId(bookId)}/sessions?page=${page}&pageSize=${pageSize}&sortBy=startedAt&sortDir=desc`),'book sessions');
+  }
+  /** Pinned server caps each UTC ISO-week response at 3,000 sessions. */
+  async getSessionTimeline(options:{year?:number;week?:number;signal?:AbortSignal}={}):Promise<ServerSessionTimeline> {
+    const {year,week,signal}=options;
+    if(year!==undefined&&(!Number.isInteger(year)||year<1970||year>2100))throw new ContractError('Choose a session year between 1970 and 2100.');
+    if(week!==undefined&&(!Number.isInteger(week)||week<1||week>53))throw new ContractError('Choose an ISO week between 1 and 53.');
+    const query=new URLSearchParams();if(year!==undefined)query.set('year',String(year));if(week!==undefined)query.set('week',String(week));
+    return parse(sessionTimelineSchema,await this.json(`user-statistics/session-timeline${query.size?'?'+query:''}`,{signal}),'session timeline');
   }
   async uploadBook(libraryId:string,file:File,signal?:AbortSignal):Promise<unknown> {
     const body=new FormData(); body.append('file',file);

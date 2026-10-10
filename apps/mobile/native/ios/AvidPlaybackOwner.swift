@@ -11,6 +11,14 @@ final class AvidPlaybackOwner: NSObject {
     static let shared = AvidPlaybackOwner()
     private let player = AVQueuePlayer()
     private var tracks: [AvidAudioTrack] = []
+    private var chapters: [AvidAudioChapter] = []
+    private var artwork: MPMediaItemArtwork?
+    private var artworkTask: Task<Void, Never>?
+    private var remoteMode = UserDefaults.standard.string(forKey: "avid.remote.mode") == "chapter" ? "chapter" : "time"
+    private var remoteSeconds: Double = {
+        let value = UserDefaults.standard.double(forKey: "avid.remote.seconds")
+        return value >= 5 && value <= 120 ? value : 30
+    }()
     private var itemIndices: [ObjectIdentifier: Int] = [:]
     private var activeIndex = 0
     private var finalPosition: Double?
@@ -110,7 +118,7 @@ final class AvidPlaybackOwner: NSObject {
         }
     }
 
-    func load(scope: String, bookId: String, fileId: String, url: URL, title: String, author: String, position: Double, rate: Float, expiresAt: Date? = nil, cookies: [HTTPCookie] = [], tracks requestedTracks: [AvidAudioTrack]? = nil, manifestRevision: String? = nil, readOnly: Bool = true) throws {
+    func load(scope: String, bookId: String, fileId: String, url: URL, title: String, author: String, position: Double, rate: Float, expiresAt: Date? = nil, cookies: [HTTPCookie] = [], tracks requestedTracks: [AvidAudioTrack]? = nil, manifestRevision: String? = nil, readOnly: Bool = true, chapters requestedChapters: [AvidAudioChapter] = [], coverURL: String? = nil) throws {
         guard !scope.isEmpty, !bookId.isEmpty, !fileId.isEmpty else { throw PlaybackError.invalidIdentity }
         let newTracks = requestedTracks ?? [AvidAudioTrack(id: fileId, url: url, duration: nil)]
         guard !newTracks.isEmpty, Set(newTracks.map(\.id)).count == newTracks.count,
@@ -119,8 +127,10 @@ final class AvidPlaybackOwner: NSObject {
                   (index == newTracks.count - 1 || track.duration != nil) &&
                   (track.duration == nil || (track.duration!.isFinite && track.duration! > 0))
               }) else { throw PlaybackError.invalidTimeline }
+        guard AvidAudioChapter.validate(requestedChapters) else { throw PlaybackError.invalidTimeline }
+        guard newTracks.allSatisfy({ !$0.url.isFileURL || AvidMediaStore.shared.owns($0.url, scope: scope, book: bookId, file: fileId, track: $0.id) }) else { throw AvidMediaStore.Failure.missing }
         let source = AvidStoredAudioSource(accountScope: scope, bookId: bookId, fileId: fileId, url: url,
-            tracks: newTracks, manifestRevision: manifestRevision, readOnly: readOnly, title: title, author: author, rate: rate, expiresAt: expiresAt)
+            tracks: newTracks, chapters: requestedChapters, manifestRevision: manifestRevision, readOnly: readOnly, title: title, author: author, rate: rate, expiresAt: expiresAt)
         if let expiresAt, expiresAt <= Date() { throw AvidSurfaceError.expiredSource }
         try AvidPlaybackSourceStore.save(source)
         checkpoint()
@@ -145,6 +155,7 @@ final class AvidPlaybackOwner: NSObject {
         self.author = author
         preferredRate = min(3, max(0.5, rate))
         self.tracks = newTracks
+        self.chapters = requestedChapters
         self.manifestRevision = manifestRevision
         sourceReadOnly = readOnly
         assetCookies = cookies
@@ -153,6 +164,7 @@ final class AvidPlaybackOwner: NSObject {
         itemIndices.removeAll()
         pendingSeek = nil
         seek(position)
+        updateArtwork(coverURL)
         publishNowPlaying()
     }
 
@@ -191,7 +203,7 @@ final class AvidPlaybackOwner: NSObject {
             let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
             guard AvidSharedStore.shared.activeScopeHash == source.scopeHash else { throw AvidSurfaceError.unavailableBook }
             try load(scope: source.accountScope, bookId: source.bookId, fileId: source.fileId, url: source.url,
-                title: source.title, author: source.author, position: book.audioPosition ?? 0, rate: source.rate, expiresAt: source.expiresAt, cookies: cookies, tracks: source.tracks, manifestRevision: source.manifestRevision, readOnly: source.readOnly ?? true)
+                title: source.title, author: source.author, position: book.audioPosition ?? 0, rate: source.rate, expiresAt: source.expiresAt, cookies: cookies, tracks: source.tracks, manifestRevision: source.manifestRevision, readOnly: source.readOnly ?? true, chapters: source.chapters ?? [])
         }
         try play()
     }
@@ -347,6 +359,9 @@ final class AvidPlaybackOwner: NSObject {
             value["trackIndex"] = currentTrackIndex
             value["trackTime"] = max(0, position - trackStart(currentTrackIndex))
         }
+        let chapter = chapters.firstIndex { position >= $0.start && position < $0.start + $0.duration }
+        value["chapterIndex"] = chapter ?? -1
+        if let chapter { value["chapterTitle"] = chapters[chapter].title }
         if let manifestRevision { value["manifestRevision"] = manifestRevision }
         value["trackIds"] = tracks.map(\.id)
         value["readOnly"] = sourceReadOnly || AvidSessionStore.readOnly(scope: scope)
@@ -365,6 +380,7 @@ final class AvidPlaybackOwner: NSObject {
         pause()
         setSleepTimer(deadlineMilliseconds: nil, chapterEnd: nil)
         player.removeAllItems()
+        artworkTask?.cancel(); artworkTask = nil; artwork = nil; chapters = []
         tracks = []; itemIndices = [:]; activeIndex = 0; finalPosition = nil; manifestRevision = nil; assetCookies = []
         scope = ""; bookId = ""; fileId = ""; title = ""; author = ""
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -406,16 +422,58 @@ final class AvidPlaybackOwner: NSObject {
         if let target { seek(target) }
     }
 
+    private func updateArtwork(_ raw: String?) {
+        artworkTask?.cancel(); artwork = nil
+        let generation = sourceGeneration, expectedScope = scope, expectedBook = bookId, expectedFile = fileId
+        artworkTask = Task { @MainActor [weak self] in
+            let image = await AvidArtwork.load(raw: raw, scope: expectedScope, book: expectedBook, file: expectedFile)
+            guard !Task.isCancelled, let self, self.sourceGeneration == generation, let image else { return }
+            self.artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            self.publishNowPlaying()
+        }
+    }
+
+    func configureRemote(mode: String, seconds: Double) throws {
+        guard ["time", "chapter"].contains(mode), seconds.isFinite, seconds >= 5, seconds <= 120 else { throw PlaybackError.invalidTimeline }
+        remoteMode = mode; remoteSeconds = seconds.rounded()
+        UserDefaults.standard.set(mode, forKey: "avid.remote.mode")
+        UserDefaults.standard.set(remoteSeconds, forKey: "avid.remote.seconds")
+        let commands = MPRemoteCommandCenter.shared()
+        commands.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSeconds)]
+        commands.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSeconds)]
+    }
+
+    private func remoteSkip(_ direction: Int) {
+        let position = globalPosition
+        if remoteMode == "chapter", !chapters.isEmpty {
+            let index = chapters.lastIndex { $0.start <= position } ?? -1
+            if direction < 0 {
+                if index >= 0, position - chapters[index].start > 3 { seek(chapters[index].start) }
+                else { seek(chapters[max(0, index - 1)].start) }
+                return
+            }
+            if index + 1 < chapters.count { seek(chapters[index + 1].start); return }
+        }
+        seek(max(0, position + Double(direction) * remoteSeconds))
+    }
+
     private func publishNowPlaying() {
         guard !bookId.isEmpty else { return }
         let state = snapshot()
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = [
+        var info: [String: Any] = [
             MPMediaItemPropertyTitle: title, MPMediaItemPropertyArtist: author,
-            MPMediaItemPropertyAlbumTitle: "Avid",
+            MPMediaItemPropertyAlbumTitle: title,
             MPMediaItemPropertyPlaybackDuration: state["duration"] ?? 0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: state["position"] ?? 0,
             MPNowPlayingInfoPropertyPlaybackRate: player.rate,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: preferredRate]
+        if let chapter = state["chapterIndex"] as? Int, chapters.indices.contains(chapter) {
+            info[MPNowPlayingInfoPropertyChapterNumber] = chapter + 1
+            info[MPNowPlayingInfoPropertyChapterCount] = chapters.count
+            info[MPMediaItemPropertyTitle] = chapters[chapter].title
+        }
+        if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     private func configureRemoteCommands() {
@@ -429,16 +487,18 @@ final class AvidPlaybackOwner: NSObject {
             if self.player.rate > 0 { self.pause() } else { do { try self.play() } catch { return .commandFailed } }
             return .success
         }
-        commands.skipForwardCommand.preferredIntervals = [30]
-        commands.skipBackwardCommand.preferredIntervals = [30]
+        commands.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSeconds)]
+        commands.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSeconds)]
         commands.skipForwardCommand.addTarget { [weak self] event in
-            guard let self, let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
-            self.seek(self.globalPosition + event.interval); return .success
+            guard let self, event is MPSkipIntervalCommandEvent else { return .commandFailed }
+            self.remoteSkip(1); return .success
         }
         commands.skipBackwardCommand.addTarget { [weak self] event in
-            guard let self, let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
-            self.seek(self.globalPosition - event.interval); return .success
+            guard let self, event is MPSkipIntervalCommandEvent else { return .commandFailed }
+            self.remoteSkip(-1); return .success
         }
+        commands.nextTrackCommand.addTarget { [weak self] _ in self?.remoteSkip(1); return .success }
+        commands.previousTrackCommand.addTarget { [weak self] _ in self?.remoteSkip(-1); return .success }
         commands.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             self?.seek(event.positionTime); return .success
@@ -468,7 +528,7 @@ final class AvidPlaybackOwner: NSObject {
         guard let item = notification.object as? AVPlayerItem, let index = itemIndices[ObjectIdentifier(item)] else { return }
         if index == tracks.count - 1 {
             let duration = item.duration.seconds
-            finalPosition = trackStart(index) + (duration.isFinite ? duration : tracks[index].duration ?? 0)
+            finalPosition = trackStart(index) + (tracks[index].duration ?? (duration.isFinite ? duration : 0))
             activeIndex = index
             pause()
         } else {

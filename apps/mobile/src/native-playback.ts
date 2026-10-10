@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import type {RemoteSkipPolicy} from '../../../packages/playback/src/remotePolicy';
 
 export interface NativePlaybackLoad {
   /** Stable server + user scope. Never a credential. */
@@ -7,6 +8,8 @@ export interface NativePlaybackLoad {
   fileId: string;
   url: string;
   tracks?: { id: string; url: string; duration?: number }[];
+  chapters?: {id:string;title:string;start:number;duration:number}[];
+  coverUrl?: string;
   manifestRevision?: string;
   readOnly?: boolean;
   title: string;
@@ -48,6 +51,7 @@ export interface NativePlaybackPlugin {
   pause(): Promise<void>;
   seek(options: { position: number }): Promise<void>;
   setRate(options: { rate: number }): Promise<void>;
+  configureRemote?(options:RemoteSkipPolicy):Promise<void>;
   setSleepTimer(options: { deadline?: number; chapterEnd?: number }): Promise<void>;
   snapshot(): Promise<NativePlaybackSnapshot>;
   clear(): Promise<void>;

@@ -79,4 +79,5 @@ export interface PlaybackOptions {
   persistCheckpoint?: (checkpoint: AudioCheckpoint) => void;
   preferredRate?: number;
   skipSeconds?: number;
+  remotePolicy?: import('./remotePolicy').RemoteSkipPolicy;
 }

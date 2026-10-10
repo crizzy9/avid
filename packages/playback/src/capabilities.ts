@@ -15,6 +15,7 @@ export interface PlatformCapabilityEvidence {
   browser: BrowserCapabilityEvidence;
   playback?: NativeCapabilityEvidence;
   surfaces?: NativeCapabilityEvidence;
+  speech?: NativeCapabilityEvidence;
 }
 
 export const capabilityEnglish = {
@@ -82,7 +83,7 @@ export function getPlatformCapabilities(
   const nativeAudio = playback?.installed === true;
   const audio = nativeAudio || browser.audio;
   const media = nativeAudio ? reports(playback, 'systemMediaControlsAvailable') : browser.mediaSession;
-  const speech = browser.speech && Number.isFinite(browser.installedVoices) && browser.installedVoices > 0;
+  const speech = evidence.speech?.installed ? reports(evidence.speech, 'speechAvailable') : browser.speech && Number.isFinite(browser.installedVoices) && browser.installedVoices > 0;
   const background = reports(playback, 'backgroundAudioAvailable');
   const car = reports(playback, 'carIntegrationAvailable');
   // All of these surfaces depend on the account-scoped shared store. OS APIs alone
@@ -99,7 +100,7 @@ export function getPlatformCapabilities(
   return [
     row('audio', 'audio', audio, detail(audio, 'audioReady')),
     row('media-session', 'mediaSession', media, detail(media, 'mediaReady', playback)),
-    row('speech', 'speech', speech, speech ? 'speechReady' : browser.speech ? 'speechEmpty' : 'speechUnavailable'),
+    row('speech', 'speech', speech, speech ? 'speechReady' : evidence.speech?.checking ? 'checking' : evidence.speech?.installed || browser.speech ? 'speechEmpty' : 'speechUnavailable'),
     row('background-audio', 'background', background, detail(background, 'backgroundReady', playback, 'backgroundUnavailable')),
     row('carplay', 'car', car, detail(car, 'carReady', playback)),
     row('widgets', 'widgets', widgets, detail(widgets, 'widgetsReady', surfaces)),

@@ -8,12 +8,28 @@ struct AvidAudioTrack: Codable {
     let duration: Double?
 }
 
+struct AvidAudioChapter: Codable {
+    let id: String
+    let title: String
+    let start: Double
+    let duration: Double
+    static func validate(_ chapters: [AvidAudioChapter]) -> Bool {
+        guard chapters.count <= 10000, Set(chapters.map(\.id)).count == chapters.count else { return false }
+        return chapters.enumerated().allSatisfy { index, chapter in
+            !chapter.id.isEmpty && chapter.id.utf8.count <= 4096 && chapter.title.utf8.count <= 4096 &&
+            chapter.start.isFinite && chapter.start >= 0 && chapter.duration.isFinite && chapter.duration > 0 &&
+            (index == 0 || chapter.start >= chapters[index - 1].start + chapters[index - 1].duration)
+        }
+    }
+}
+
 struct AvidStoredAudioSource: Codable {
     let accountScope: String
     let bookId: String
     let fileId: String
     let url: URL
     let tracks: [AvidAudioTrack]?
+    let chapters: [AvidAudioChapter]?
     let manifestRevision: String?
     let readOnly: Bool?
     let title: String
@@ -42,7 +58,7 @@ enum AvidPlaybackSourceStore {
         } else if status != errSecSuccess { throw keychainError(status) }
     }
 
-    static func source(for book: AvidRecentBook) throws -> AvidStoredAudioSource {
+    @MainActor static func source(for book: AvidRecentBook) throws -> AvidStoredAudioSource {
         guard book.scopeHash == AvidSharedStore.shared.activeScopeHash else { throw AvidSurfaceError.unavailableBook }
         let key = "\(book.scopeHash):\(book.bookId):\(book.fileId)"
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
@@ -53,6 +69,8 @@ enum AvidPlaybackSourceStore {
         let source = try JSONDecoder().decode(AvidStoredAudioSource.self, from: data)
         guard source.scopeHash == book.scopeHash, source.bookId == book.bookId, source.fileId == book.fileId else { throw AvidSurfaceError.unavailableBook }
         if let expires = source.expiresAt, expires <= Date() { throw AvidSurfaceError.expiredSource }
+        let tracks = source.tracks ?? [AvidAudioTrack(id: source.fileId, url: source.url, duration: nil)]
+        guard tracks.allSatisfy({ !$0.url.isFileURL || AvidMediaStore.shared.owns($0.url, scope: source.accountScope, book: source.bookId, file: source.fileId, track: $0.id) }) else { throw AvidMediaStore.Failure.missing }
         return source
     }
 

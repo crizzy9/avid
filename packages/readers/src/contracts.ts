@@ -5,6 +5,7 @@ export type { Annotation, Book, BookFile, ReadingAnchor };
 export interface ReaderProps {
   book: Book;
   accountScope?: string;
+  preferences?: ReaderPreferencePort;
   onActivity?: (activity: 'reading' | 'speech' | 'listening') => void;
   onAlignmentReady?: (handle: ReaderAlignmentHandle | null) => void;
   modeControls?: ReactNode;
@@ -15,6 +16,14 @@ export interface ReaderProps {
   onClose: () => void;
   onAnchor: (anchor: ReadingAnchor) => void;
   onAnnotation: (annotation: Annotation) => void;
+}
+export type ReaderPreferenceValues = Partial<Omit<ReaderSettings,'direction'>> & { comicDirection?: 'auto' | 'ltr' | 'rtl' };
+export interface ReaderPreferencePort {
+  /** Immutable account and file identity; never a token. */
+  id: string;
+  readOnly: boolean;
+  load: () => Promise<ReaderPreferenceValues>;
+  patch: (values: ReaderPreferenceValues) => Promise<void>;
 }
 export interface TocItem { label: string; href: string | number; subitems?: TocItem[]; pageNumber?: number; fileName?: string }
 export interface SearchResult { label: string; locator: string; excerpt: string; pageNumber?: number }

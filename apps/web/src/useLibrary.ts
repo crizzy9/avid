@@ -83,6 +83,7 @@ export function useLibrary(
   const [coverCache, setCoverCache] = useState<BookCoverCache | null>(null);
   const coverStore = useRef<BookCoverCache | null>(null);
   const localProgress = useRef(new Map<string, ReadingAnchor>());
+  const progressRead = useRef(0);
   const isCurrent = useCallback(
     (repository: LibraryRepository, activeClient: BookOrbitClient | null) =>
       mounted.current &&
@@ -399,6 +400,7 @@ export function useLibrary(
     )
       return recoveryFlight.current.promise;
     const active = () => isCurrent(repo, client);
+    progressRead.current++;
     const promise = (async () => {
       let recovered = 0;
       for (let page = 0; page < 10 && active(); page++) {
@@ -483,6 +485,7 @@ export function useLibrary(
   );
   const saveAnchor = useCallback(
     async (anchor: ReadingAnchor) => {
+      progressRead.current++;
       try {
         let nativeRecord: { id: string; readOnly: boolean } | undefined;
         if (
@@ -532,6 +535,7 @@ export function useLibrary(
         }
         const stored = await repo.getAnchor(anchor);
         if (!stored || !isCurrent(repo, client)) return;
+        progressRead.current++;
         const current = localProgress.current.get(anchor.bookId);
         if (
           !current ||
@@ -565,6 +569,69 @@ export function useLibrary(
     if (isCurrent(repo, client) && notesRead === annotationRead.current)
       setAnnotations(notes);
   }, [repo, client, isCurrent]);
+  /** Rehydrate an explicit recovery choice, including a deliberately older server position. */
+  const recoverSync = useCallback(async () => {
+    if (!isCurrent(repo, client)) return;
+    await flush();
+    if (!isCurrent(repo, client)) return;
+    const progressSnapshot = ++progressRead.current;
+    const notesSnapshot = ++annotationRead.current;
+    const [anchors, cached, notes, pending] = await repo.db.transaction(
+      "r",
+      [repo.db.anchors, repo.db.books, repo.db.annotations, repo.db.outbox],
+      () =>
+        Promise.all([
+          repo.getAnchors(),
+          repo.getBooks(),
+          repo.getAnnotations(),
+          repo.pendingOperations(),
+        ]),
+    );
+    if (!isCurrent(repo, client)) return;
+    if (notesSnapshot === annotationRead.current) setAnnotations(notes);
+    if (progressSnapshot === progressRead.current) {
+      const positions = new Map<string, ReadingAnchor>();
+      for (const anchor of anchors) {
+        const previous = positions.get(anchor.bookId);
+        if (
+          !previous ||
+          (Date.parse(anchor.updatedAt) || 0) >
+            (Date.parse(previous.updatedAt) || 0)
+        )
+          positions.set(anchor.bookId, anchor);
+      }
+      localProgress.current = positions;
+      const metadata = new Map(cached.map((book) => [book.id, book]));
+      setBooks((previous) =>
+        previous.map((book) => {
+          const anchor = positions.get(book.id),
+            saved = metadata.get(book.id);
+          return anchor
+            ? {
+                ...book,
+                progress: anchor.progress,
+                status: anchor.progress >= 0.995 ? "finished" : "reading",
+              }
+            : saved
+              ? { ...book, progress: saved.progress, status: saved.status }
+              : book;
+        }),
+      );
+    }
+    setSyncStatus(
+      !client
+        ? "On this device"
+        : client.readOnly
+          ? "Read-only server"
+          : pending.some((operation) => operation.status === "conflict")
+            ? "Needs review"
+            : pending.some((operation) => operation.status === "failed")
+              ? "Sync failed"
+              : pending.length
+                ? "Changes pending"
+                : "Synced",
+    );
+  }, [repo, client, isCurrent, flush]);
   const saveAnnotation = useCallback(
     async (annotation: Annotation) => {
       await repo.putAnnotation(annotation, {
@@ -654,6 +721,7 @@ export function useLibrary(
     saveCollections,
     createCollection,
     refreshAnnotations,
+    recoverSync,
     recoverNative,
   };
 }

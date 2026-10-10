@@ -1,8 +1,8 @@
 {
   "target": "http://127.0.0.1:43120",
   "contract": "3.3.0 / e767358443419253eeed782518d6fc4f675d69fd",
-  "runId": "1791593237757-b5acc98e",
-  "checkedAt": "2026-10-10T00:47:17.757Z",
+  "runId": "1791594522057-3f402dd6",
+  "checkedAt": "2026-10-10T01:08:42.057Z",
   "checks": [
     {
       "name": "native password authentication and actual account identity",
@@ -37,7 +37,7 @@
       "passed": true
     },
     {
-      "name": "reader preference patch/read",
+      "name": "reader preference sparse patch/read through the durable reader adapter",
       "passed": true
     },
     {
@@ -89,102 +89,102 @@
     },
     {
       "method": "POST",
-      "path": "/api/v1/libraries/1/upload",
+      "path": "/api/v1/libraries/2/upload",
       "status": 201
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/1",
+      "path": "/api/v1/books/4",
       "status": 200
     },
     {
       "method": "POST",
-      "path": "/api/v1/libraries/1/upload",
+      "path": "/api/v1/libraries/2/upload",
       "status": 201
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/2",
+      "path": "/api/v1/books/5",
       "status": 200
     },
     {
       "method": "POST",
-      "path": "/api/v1/libraries/1/books",
+      "path": "/api/v1/libraries/2/books",
       "status": 201
     },
     {
       "method": "POST",
-      "path": "/api/v1/libraries/1/books",
+      "path": "/api/v1/libraries/2/books",
       "status": 201
     },
     {
       "method": "POST",
-      "path": "/api/v1/books/files/1/progress",
+      "path": "/api/v1/books/files/4/progress",
       "status": 201
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/files/1/progress",
+      "path": "/api/v1/books/files/4/progress",
       "status": 200
     },
     {
       "method": "POST",
-      "path": "/api/v1/books/files/2/progress",
+      "path": "/api/v1/books/files/5/progress",
       "status": 201
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/files/2/progress",
+      "path": "/api/v1/books/files/5/progress",
       "status": 200
     },
     {
       "method": "POST",
-      "path": "/api/v1/books/1/annotations",
+      "path": "/api/v1/books/4/annotations",
       "status": 201
     },
     {
       "method": "PATCH",
-      "path": "/api/v1/books/1/annotations/1",
+      "path": "/api/v1/books/4/annotations/3",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/1/annotations",
+      "path": "/api/v1/books/4/annotations",
       "status": 200
     },
     {
       "method": "DELETE",
-      "path": "/api/v1/books/1/annotations/1",
+      "path": "/api/v1/books/4/annotations/3",
       "status": 204
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/1/annotations",
+      "path": "/api/v1/books/4/annotations",
       "status": 200
     },
     {
       "method": "POST",
-      "path": "/api/v1/books/2/annotations",
+      "path": "/api/v1/books/5/annotations",
       "status": 201
     },
     {
       "method": "PATCH",
-      "path": "/api/v1/books/2/annotations/2",
+      "path": "/api/v1/books/5/annotations/4",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/2/annotations",
+      "path": "/api/v1/books/5/annotations",
       "status": 200
     },
     {
       "method": "DELETE",
-      "path": "/api/v1/books/2/annotations/2",
+      "path": "/api/v1/books/5/annotations/4",
       "status": 204
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/2/annotations",
+      "path": "/api/v1/books/5/annotations",
       "status": 200
     },
     {
@@ -194,12 +194,12 @@
     },
     {
       "method": "POST",
-      "path": "/api/v1/collections/1/books",
+      "path": "/api/v1/collections/2/books",
       "status": 201
     },
     {
       "method": "GET",
-      "path": "/api/v1/collections/1/books",
+      "path": "/api/v1/collections/2/books",
       "status": 200
     },
     {
@@ -209,12 +209,12 @@
     },
     {
       "method": "DELETE",
-      "path": "/api/v1/collections/1/books",
+      "path": "/api/v1/collections/2/books",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/collections/1/books",
+      "path": "/api/v1/collections/2/books",
       "status": 200
     },
     {
@@ -224,52 +224,77 @@
     },
     {
       "method": "PATCH",
-      "path": "/api/v1/books/1/status",
+      "path": "/api/v1/books/4/status",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/1",
+      "path": "/api/v1/books/4",
       "status": 200
     },
     {
       "method": "PATCH",
-      "path": "/api/v1/books/1/status",
+      "path": "/api/v1/books/4/status",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/1",
+      "path": "/api/v1/books/4",
       "status": 200
     },
     {
       "method": "PATCH",
-      "path": "/api/v1/reader/preferences/1",
+      "path": "/api/v1/reader/preferences/4",
       "status": 204
     },
     {
       "method": "GET",
-      "path": "/api/v1/reader/preferences/1",
+      "path": "/api/v1/reader/preferences/4",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/1/sessions",
+      "path": "/api/v1/reader/defaults",
       "status": 200
     },
     {
-      "method": "POST",
-      "path": "/api/v1/books/files/1/sessions",
+      "method": "GET",
+      "path": "/api/v1/reader/preferences/4",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/reader/preferences/4",
       "status": 204
     },
     {
-      "method": "POST",
-      "path": "/api/v1/books/files/1/sessions",
+      "method": "PATCH",
+      "path": "/api/v1/reader/preferences/4",
       "status": 204
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/1/sessions",
+      "path": "/api/v1/reader/preferences/4",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/books/4/sessions",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/books/files/4/sessions",
+      "status": 204
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/books/files/4/sessions",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/books/4/sessions",
       "status": 200
     },
     {
@@ -283,83 +308,88 @@
       "status": 200
     },
     {
+      "method": "GET",
+      "path": "/api/v1/user-statistics/session-timeline",
+      "status": 200
+    },
+    {
       "method": "POST",
-      "path": "/api/v1/libraries/1/upload",
+      "path": "/api/v1/libraries/2/upload",
       "status": 201
     },
     {
       "method": "GET",
-      "path": "/api/v1/books/3",
+      "path": "/api/v1/books/6",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/audiobooks/3/manifest",
+      "path": "/api/v1/audiobooks/6/manifest",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/audiobooks/3/manifest",
+      "path": "/api/v1/audiobooks/6/manifest",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/audiobooks/3/manifest",
+      "path": "/api/v1/audiobooks/6/manifest",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/audiobooks/3/playback-state",
+      "path": "/api/v1/audiobooks/6/playback-state",
       "status": 200
     },
     {
       "method": "PUT",
-      "path": "/api/v1/audiobooks/3/playback-state",
+      "path": "/api/v1/audiobooks/6/playback-state",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/audiobooks/3/playback-state",
+      "path": "/api/v1/audiobooks/6/playback-state",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/audiobooks/3/manifest",
+      "path": "/api/v1/audiobooks/6/manifest",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/audiobooks/3/bookmarks",
+      "path": "/api/v1/audiobooks/6/bookmarks",
       "status": 200
     },
     {
       "method": "POST",
-      "path": "/api/v1/audiobooks/3/bookmarks",
+      "path": "/api/v1/audiobooks/6/bookmarks",
       "status": 201
     },
     {
       "method": "GET",
-      "path": "/api/v1/audiobooks/3/bookmarks",
+      "path": "/api/v1/audiobooks/6/bookmarks",
       "status": 200
     },
     {
       "method": "GET",
-      "path": "/api/v1/audiobooks/3/bookmarks",
+      "path": "/api/v1/audiobooks/6/bookmarks",
       "status": 200
     },
     {
       "method": "PATCH",
-      "path": "/api/v1/audiobooks/3/bookmarks/0414b588-96aa-4307-bd7b-fed705e9ccc7",
+      "path": "/api/v1/audiobooks/6/bookmarks/4a1762ed-857e-44e1-a257-30cb2a2c7a10",
       "status": 200
     },
     {
       "method": "DELETE",
-      "path": "/api/v1/audiobooks/3/bookmarks/0414b588-96aa-4307-bd7b-fed705e9ccc7",
+      "path": "/api/v1/audiobooks/6/bookmarks/4a1762ed-857e-44e1-a257-30cb2a2c7a10",
       "status": 204
     },
     {
       "method": "GET",
-      "path": "/api/v1/audiobooks/3/bookmarks",
+      "path": "/api/v1/audiobooks/6/bookmarks",
       "status": 200
     },
     {

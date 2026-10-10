@@ -1,13 +1,16 @@
 import { PlaybackController, chapterAtTime, trackAtTime, trackStart, clamp, validateTimeline, type AudioCheckpoint, type PlaybackBook, type PlaybackSnapshot, type SleepTimer } from '../../../packages/playback/src';
 import { createLazyPlaybackTransport } from './lazy-transport';
 import { getNativePlayback, type NativePlaybackPlugin, type NativePlaybackSnapshot } from './native-playback';
+import {normalizeRemotePolicy,remoteSkipPosition,type RemoteSkipPolicy} from '../../../packages/playback/src/remotePolicy';
+import {getDesktopBridge} from '../../desktop/src/bridge';
+import {resolveNativePlaybackBook} from './native-media-store';
 
 /** Shared public transport shape; browser and native owners never run simultaneously. */
 export type PlaybackTransport = Pick<PlaybackController, keyof PlaybackController> & {
   /** Attach to a verified live native owner without replacing its newer position or play state. */
   adoptNative?(book: PlaybackBook): Promise<boolean>;
 };
-export interface NativeTransportOptions { accountScope: () => string | null; readOnly?: () => boolean }
+export interface NativeTransportOptions { accountScope: () => string | null; readOnly?: () => boolean; remotePolicy?:RemoteSkipPolicy }
 
 const initial: PlaybackSnapshot = { status: 'stopped', bookId: null, fileId: null, title: '', currentTime: 0, duration: 0, trackIndex: 0, chapterIndex: -1, rate: 1, sleepUntil: null, sleepAtChapterEnd: null, error: null };
 
@@ -26,8 +29,10 @@ export class NativePlaybackTransport implements PlaybackTransport {
   private poll: ReturnType<typeof setInterval>;
   private refreshing = false;
   private lastNativeTime: string | null = null;
+  private remotePolicy:RemoteSkipPolicy;
 
   constructor(private readonly plugin: NativePlaybackPlugin, private readonly options: NativeTransportOptions) {
+    this.remotePolicy=normalizeRemotePolicy(options.remotePolicy);
     this.listener = plugin.addListener('checkpoint', (value) => this.accept(value));
     // Active UI progress. Background safety comes from the native service/AVPlayer, not this timer.
     this.poll = setInterval(() => { void this.refresh(); }, 1000);
@@ -63,7 +68,7 @@ export class NativePlaybackTransport implements PlaybackTransport {
     validateTimeline(book.tracks, book.chapters ?? []);
     const scope = this.options.accountScope();
     if (!scope) throw new Error('An account scope is required for native playback.');
-    if (book.tracks.some(track => !/^(https?|file|content):/i.test(track.url))) throw new Error('Native playback requires a server URL or native file URL. WebView blob URLs cannot be played by the native owner.');
+    if (book.tracks.some(track => !/^(https?|file|content|blob):/i.test(track.url))) throw new Error('Native playback requires a server URL or an imported local audio file.');
     this.checkpoint();
     this.loaded = false;
     this.scope = scope;
@@ -77,7 +82,10 @@ export class NativePlaybackTransport implements PlaybackTransport {
     this.command(async () => {
       if (revision !== this.revision) return;
       try {
-        await this.plugin.load({ accountScope: scope, bookId: book.bookId, fileId: book.fileId, url: book.tracks[0]!.url, tracks: book.tracks.map(({ id, url, duration }) => ({ id, url, duration })), manifestRevision: book.manifestRevision, readOnly, title: book.title, author: book.authors.join(', '), position, rate });
+        const resolved = await resolveNativePlaybackBook(book, scope, {isCurrent:()=>revision===this.revision && scope===this.options.accountScope() && !this.disposed});
+        if(revision!==this.revision || scope!==this.options.accountScope() || this.disposed)return;
+        await this.plugin.configureRemote?.(this.remotePolicy);
+        await this.plugin.load({ accountScope: scope, bookId: book.bookId, fileId: book.fileId, url: resolved.tracks[0]!.url, tracks: resolved.tracks.map(({ id, url, duration }) => ({ id, url, duration })), chapters:book.chapters,coverUrl:resolved.coverUrl,manifestRevision: book.manifestRevision, readOnly, title: book.title, author: book.authors.join(', '), position, rate });
         this.loaded = true;
       } catch (error) { await this.plugin.clear().catch(() => {}); throw error; }
     });
@@ -90,6 +98,9 @@ export class NativePlaybackTransport implements PlaybackTransport {
     this.command(() => this.plugin.seek({ position: clamp(position, 0, this.state.duration || Infinity) }));
   }
   skip(delta: number): void { this.seek(this.state.currentTime + delta); }
+  getRemotePolicy=():RemoteSkipPolicy=>({...this.remotePolicy});
+  configureRemote(policy:RemoteSkipPolicy):void {this.remotePolicy=normalizeRemotePolicy(policy);void this.command(async()=>{await this.plugin.configureRemote?.(this.remotePolicy);});}
+  remoteSkip(direction:1|-1):void {this.seek(remoteSkipPosition(this.book,this.state,direction,this.remotePolicy));}
   goToChapter(id: string): void { const chapter = this.book?.chapters?.find(value => value.id === id); if (chapter) this.seek(chapter.start); }
   setRate(rate: number): void {
     if (!Number.isFinite(rate)) return;
@@ -169,6 +180,6 @@ export class NativePlaybackTransport implements PlaybackTransport {
 export function createPlaybackTransport(options: NativeTransportOptions): PlaybackTransport {
   return createLazyPlaybackTransport(() => {
     const native = getNativePlayback();
-    return native ? new NativePlaybackTransport(native, options) : new PlaybackController();
+    return native ? new NativePlaybackTransport(native, options) : new PlaybackController({remotePolicy:options.remotePolicy,...(getDesktopBridge()?{mediaSession:null}:{})});
   });
 }

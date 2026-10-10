@@ -8,22 +8,22 @@ The user-supplied server was not used for these tests. The results do not certif
 
 The committed [request and check report](evidence/bookorbit-v3.3-smoke.json) records check outcomes and HTTP methods, paths, and statuses. It contains no passwords, access tokens, refresh tokens, cookies, annotation text, or private books.
 
-| Check                                                                                | Result |
-| ------------------------------------------------------------------------------------ | ------ |
-| Native password login, explicit refresh token, authenticated account identity        | Passed |
-| Original EPUB/PDF upload, exact file IDs, two-page catalog pagination                | Passed |
-| EPUB CFI and percentage save/read                                                    | Passed |
-| PDF page and percentage save/read                                                    | Passed |
-| EPUB annotation creation, editing, retrieval, deletion                               | Passed |
-| PDF annotation creation, editing, retrieval, deletion                                | Passed |
-| Collection creation, membership addition/removal, selected-book membership reads     | Passed |
-| Exact `want_to_read` and `reading` statuses                                          | Passed |
-| Per-file reader preferences                                                          | Passed |
-| Activity timestamps, duplicate session-ID idempotence, server statistics             | Passed |
-| Original MP3 upload, revisioned audio progress, audio note creation/edit/read/delete | Passed |
-| Read-only Avid client rejects mutations before making HTTP requests                  | Passed |
-| Expired access token triggers native refresh-token rotation and account verification | Passed |
-| Server session logout                                                                | Passed |
+| Check                                                                                 | Result |
+| ------------------------------------------------------------------------------------- | ------ |
+| Native password login, explicit refresh token, authenticated account identity         | Passed |
+| Original EPUB/PDF upload, exact file IDs, two-page catalog pagination                 | Passed |
+| EPUB CFI and percentage save/read                                                     | Passed |
+| PDF page and percentage save/read                                                     | Passed |
+| EPUB annotation creation, editing, retrieval, deletion                                | Passed |
+| PDF annotation creation, editing, retrieval, deletion                                 | Passed |
+| Collection creation, membership addition/removal, selected-book membership reads      | Passed |
+| Exact `want_to_read` and `reading` statuses                                           | Passed |
+| Durable reader-preference adapter, sparse field updates, unrelated-field preservation | Passed |
+| Activity timestamps, duplicate session-ID idempotence, server statistics and timeline | Passed |
+| Original MP3 upload, revisioned audio progress, audio note creation/edit/read/delete  | Passed |
+| Read-only Avid client rejects mutations before making HTTP requests                   | Passed |
+| Expired access token triggers native refresh-token rotation and account verification  | Passed |
+| Server session logout                                                                 | Passed |
 
 The EPUB and PDF came from `packages/readers/fixtures`. Audio was converted from the original Avid `audio1.wav` narration to MP3 using local ffmpeg. No third-party publication was downloaded. API setup and library creation use the pinned server DTOs; all subsequent library operations use the actual `BookOrbitClient` implementation.
 

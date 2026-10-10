@@ -1,6 +1,7 @@
 package app.avid.playback
 
 import android.net.Uri
+import android.content.Context
 import android.os.Bundle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -10,6 +11,22 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 object AvidQueue {
+    internal fun chapters(source: JSONObject): List<AudioChapter> {
+        val values = source.optJSONArray("chapters") ?: JSONArray()
+        return (0 until values.length()).map { index -> values.getJSONObject(index).let {
+            AudioChapter(it.getString("id"), it.getString("title"), it.getDouble("start"), it.getDouble("duration"))
+        } }.also { RemotePlaybackPolicy.validate(it) }
+    }
+    fun validateSources(context: Context, source: JSONObject, scope: String) {
+        tracks(source).forEach { track ->
+            val url = track.getString("url")
+            if (Uri.parse(url).scheme in listOf("file", "content")) require(AvidMediaStore.validate(context, url,
+                MediaIdentity(scope, source.getString("bookId"), source.getString("fileId"), track.getString("id")))) {
+                "Import this audio into Avid's private storage before playing it."
+            }
+        }
+        chapters(source)
+    }
     fun tracks(source: JSONObject): List<JSONObject> {
         val values = source.optJSONArray("tracks") ?: JSONArray().put(JSONObject().put("id", source.getString("fileId")).put("url", source.getString("url")))
         val tracks = (0 until values.length()).map { values.getJSONObject(it) }

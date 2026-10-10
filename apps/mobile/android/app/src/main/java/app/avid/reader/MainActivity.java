@@ -11,6 +11,7 @@ import app.avid.playback.AvidOidcPlugin;
 import app.avid.playback.AvidAppearancePlugin;
 import app.avid.playback.AvidAuthPlugin;
 import app.avid.playback.AvidSpeechPlugin;
+import app.avid.playback.AvidMediaStorePlugin;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -25,6 +26,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AvidAppearancePlugin.class);
         registerPlugin(AvidAuthPlugin.class);
         registerPlugin(AvidSpeechPlugin.class);
+        registerPlugin(AvidMediaStorePlugin.class);
         super.onCreate(savedInstanceState);
     }
 

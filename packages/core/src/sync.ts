@@ -71,6 +71,8 @@ export class SyncCoordinator {
       if(remote?.updatedAt && Date.parse(remote.updatedAt)>Date.parse(operation.occurredAt)) return this.conflict(operation,'A newer position exists on the server. Choose which position to keep.');
       if(payload.anchor.kind==='audio') await this.client.saveProgress(payload.anchor,{operationId:operation.id});
       else await this.client.saveProgress(payload.anchor);
+    } else if(payload.kind==='preferences') {
+      await this.client.patchPreferences(payload.fileId,payload.set,payload.unset);
     } else if(payload.kind==='session') {
       // BookOrbit deduplicates its sessionId, so retry uses the same ID and original times.
       await this.client.saveReadingSession(payload.session,payload.fileId,{endedAt:payload.endedAt});

@@ -135,6 +135,56 @@ afterEach(async () => {
 });
 
 describe("account-scoped library integration", () => {
+  it("rehydrates an explicitly accepted older position without stale progress or cover loss, with no read-only HTTP", async () => {
+    await act(async () => {
+      await api.connect(session(), true);
+    });
+    const original = {
+      bookId: "12",
+      fileId: "31",
+      kind: "epub" as const,
+      locator: "epubcfi(/6/8)",
+      progress: 0.8,
+      updatedAt: "2026-10-09T12:00:00Z",
+    };
+    await act(async () => {
+      await api.saveAnchor(original);
+      api.setBooks((previous) =>
+        previous.map((book) => ({ ...book, coverUrl: "blob:visible-cover" })),
+      );
+    });
+    const selected = {
+      ...original,
+      locator: "epubcfi(/6/2)",
+      progress: 0.2,
+      updatedAt: "2026-10-09T11:00:00Z",
+    };
+    await api.repo.db.anchors
+      .where("scope")
+      .equals(api.repo.scope)
+      .modify({ value: selected });
+    await api.repo.putAnnotation(note);
+    const calls = transport.mock.calls.length;
+    await act(async () => {
+      await api.recoverSync();
+    });
+    expect(transport).toHaveBeenCalledTimes(calls);
+    expect(api.syncStatus).toBe("Read-only server");
+    expect(api.books[0]).toMatchObject({
+      progress: 0.2,
+      coverUrl: "blob:visible-cover",
+      title: "Initial",
+    });
+    expect(api.annotations).toContainEqual(note);
+    expect(await api.repo.pendingOperations()).toHaveLength(1);
+    await act(async () => {
+      await api.query({ query: "Refreshed metadata" });
+    });
+    expect(api.books[0]).toMatchObject({
+      progress: 0.2,
+      title: "Refreshed metadata",
+    });
+  });
   it.each([false, true])(
     "waits for the secure vault before publishing account surfaces (cancel=%s)",
     async (canceled) => {
