@@ -435,7 +435,16 @@ fn discover_udp(target: SocketAddr, duration: Duration, transfer: &Transfer) -> 
                 }
             },
             Ok(_) => {},
-            Err(error) if [std::io::ErrorKind::WouldBlock, std::io::ErrorKind::TimedOut].contains(&error.kind()) => {},
+            // UDP errors concern one datagram/peer, not the whole discovery socket.
+            // Winsock reports a prior ICMP port-unreachable as ConnectionReset and
+            // consumes oversized datagrams with WSAEMSGSIZE instead of truncating.
+            Err(error) if [
+                std::io::ErrorKind::WouldBlock,
+                std::io::ErrorKind::TimedOut,
+                std::io::ErrorKind::Interrupted,
+                std::io::ErrorKind::ConnectionReset,
+                std::io::ErrorKind::ConnectionRefused,
+            ].contains(&error.kind()) || (cfg!(windows) && matches!(error.raw_os_error(), Some(10040 | 10052))) => {},
             Err(_) => return Err("Reader discovery was interrupted. Enter the IP on its screen.".into()),
         }
     }
@@ -475,6 +484,7 @@ mod tests {
             let mut bytes = [0u8; 16];
             let (size, peer) = socket.recv_from(&mut bytes).unwrap();
             assert_eq!(&bytes[..size], b"hello");
+            socket.send_to(&[b'x'; 300], peer).unwrap();
             socket.send_to(b"crosspoint (on fixture);81", peer).unwrap();
             socket.send_to(b"crosspoint (on fixture);81", peer).unwrap();
         });
@@ -485,6 +495,15 @@ mod tests {
         server.join().unwrap();
         state.close(&id).unwrap();
         assert!(discover_udp(target, Duration::from_millis(160), &transfer).is_err());
+    }
+    #[test]
+    fn unreachable_udp_peer_finishes_with_no_readers() {
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let target = socket.local_addr().unwrap();
+        drop(socket);
+        let state = CrossPoint::default();
+        let transfer = state.begin(&uuid::Uuid::new_v4().to_string()).unwrap();
+        assert!(discover_udp(target, Duration::from_millis(160), &transfer).unwrap().is_empty());
     }
     #[test]
     fn only_exact_crosspoint_routes_and_local_addresses() {

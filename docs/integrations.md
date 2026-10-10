@@ -13,7 +13,7 @@ There is a material docs/source discrepancy at this revision: the endpoint docum
 1. Open the reader's File Transfer screen and use the same local network.
 2. In an installed app, choose **Find readers** and select a reply, or enter `crosspoint.local` / the displayed IP. Optionally supply a specific fallback IP and existing folder. Discovery does not prepare or send a file.
 3. **Check reader** performs schema-checked, read-only status/list requests. It displays the observed firmware and hardware. Protocol observation is separate from firmware qualification; the qualified-version list is currently empty.
-4. Choose a local EPUB, or an EPUB supplied by the host app's file-source callback. **Review transfer** computes a SHA-256 and displays the exact device/folder/unique filename. It sends no file to the reader.
+4. Choose a local EPUB or one of the available library EPUBs. **Review transfer** loads only that selected file, computes a SHA-256 and displays the exact device/folder/unique filename. It sends no file to the reader.
 5. **Send EPUB** rechecks device identity, firmware, and directory contents. It refuses case-insensitive filename collisions. The only mutating operation is one multipart POST.
 6. A successful transfer requires downloading the installed copy and matching its size and SHA-256. The result is explicitly `verified`, `missing`, or `different-content`.
 
@@ -29,6 +29,8 @@ The panel keeps only the latest attempted receipt in account-scoped local storag
 
 The default file limit is 64 MiB, configurable by the adapter host. Hashing and verification buffer the source/read-back in memory, so large-file support needs measurements on target devices. The request timeout covers response-body consumption. An injected native transport must honor AbortSignal and fetch-compatible request/response semantics.
 
+Avid's library picker uses at most 200 EPUB entries from already-loaded catalog/import metadata. It shows the title and original filename, omits sample entries without real bytes, and excludes known empty or oversized files before loading. Opening the panel, checking a reader or selecting a title does not download book content or fetch additional catalog pages. **Review transfer** uses the captured BookOrbit client or account repository; the original filename is retained. Server file reads preflight Content-Length and count response-stream bytes against 64 MiB, canceling oversized bodies even when the metadata or header is absent or inaccurate. The desktop transport also enforces that bound natively; mobile CapacitorHttp can buffer a response before exposing its JavaScript stream, so this JavaScript limit does not bound the earlier native allocation. Cancellation and connection-identity checks reject stale results before transfer preparation, including a same-account reconnection. Actual local file size is checked again after loading. The local file picker remains available.
+
 ### Integration API
 
 ```tsx
@@ -39,12 +41,12 @@ import { CrossPointPanel } from "../../../packages/integrations/src";
   fileSources={epubFiles.map((file) => ({
     id: file.id,
     name: file.name,
-    load: () => library.client.getFileBlob(file.id),
+    load: (signal) => library.client.getFileBlob(file.id, signal, 64 * 1024 * 1024),
   }))}
 />;
 ```
 
-`fileSources` is optional; the panel always supports a user-selected local EPUB. `nativeFetch` may only be passed when a real platform bridge is installed and qualified.
+`fileSources` is optional; the panel always supports a user-selected local EPUB. A source can provide a display `label` while keeping its original filename in `name`. Host loaders must validate their captured account before and after the read; Avid's `createCrossPointLibrarySources` helper implements this alongside the size and list bounds. `nativeFetch` is passed only when the actual platform bridge is registered; physical-device qualification remains a separate release gate.
 
 For non-React callers:
 
@@ -79,7 +81,7 @@ Android's separate OkHttp client pins all resolved addresses to private/link-loc
 
 iOS uses separate ephemeral URLSessions with no credential/cookie/cache store and rejects redirects. Checked HTTP addresses are pinned by replacing the connection host with the resolved private IP while retaining the device Host header. HTTPS requires a numeric local address with normal system certificate validation; a hostname-based HTTPS reader must be entered by its certificate-valid IP. Response limits are 64 KiB status/upload acknowledgments, 2 MiB listings and 64 MiB EPUBs. iOS buffers the bounded response before exposing 256 KiB bridge chunks (at most two active transfers); Android and desktop read incrementally. A canceled upload is never automatically resubmitted by Avid.
 
-Controlled Rust and Android loopback tests cover HTTP credentials, redirects and cancellation; Rust additionally exercises a real UDP discovery responder. Shared tests reject malformed/public discovery results, suppress canceled replies and prove that choosing a discovered device still requires inspection. These fixtures do not qualify physical Wi-Fi, local-network permission prompts, firmware or large-file memory.
+Controlled Rust and Android loopback tests cover HTTP credentials, redirects and cancellation; Rust additionally exercises a real UDP discovery responder, oversized datagrams and an unreachable peer. Discovery retains valid replies after a per-datagram error: Windows reports ICMP port-unreachable as a connection reset and oversized datagrams as `WSAEMSGSIZE`. [Winsock receive semantics](https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-recvfrom). Shared tests reject malformed/public discovery results, suppress canceled replies and prove that choosing a discovered device still requires inspection. These fixtures do not qualify physical Wi-Fi, local-network permission prompts, firmware or large-file memory.
 
 ## Archive of Our Own (F49)
 

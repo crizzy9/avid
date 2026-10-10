@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Annotation, Book, BookFile, BookOrbitReadStatus, Collection, ReadingAnchor, ReadingSession, ServerProfile, Session } from './types';
 import { bookOrbitTextProgress, koreaderRestoreAnchor, parseKoreaderCheckpoint, KoreaderContractError, type KoreaderCheckpoint, type KoreaderFileIdentity } from './koreader';
 import { mediaOverlayPath, mediaOverlayPlaylistSchema, type MediaOverlayPlaylist } from './media-overlay';
-import { boundedBlob } from './boundedBlob';
+import { boundedBlob, boundedFileBlob } from './boundedBlob';
 
 /** Contract inspected at BookOrbit v3.3.0 / e767358443419253eeed782518d6fc4f675d69fd. */
 export const BOOKORBIT_CONTRACT_VERSION = '3.3.0';
@@ -336,7 +336,14 @@ export class BookOrbitClient {
   coverUrl(id: string, version?: string): string { return `${this.endpoint}/api/v1/books/${routeId(id)}/cover${version?`?v=${encodeURIComponent(version)}`:''}`; }
   /** URLs intentionally contain no credentials. Native streams supply headers; browsers use cookies or fetched blobs. */
   streamHeaders(): Record<string,string> { return {Authorization:`Bearer ${this.session.accessToken}`}; }
-  async getFileBlob(id: string, signal?: AbortSignal): Promise<Blob> { return (await this.response(`books/files/${routeId(id)}/serve`,{signal})).blob(); }
+  async getFileBlob(id: string, signal?: AbortSignal, maximumBytes?: number): Promise<Blob> {
+    if (maximumBytes !== undefined) {
+      if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1) throw new ContractError('The file byte limit must be a positive safe integer.');
+      signal?.throwIfAborted();
+    }
+    const response = await this.response(`books/files/${routeId(id)}/serve`, { signal });
+    return maximumBytes === undefined ? response.blob() : boundedFileBlob(response, maximumBytes, signal);
+  }
   async coverBlob(id: string, signal?: AbortSignal): Promise<Blob> { return (await this.response(`books/${routeId(id)}/cover`,{signal})).blob(); }
   /** Read-only KOReader context. EPUB translation stays on BookOrbit; native locators remain opaque. */
   async getKoreaderCheckpoint(identity: KoreaderFileIdentity): Promise<KoreaderCheckpoint | null> {

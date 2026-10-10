@@ -8,6 +8,7 @@ import { importFont, storedFonts } from './fonts';
 import { parsePageAnchor } from './anchors';
 import { useReaderI18n, readerError } from './readerI18n';
 import { speechProvider, type InstalledVoice } from '../../playback/src/speechRuntime';
+import { prefersReducedMotion, useReducedMotion } from './reducedMotion';
 import { getComicDirectionMode, setComicDirectionMode, getMangaRule, setMangaRule, resolveComicDirection, type ComicDirectionMode, type MangaRule, type MangaRuleField } from './comicDirection';
 import './reader.css';
 export type { ReaderProps } from './contracts';
@@ -17,6 +18,7 @@ function getSettings(scope: string, fileId: string): ReaderSettings {
 }
 export function Reader(props: ReaderProps) {
   const { t, locale } = useReaderI18n();
+  const reducedMotion = useReducedMotion();
   const { book, annotations, onClose, onAnnotation } = props;
   const file = props.file ?? book.files.find(item => item.format !== 'AUDIO') ?? { id: `${book.id}-text`, name: book.title, format: book.format };
   const scope = props.accountScope ?? 'local';
@@ -58,6 +60,7 @@ export function Reader(props: ReaderProps) {
   const [voices, setVoices] = useState<InstalledVoice[]>([]);
   const [fonts, setFonts] = useState(() => storedFonts(scope).map(font => font.name));
   const [flash, setFlash] = useState(false);
+  const flashTimer = useRef<number | undefined>(undefined);
   const engine = useRef<EngineHandle | undefined>(undefined);
   const activeLocation = useRef(location); activeLocation.current = location;
   const callbacks = useRef(props); callbacks.current = props;
@@ -107,10 +110,15 @@ export function Reader(props: ReaderProps) {
     const unsubscribe = provider.subscribeVoices(update);
     return () => { active = false; unsubscribe(); };
   }, []);
+  useEffect(() => {
+    if (reducedMotion) { window.clearTimeout(flashTimer.current); setFlash(false); }
+    return () => window.clearTimeout(flashTimer.current);
+  }, [reducedMotion]);
   const turn = useCallback((direction: 'next' | 'prev') => {
-    if (['fade', 'fast-fade'].includes(settings.animation) && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setFlash(true); window.setTimeout(() => setFlash(false), settings.animation === 'fade' ? 250 : 100);
-    }
+    window.clearTimeout(flashTimer.current);
+    if (['fade', 'fast-fade'].includes(settings.animation) && !prefersReducedMotion()) {
+      setFlash(true); flashTimer.current = window.setTimeout(() => setFlash(false), settings.animation === 'fade' ? 250 : 100);
+    } else setFlash(false);
     engine.current?.[direction]();
   }, [settings.animation]);
   useEffect(() => {
@@ -140,7 +148,7 @@ export function Reader(props: ReaderProps) {
   const engineProps = { ...props, file, settings, onReady: (handle: EngineHandle, entries: TocItem[]) => { engine.current = handle; setToc(entries); setReady(true); }, onLocation: persistAnchor, onError: setError, onNotice: setNotice, onSelection: setSelected, onSpeaking: setSpeaking, onMediaState: setMedia };
   const locationLabel = !ready ? t('opening') : kind === 'epub' || !toc.length ? location.label : t('pageOf', { number: parsePageAnchor(location.locator, toc.length).page, count: toc.length });
   const togglePanel = (name: typeof panel) => setPanel(previous => previous === name ? null : name);
-  return <dialog ref={dialog} onCancel={event => { event.preventDefault(); if (panel) setPanel(null); else onClose(); }} className={`avid-reader theme-${settings.theme}`} role="dialog" aria-modal="true" lang={locale} aria-label={t('readingTitle', { title: book.title })} style={{ '--reader-bg': colors.background, '--reader-fg': colors.foreground } as CSSProperties}>
+  return <dialog ref={dialog} onCancel={event => { event.preventDefault(); if (panel) setPanel(null); else onClose(); }} className={`avid-reader theme-${settings.theme}`} data-reduced-motion={reducedMotion} role="dialog" aria-modal="true" lang={locale} aria-label={t('readingTitle', { title: book.title })} style={{ '--reader-bg': colors.background, '--reader-fg': colors.foreground } as CSSProperties}>
     <header className="avid-reader-header">
       <button className="reader-icon" aria-label={t('closeReader')} onClick={onClose}><ArrowLeft size={20} /></button>
       <div className="reader-heading"><span>{book.title}</span><small>{book.authors.join(', ')}</small></div>
@@ -173,7 +181,7 @@ export function Reader(props: ReaderProps) {
           <label className="reader-field">{t('pageTurn')}<select value={settings.animation} onChange={event => change('animation', event.target.value as ReaderSettings['animation'])}><option value="none">{t('none')}</option><option value="slide">{t('slide')}</option><option value="fade">{t('fade')}</option><option value="fast-fade">{t('fastFade')}</option></select></label><p className="reader-muted">{t(props.preferences && !props.preferences.readOnly ? 'preferencesSyncHint' : 'preferencesHint')}</p>
         </div>}
       </aside>}
-      <div className={`reader-stage ${flash ? 'turning' : ''}`}>
+      <div className={`reader-stage ${flash && !reducedMotion ? 'turning' : ''}`}>
         {error ? <div className="reader-error" role="alert"><BookOpen size={32} /><h2>{t('cannotOpen')}</h2><p>{error}</p><button className="reader-primary" onClick={() => setError('')}>{t('dismiss')}</button><button className="reader-secondary" onClick={onClose}>{t('backLibrary')}</button></div> : <>{kind === 'epub' ? <EbookView {...engineProps} /> : kind === 'pdf' ? <PdfView {...engineProps} /> : <ComicView {...engineProps} />}{!ready && <div className="reader-opening"><span className="reader-spinner" />{t('opening')}</div>}</>}
       </div>
       {selected && panel !== 'notes' && <div className="reader-selection-tools"><button onClick={() => saveAnnotation(false)}><Highlighter size={16} />{t('highlight')}</button><button onClick={() => { setPanel('notes'); setNoteText(''); setEditing(undefined); }}><Bookmark size={16} />{t('addNote')}</button><button aria-label={t('dismissSelection')} onClick={() => setSelected(undefined)}><X size={16} /></button></div>}

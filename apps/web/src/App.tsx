@@ -85,6 +85,7 @@ import {
   resolveDesktopPlaybackBook,
 } from "../../desktop/src/network";
 import { CrossPointPanel, AO3Panel } from "../../../packages/integrations/src";
+import { createCrossPointLibrarySources } from "./crossPointSources";
 import {
   ProviderCallback,
   getNativeProviderCoordinator,
@@ -299,6 +300,18 @@ export default function App() {
   const [showPlayer, setShowPlayer] = useState(false);
   const accountScope = useRef(library.repo.scope);
   accountScope.current = library.repo.scope;
+  const crossPointContext = useRef({ repo: library.repo, client: library.client });
+  crossPointContext.current = { repo: library.repo, client: library.client };
+  const crossPointFiles = useMemo(() => {
+    const repo = library.repo, client = library.client;
+    return createCrossPointLibrarySources({
+      books: catalogBooks,
+      repo,
+      client,
+      isActive: () => accountScope.current === repo.scope &&
+        crossPointContext.current.repo === repo && crossPointContext.current.client === client,
+    });
+  }, [catalogBooks, library.repo, library.client]);
   const readOnlyConnection = useRef(true);
   readOnlyConnection.current = library.client?.readOnly !== false;
   const readerPreferences = useMemo(
@@ -2585,7 +2598,9 @@ export default function App() {
               <section>
                 <h3>{appT("crossPointDelivery")}</h3>
                 <CrossPointPanel
+                  key={library.repo.scope}
                   accountScope={library.repo.scope}
+                  fileSources={crossPointFiles}
                   nativeFetch={getCrossPointFetch() ?? undefined}
                   discoverReaders={getReaderDiscovery()}
                 />

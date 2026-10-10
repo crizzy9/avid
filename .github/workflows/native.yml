@@ -3,9 +3,13 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'apps/mobile/**'
-      - 'apps/desktop/**'
-      - 'packages/i18n/native-messages.json'
+      - 'apps/**'
+      - 'packages/**'
+      - 'scripts/generate-native-messages.mjs'
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig*.json'
+      - 'vite.config.ts'
       - '.github/workflows/native.yml'
       - 'pnpm-lock.yaml'
 permissions:

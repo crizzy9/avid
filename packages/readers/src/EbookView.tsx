@@ -11,6 +11,7 @@ import { buildSpeechText, speechBoundaryRange, nextLinearSection } from './speec
 import { alignedPassageAtRange, verifyPublicationAudiobook } from './alignedPassage';
 import { alignmentSha256 } from '../../playback/src/standalone-alignment';
 import { speechProvider } from '../../playback/src/speechRuntime';
+import { prefersReducedMotion, useReducedMotion } from './reducedMotion';
 import '../vendor/foliate/view.js';
 import { makeBook } from '../vendor/foliate/view.js';
 import { Overlayer } from '../vendor/foliate/overlayer.js';
@@ -19,6 +20,7 @@ import { Overlayer } from '../vendor/foliate/overlayer.js';
 type FoliateView = HTMLElement & { [key: string]: any };
 export function EbookView(props: EngineProps) {
   const { t, locale } = useReaderI18n();
+  const reducedMotion = useReducedMotion();
   const container = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
   const current = useRef(props); current.current = props;
@@ -224,6 +226,10 @@ export function EbookView(props: EngineProps) {
   useEffect(() => { viewRef.current?.setAttribute('aria-label', t('readingArea')); }, [locale]);
   useEffect(() => { if (viewRef.current?.renderer) applyStyle(viewRef.current, props.settings, props.accountScope); }, [props.settings, props.accountScope]);
   useEffect(() => {
+    // Foliate renders inside a shadow root, beyond the host's motion CSS.
+    viewRef.current?.renderer?.toggleAttribute('animated', props.settings.animation === 'slide' && !reducedMotion);
+  }, [props.settings.animation, reducedMotion]);
+  useEffect(() => {
     const view = viewRef.current;
     if (!view?.renderer) return;
     for (const annotation of props.annotations.filter(item => item.bookId === props.book.id && item.fileId === props.file.id && item.locator.startsWith('epubcfi('))) {
@@ -239,7 +245,7 @@ function applyStyle(view: FoliateView, settings: EngineProps['settings'], scope 
   view.renderer.setAttribute('margin', '36px');
   view.renderer.setAttribute('max-inline-size', '740px');
   view.renderer.setAttribute('max-column-count', '2');
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduced = prefersReducedMotion();
   view.renderer.toggleAttribute('animated', settings.animation === 'slide' && !reduced);
   const family = settings.font.replace(/["\\;{}]/g, '');
   view.renderer.setStyles(`${fontRules(scope)} html { color: ${colors.foreground}; background: ${colors.background}; } body { font-family: "${family}", Georgia, serif !important; font-size: ${settings.fontSize}px !important; line-height: ${settings.lineHeight} !important; } p { line-height: inherit !important; } h1, h2 { line-height: 1.3; font-weight: 500; } a { color: inherit; } ::selection { background: #d9b97188; } img { max-width:100%; } .${CSS.escape(view.book.media?.activeClass || "avid-narration-active")} { background: #d6b96e88 !important; color: inherit !important; }`);

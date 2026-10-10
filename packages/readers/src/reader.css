@@ -6,3 +6,5 @@ dialog.avid-reader{width:100vw;max-width:none;max-height:none;height:100dvh;marg
  .reader-manga-rule { display:flex; flex-wrap:wrap; gap:10px; border:1px solid var(--reader-border, #ddd); border-radius:8px; padding:10px; margin:14px 0; }
  .reader-manga-rule legend { font-size:12px; padding:0 4px; }
  .reader-manga-rule label { display:flex; gap:6px; align-items:center; font-size:13px; }
+.avid-reader[data-reduced-motion="true"] .reader-spinner{animation:none}
+.avid-reader[data-reduced-motion="true"] .reader-stage,.avid-reader[data-reduced-motion="true"] .reader-progress>span{transition:none}

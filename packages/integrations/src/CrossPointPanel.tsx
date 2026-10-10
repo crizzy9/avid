@@ -18,7 +18,8 @@ import type { DiscoverReaders, DiscoveredReader } from "./discovery";
 export interface CrossPointFileSource {
   id: string;
   name: string;
-  load: () => Promise<Blob>;
+  label?: string;
+  load: (signal?: AbortSignal) => Promise<Blob>;
 }
 export interface CrossPointPanelProps {
   accountScope?: string;
@@ -142,14 +143,16 @@ export function CrossPointPanel({
     if (!device) return;
     void run("preparing", async (signal, current) => {
       const source = fileSources.find((item) => item.id === sourceId);
-      const bytes = sourceId === "local" ? file : await source?.load();
+      const bytes = sourceId === "local" ? file : await source?.load(signal);
+      if (!current()) return;
+      signal.throwIfAborted();
       const name = sourceId === "local" ? file?.name : source?.name;
       if (!bytes || !name) {
         if (current()) setError({ key: "chooseEpub" });
         return;
       }
       const next = await client.prepare(device, bytes, name, signal);
-      if (current()) {
+      if (current() && !signal.aborted) {
         setPlan(next);
         setAttempted(false);
         setResult(null);
@@ -265,7 +268,7 @@ export function CrossPointPanel({
                 <option value="local">{t("chooseLocal")}</option>
                 {fileSources.map((source) => (
                   <option key={source.id} value={source.id}>
-                    {source.name}
+                    {source.label ?? source.name}
                   </option>
                 ))}
               </select>
