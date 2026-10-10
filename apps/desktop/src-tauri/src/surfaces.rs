@@ -35,6 +35,7 @@ pub struct Media {
     pub title: String,
     pub author: String,
     pub chapter: Option<String>,
+    pub cover_data_url: Option<String>,
     pub position: f64,
     pub duration: f64,
     pub playing: bool,
@@ -63,6 +64,7 @@ pub struct Surfaces {
     tray: bool,
     recent_ids: HashMap<String, Recent>,
     menu_generation: u64,
+    artwork: Option<crate::artwork::ArtworkCache>,
 }
 pub type SurfaceState = Mutex<Surfaces>;
 fn text(value: &str, limit: usize, empty: bool) -> bool {
@@ -103,6 +105,10 @@ fn validate(snapshot: &Snapshot) -> Result<(), String> {
             || !text(&media.title, 1024, false)
             || !text(&media.author, 1024, true)
             || media.chapter.as_ref().is_some_and(|v| !text(v, 1024, true))
+            || media
+                .cover_data_url
+                .as_ref()
+                .is_some_and(|v| v.len() > crate::artwork::MAX_INPUT_BYTES.div_ceil(3) * 4 + 32)
             || !media.position.is_finite()
             || !media.duration.is_finite()
             || !(0.0..=1e9).contains(&media.position)
@@ -234,8 +240,14 @@ fn refresh_menu(app: &AppHandle, state: &mut Surfaces) -> Result<(), String> {
     }
     let menu = Menu::new(app).map_err(|e| e.to_string())?;
     menu.append(
-        &MenuItem::with_id(app, "avid.show", "Open Avid", true, None::<&str>)
-            .map_err(|e| e.to_string())?,
+        &MenuItem::with_id(
+            app,
+            "avid.show",
+            crate::locale::text("Open Avid"),
+            true,
+            None::<&str>,
+        )
+        .map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
     menu.append(
@@ -243,9 +255,9 @@ fn refresh_menu(app: &AppHandle, state: &mut Surfaces) -> Result<(), String> {
             app,
             "avid.toggle",
             if state.snapshot.media.as_ref().is_some_and(|m| m.playing) {
-                "Pause"
+                crate::locale::text("Pause")
             } else {
-                "Play"
+                crate::locale::text("Play")
             },
             state.snapshot.media.is_some(),
             None::<&str>,
@@ -269,8 +281,14 @@ fn refresh_menu(app: &AppHandle, state: &mut Surfaces) -> Result<(), String> {
     menu.append(&PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     menu.append(
-        &MenuItem::with_id(app, "avid.quit", "Quit Avid", true, None::<&str>)
-            .map_err(|e| e.to_string())?,
+        &MenuItem::with_id(
+            app,
+            "avid.quit",
+            crate::locale::text("Quit Avid"),
+            true,
+            None::<&str>,
+        )
+        .map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
     app.tray_by_id("avid")
@@ -278,8 +296,20 @@ fn refresh_menu(app: &AppHandle, state: &mut Surfaces) -> Result<(), String> {
         .set_menu(Some(menu))
         .map_err(|e| e.to_string())
 }
+pub fn refresh_labels(app: &AppHandle) -> Result<(), String> {
+    let store = app.state::<SurfaceState>();
+    let mut state = store
+        .lock()
+        .map_err(|_| "Desktop controls are unavailable.")?;
+    refresh_menu(app, &mut state)
+}
 pub fn initialize(app: &AppHandle) {
     let mut state = Surfaces::default();
+    state.artwork = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .and_then(|path| crate::artwork::ArtworkCache::new(path.join("private-artwork")).ok());
     #[cfg(target_os = "windows")]
     let hwnd = app
         .get_webview_window("main")
@@ -373,11 +403,28 @@ pub fn desktop_publish(
     window: WebviewWindow,
     app: AppHandle,
     state: State<SurfaceState>,
-    mut snapshot: Snapshot,
+    snapshot: Snapshot,
 ) -> Result<(), String> {
     main_window(&window)?;
+    publish(&app, &state, snapshot)
+}
+pub fn clear(app: &AppHandle) -> Result<(), String> {
+    publish(app, &app.state::<SurfaceState>(), Snapshot::default())
+}
+fn publish(app: &AppHandle, state: &SurfaceState, mut snapshot: Snapshot) -> Result<(), String> {
     validate(&snapshot)?;
+    // Hold the surface lock across authorization and publication. Logout releases
+    // the vault guard before clearing surfaces, so an authorized old publisher
+    // finishes before that clear; one arriving afterward fails the vault check.
     let mut state = state.lock().map_err(|_| "Desktop state unavailable.")?;
+    if let Some(scope) = &snapshot.account_scope {
+        let active = crate::desktop_io::active_account_scope(app)?;
+        if active.as_deref() != Some(scope)
+            && !(active.is_none() && scope == "[\"https://demo.avid.invalid\",\"demo\"]")
+        {
+            return Err("The system media account changed.".into());
+        }
+    }
     if state.snapshot.account_scope.is_none() && snapshot.recents.is_empty() {
         if let Some(scope) = &snapshot.account_scope {
             snapshot.recents = recovered_recents(&app, scope);
@@ -393,8 +440,40 @@ pub fn desktop_publish(
     if changed_recents {
         state.recent_ids.clear();
     }
+    let changed_source = state.snapshot.account_scope != snapshot.account_scope
+        || state
+            .snapshot
+            .media
+            .as_ref()
+            .map(|m| (&m.book_id, &m.file_id))
+            != snapshot.media.as_ref().map(|m| (&m.book_id, &m.file_id));
     state.snapshot = snapshot.clone();
     let mut failure = None;
+    let artwork = if let Some(cache) = &mut state.artwork {
+        if changed_source {
+            if let Err(error) = cache.clear() {
+                failure = Some(error);
+            }
+        }
+        let result = match (&snapshot.account_scope, &snapshot.media) {
+            (Some(scope), Some(media)) if media.cover_data_url.is_some() => cache.prepare(
+                scope,
+                &media.book_id,
+                &media.file_id,
+                media.cover_data_url.as_deref().unwrap_or_default(),
+            ),
+            _ => cache.empty(),
+        };
+        match result {
+            Ok(url) => Some(url),
+            Err(error) => {
+                failure = Some(error);
+                cache.empty().ok()
+            }
+        }
+    } else {
+        None
+    };
     if changed_recents {
         if let Err(error) = persist(&app, &snapshot) {
             failure = Some(error);
@@ -408,6 +487,7 @@ pub fn desktop_publish(
                     artist: Some(&media.author),
                     album: media.chapter.as_deref().or(Some("Avid")),
                     duration: Some(Duration::from_secs_f64(media.duration)),
+                    cover_url: artwork.as_deref(),
                     ..Default::default()
                 })
                 .and_then(|_| {
@@ -419,9 +499,12 @@ pub fn desktop_publish(
                     })
                 })
         } else {
-            controls
-                .set_playback(MediaPlayback::Stopped)
-                .and_then(|_| controls.set_metadata(MediaMetadata::default()))
+            controls.set_playback(MediaPlayback::Stopped).and_then(|_| {
+                controls.set_metadata(MediaMetadata {
+                    cover_url: artwork.as_deref(),
+                    ..Default::default()
+                })
+            })
         };
         if let Err(error) = updated {
             failure = Some(format!("System media controls failed: {error:?}"));
@@ -485,6 +568,7 @@ mod tests {
             title: "Title".into(),
             author: "".into(),
             chapter: None,
+            cover_data_url: None,
             position: f64::NAN,
             duration: 12.0,
             playing: true,

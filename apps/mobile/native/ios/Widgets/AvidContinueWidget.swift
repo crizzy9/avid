@@ -49,6 +49,7 @@ struct AvidContinueView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(.background, for: .widget)
+        .environment(\.locale, Locale(identifier: AvidStrings.locale))
     }
 }
 
@@ -69,6 +70,6 @@ struct AvidResumeControl: ControlWidget {
             ControlWidgetButton(action: ResumeAvidAudioIntent()) { Label("Resume Avid", systemImage: "play.fill") }
         }
         .displayName("Resume Avid audio")
-        .description("Resume your recent audiobook using Avid's native audio owner.")
+        .description("Resume your recent audiobook in Avid.")
     }
 }

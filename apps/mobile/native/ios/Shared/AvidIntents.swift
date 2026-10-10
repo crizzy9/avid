@@ -23,7 +23,7 @@ struct AvidBookQuery: EntityQuery {
 @available(iOS 17.0, *)
 struct ResumeAvidAudioIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Resume Avid audio"
-    static var description = IntentDescription("Resume a recent audiobook using Avid's native audio owner.")
+    static var description = IntentDescription("Resume a recent audiobook in Avid.")
     static var openAppWhenRun = false
     static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
     @Parameter(title: "Book") var book: AvidBookEntity?

@@ -49,8 +49,8 @@ class AvidLibraryCallback(private val context: android.content.Context, private 
     override fun onGetItem(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, mediaId: String): ListenableFuture<LibraryResult<MediaItem>> {
         val item = when (mediaId) {
             ROOT -> folder(ROOT, "Avid")
-            RECENT -> folder(RECENT, "Continue listening")
-            LIBRARY -> folder(LIBRARY, "Prepared audiobooks")
+            RECENT -> folder(RECENT, AvidStrings.text(context, "Continue listening"))
+            LIBRARY -> folder(LIBRARY, AvidStrings.text(context, "Prepared audiobooks"))
             else -> AvidAudioCatalog.get(mediaId)?.takeIf { it.optString("url").isNotBlank() }?.let { item(it, false) }
         }
         return Futures.immediateFuture(if (item == null) LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE) else LibraryResult.ofItem(item, null))
@@ -59,7 +59,7 @@ class AvidLibraryCallback(private val context: android.content.Context, private 
         if (AvidAudioCatalog.scope.isBlank()) return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_SESSION_AUTHENTICATION_EXPIRED))
         return try {
             val children = when (parentId) {
-                ROOT -> listOf(folder(RECENT, "Continue listening"), folder(LIBRARY, "Prepared audiobooks"))
+                ROOT -> listOf(folder(RECENT, AvidStrings.text(context, "Continue listening")), folder(LIBRARY, AvidStrings.text(context, "Prepared audiobooks")))
                 RECENT -> AvidAudioCatalog.playable(recent = true).map { item(it, false) }
                 LIBRARY -> AvidAudioCatalog.playable().map { item(it, false) }
                 else -> return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))

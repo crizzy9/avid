@@ -127,6 +127,13 @@ internal object AvidContinueStore {
         val book = books(record).filter { it.optLong("recentAt") > 0 }.maxByOrNull { it.optLong("recentAt") } ?: return null
         return lookup(context, record, book.getString("id"))
     }
+    @Synchronized fun recentBooks(context: Context, maximum: Int): List<JSONObject> {
+        val record = read(context)
+        return books(record).filter { it.optLong("recentAt") > 0 }
+            .sortedByDescending { it.optLong("recentAt") }.take(maximum.coerceIn(0, 4))
+            .mapNotNull { lookup(context, record, it.getString("id")) }
+    }
+    @Synchronized fun permitsShortcut(context: Context, id: String): Boolean = lookup(context, read(context), id) != null
     @Synchronized fun accept(context: Context, raw: String): Boolean {
         val id = ContinueIdentity.linkIdentifier(raw) ?: return false
         val record = read(context)

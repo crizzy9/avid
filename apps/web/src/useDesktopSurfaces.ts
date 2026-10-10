@@ -14,6 +14,7 @@ import type {
 } from "../../../packages/core/src/types";
 import type { PlaybackTransport } from "../../mobile/src/native-transport";
 import { readerKindForFile } from "../../../packages/readers/src/bookFile";
+import { DesktopArtwork } from "../../desktop/src/artwork";
 
 type Navigation = Required<Pick<DesktopAction, "bookId" | "fileId" | "kind">>;
 export function applyDesktopAction(
@@ -82,6 +83,7 @@ export function useDesktopSurfaces(
     mediaScope: string | null;
     onOpen: (request: Navigation) => void;
     onError: (message: string) => void;
+    loadCover?: (bookId: string, signal: AbortSignal) => Promise<Blob>;
   },
   bridge: DesktopBridge | null = getDesktopBridge(),
 ) {
@@ -94,6 +96,8 @@ export function useDesktopSurfaces(
   const mounted = useRef(false),
     queue = useRef(Promise.resolve());
   const [revision, setRevision] = useState(0);
+  const [artwork] = useState(() => new DesktopArtwork());
+  const publishReady = useRef(() => {});
   const snapshot = useCallback((): DesktopSnapshot => {
     const { repo, connected, controller, mediaScope } = current.current;
     if (!connected) return { accountScope: null, recents: [], media: null };
@@ -122,7 +126,36 @@ export function useDesktopSurfaces(
     if (!bridge) return;
     queue.current = queue.current
       .then(async () => {
-        if (mounted.current) await bridge.publish(snapshot());
+        if (!mounted.current) return;
+        const value = snapshot();
+        const book = current.current.controller.getBook();
+        const key =
+          value.media && book
+            ? JSON.stringify([
+                value.accountScope,
+                value.media.bookId,
+                value.media.fileId,
+                book.coverUrl ?? "",
+              ])
+            : null;
+        const loadCover = current.current.loadCover;
+        const cover = artwork.update(
+          key,
+          async (signal) => {
+            if (!book?.coverUrl) return undefined;
+            if (
+              book.coverUrl.startsWith("blob:") ||
+              /^data:image\/(jpeg|png|webp);base64,/.test(book.coverUrl)
+            ) {
+              const result = await fetch(book.coverUrl, { signal });
+              return result.ok ? result.blob() : undefined;
+            }
+            return loadCover?.(book.bookId, signal);
+          },
+          () => publishReady.current(),
+        );
+        if (value.media && cover) value.media.coverDataUrl = cover;
+        await bridge.publish(value);
       })
       .catch((error) => {
         if (mounted.current)
@@ -130,7 +163,8 @@ export function useDesktopSurfaces(
             error instanceof Error ? error.message : String(error),
           );
       });
-  }, [bridge, snapshot]);
+  }, [bridge, snapshot, artwork]);
+  publishReady.current = publish;
   useEffect(() => {
     if (!bridge) return;
     mounted.current = true;
@@ -160,6 +194,7 @@ export function useDesktopSurfaces(
     publish();
     return () => {
       mounted.current = false;
+      artwork.clear();
       clearTimeout(timer);
       unsubscribe();
       void listener.then((remove) => remove()).catch(() => {});

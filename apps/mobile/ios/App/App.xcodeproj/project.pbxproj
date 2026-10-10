@@ -69,6 +69,22 @@
 		C6E1EE2707414A80B73BA3A1 /* AvidSpeechPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DEEA7D7F7F044D1BED8B326 /* AvidSpeechPlugin.swift */; };
 		61CE9ECF504B4D4098E5371C /* AvidMediaStorePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DEA71C55B4D4960A27CFAFE /* AvidMediaStorePlugin.swift */; };
 		73EE69033D334985976B3069 /* AvidArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 209963D2D34A48EE8CF6E834 /* AvidArtwork.swift */; };
+		943DC63DA2A7459CBE9107C7 /* Shared/AvidStrings.swift in PBXSourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = C5F6ABA35B0C47CA95665512 /* Shared/AvidStrings.swift */; };
+		97C42D8A7400437DBBC03342 /* Shared/AvidStrings.swift in PBXSourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = C5F6ABA35B0C47CA95665512 /* Shared/AvidStrings.swift */; };
+		F12B454381FC47DC8FB5E151 /* Shared/Locales/en.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = 57BB981EC0D44650A466F92E /* Shared/Locales/en.lproj */; };
+		77E70BB5753E4E83BCA77697 /* Shared/Locales/en.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = 57BB981EC0D44650A466F92E /* Shared/Locales/en.lproj */; };
+		4AADABD172DA4BC297FADC02 /* Shared/Locales/fi.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = B53B9E9118424A99875968EA /* Shared/Locales/fi.lproj */; };
+		223F59BD1F6B4A73B6EBA3AB /* Shared/Locales/fi.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = B53B9E9118424A99875968EA /* Shared/Locales/fi.lproj */; };
+		E2C2CF10E7024253BFF7965D /* Shared/Locales/fr.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = 694C60143E7F4DD0B0689036 /* Shared/Locales/fr.lproj */; };
+		D3F47692F3C54F3E99224C25 /* Shared/Locales/fr.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = 694C60143E7F4DD0B0689036 /* Shared/Locales/fr.lproj */; };
+		8BC6FFEFDC03454D83F7320D /* Shared/Locales/de.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = 04C328F043E6424EACCDCF29 /* Shared/Locales/de.lproj */; };
+		7A79329489864ED5A4EB44A7 /* Shared/Locales/de.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = 04C328F043E6424EACCDCF29 /* Shared/Locales/de.lproj */; };
+		FF3D2E0FB7014B23A0F5CC82 /* Shared/Locales/pl.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = D6A3EFEF05A242D38A3CB189 /* Shared/Locales/pl.lproj */; };
+		76C7BBDAEDAC4CEC876FBB33 /* Shared/Locales/pl.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = D6A3EFEF05A242D38A3CB189 /* Shared/Locales/pl.lproj */; };
+		C08FB99C61C54B999DE8440D /* Shared/Locales/zh-Hans.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = E7DE5E4460214C97AC1D4044 /* Shared/Locales/zh-Hans.lproj */; };
+		C207AFE0E02C48D89D254A9C /* Shared/Locales/zh-Hans.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = E7DE5E4460214C97AC1D4044 /* Shared/Locales/zh-Hans.lproj */; };
+		528BE5C49E024A57B48A6122 /* Shared/Locales/es.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = CD70C44CC0A747C39FA99AFA /* Shared/Locales/es.lproj */; };
+		BEE1EEEFBC94452691A905C7 /* Shared/Locales/es.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = CD70C44CC0A747C39FA99AFA /* Shared/Locales/es.lproj */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -102,6 +118,14 @@
 		1DEEA7D7F7F044D1BED8B326 /* AvidSpeechPlugin.swift */ = {isa = PBXFileReference; name = "AvidSpeechPlugin.swift"; path = "AvidSpeechPlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		0DEA71C55B4D4960A27CFAFE /* AvidMediaStorePlugin.swift */ = {isa = PBXFileReference; name = "AvidMediaStorePlugin.swift"; path = "AvidMediaStorePlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		209963D2D34A48EE8CF6E834 /* AvidArtwork.swift */ = {isa = PBXFileReference; name = "AvidArtwork.swift"; path = "AvidArtwork.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		C5F6ABA35B0C47CA95665512 /* Shared/AvidStrings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Shared/AvidStrings.swift"; sourceTree = "<group>"; };
+		57BB981EC0D44650A466F92E /* Shared/Locales/en.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shared/Locales/en.lproj"; sourceTree = "<group>"; };
+		B53B9E9118424A99875968EA /* Shared/Locales/fi.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shared/Locales/fi.lproj"; sourceTree = "<group>"; };
+		694C60143E7F4DD0B0689036 /* Shared/Locales/fr.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shared/Locales/fr.lproj"; sourceTree = "<group>"; };
+		04C328F043E6424EACCDCF29 /* Shared/Locales/de.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shared/Locales/de.lproj"; sourceTree = "<group>"; };
+		D6A3EFEF05A242D38A3CB189 /* Shared/Locales/pl.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shared/Locales/pl.lproj"; sourceTree = "<group>"; };
+		E7DE5E4460214C97AC1D4044 /* Shared/Locales/zh-Hans.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shared/Locales/zh-Hans.lproj"; sourceTree = "<group>"; };
+		CD70C44CC0A747C39FA99AFA /* Shared/Locales/es.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shared/Locales/es.lproj"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -179,6 +203,14 @@
 				1DEEA7D7F7F044D1BED8B326 /* AvidSpeechPlugin.swift */,
 				0DEA71C55B4D4960A27CFAFE /* AvidMediaStorePlugin.swift */,
 				209963D2D34A48EE8CF6E834 /* AvidArtwork.swift */,
+				C5F6ABA35B0C47CA95665512 /* Shared/AvidStrings.swift */,
+				57BB981EC0D44650A466F92E /* Shared/Locales/en.lproj */,
+				B53B9E9118424A99875968EA /* Shared/Locales/fi.lproj */,
+				694C60143E7F4DD0B0689036 /* Shared/Locales/fr.lproj */,
+				04C328F043E6424EACCDCF29 /* Shared/Locales/de.lproj */,
+				D6A3EFEF05A242D38A3CB189 /* Shared/Locales/pl.lproj */,
+				E7DE5E4460214C97AC1D4044 /* Shared/Locales/zh-Hans.lproj */,
+				CD70C44CC0A747C39FA99AFA /* Shared/Locales/es.lproj */,
 			);
 			name = "Avid native sources";
 			path = "../../native/ios";
@@ -249,6 +281,12 @@
 			knownRegions = (
 				en,
 				Base,
+				fi,
+				fr,
+				de,
+				pl,
+				"zh-Hans",
+				es,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
 			packageReferences = (
@@ -275,6 +313,13 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+				F12B454381FC47DC8FB5E151 /* Shared/Locales/en.lproj in PBXResourcesBuildPhase */,
+				4AADABD172DA4BC297FADC02 /* Shared/Locales/fi.lproj in PBXResourcesBuildPhase */,
+				E2C2CF10E7024253BFF7965D /* Shared/Locales/fr.lproj in PBXResourcesBuildPhase */,
+				8BC6FFEFDC03454D83F7320D /* Shared/Locales/de.lproj in PBXResourcesBuildPhase */,
+				FF3D2E0FB7014B23A0F5CC82 /* Shared/Locales/pl.lproj in PBXResourcesBuildPhase */,
+				C08FB99C61C54B999DE8440D /* Shared/Locales/zh-Hans.lproj in PBXResourcesBuildPhase */,
+				528BE5C49E024A57B48A6122 /* Shared/Locales/es.lproj in PBXResourcesBuildPhase */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -282,6 +327,13 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				77E70BB5753E4E83BCA77697 /* Shared/Locales/en.lproj in PBXResourcesBuildPhase */,
+				223F59BD1F6B4A73B6EBA3AB /* Shared/Locales/fi.lproj in PBXResourcesBuildPhase */,
+				D3F47692F3C54F3E99224C25 /* Shared/Locales/fr.lproj in PBXResourcesBuildPhase */,
+				7A79329489864ED5A4EB44A7 /* Shared/Locales/de.lproj in PBXResourcesBuildPhase */,
+				76C7BBDAEDAC4CEC876FBB33 /* Shared/Locales/pl.lproj in PBXResourcesBuildPhase */,
+				C207AFE0E02C48D89D254A9C /* Shared/Locales/zh-Hans.lproj in PBXResourcesBuildPhase */,
+				BEE1EEEFBC94452691A905C7 /* Shared/Locales/es.lproj in PBXResourcesBuildPhase */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -310,6 +362,7 @@
 				C6E1EE2707414A80B73BA3A1 /* AvidSpeechPlugin.swift in Sources */,
 				61CE9ECF504B4D4098E5371C /* AvidMediaStorePlugin.swift in Sources */,
 				73EE69033D334985976B3069 /* AvidArtwork.swift in Sources */,
+				943DC63DA2A7459CBE9107C7 /* Shared/AvidStrings.swift in PBXSourcesBuildPhase */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -321,6 +374,7 @@
 				F3648D99F761F247FEE52102,
 				411C1D5565A023BC86DFBEDA,
 				3419BDDEACEECE2E69CFA2BB,
+				97C42D8A7400437DBBC03342 /* Shared/AvidStrings.swift in PBXSourcesBuildPhase */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

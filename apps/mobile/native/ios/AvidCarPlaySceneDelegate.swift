@@ -30,20 +30,20 @@ final class AvidCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDel
     private func refresh() { library?.updateSections(sections()) }
     private func sections() -> [CPListSection] {
         guard AvidSharedStore.shared.activeScopeHash != nil else {
-            return [CPListSection(items: [CPListItem(text: "Open Avid to sign in", detailText: "Connect your book server on your phone while parked.")])]
+            return [CPListSection(items: [CPListItem(text: AvidStrings.text("Open Avid to sign in"), detailText: AvidStrings.text("Connect your book server on your phone while parked."))])]
         }
         let recent = AvidSharedStore.shared.recentBooks().filter { $0.kind == "audio" }
         let all = AvidSharedStore.shared.catalogBooks().filter { $0.kind == "audio" }
         let prepared = all.filter { (try? AvidPlaybackSourceStore.source(for: $0)) != nil }
         guard !prepared.isEmpty else {
-            return [CPListSection(items: [CPListItem(text: "No prepared audiobooks", detailText: "Open an audiobook in Avid on your phone before driving.")])]
+            return [CPListSection(items: [CPListItem(text: AvidStrings.text("No prepared audiobooks"), detailText: AvidStrings.text("Open an audiobook in Avid on your phone before driving."))])]
         }
         let recentIDs = Set(recent.map(\.id))
         let first = recent.filter { candidate in prepared.contains(where: { $0.id == candidate.id }) }
         let rest = prepared.filter { !recentIDs.contains($0.id) }.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         var result: [CPListSection] = []
-        if !first.isEmpty { result.append(CPListSection(items: first.map(row), header: "Continue listening", sectionIndexTitle: nil)) }
-        if !rest.isEmpty { result.append(CPListSection(items: Array(rest.prefix(100)).map(row), header: "Prepared audiobooks", sectionIndexTitle: nil)) }
+        if !first.isEmpty { result.append(CPListSection(items: first.map(row), header: AvidStrings.text("Continue listening"), sectionIndexTitle: nil)) }
+        if !rest.isEmpty { result.append(CPListSection(items: Array(rest.prefix(100)).map(row), header: AvidStrings.text("Prepared audiobooks"), sectionIndexTitle: nil)) }
         return result
     }
     private func row(_ book: AvidRecentBook) -> CPListItem {
@@ -57,8 +57,8 @@ final class AvidCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDel
                     try await AvidPlaybackOwner.shared.resume(current)
                     self?.interfaceController?.pushTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
                 } catch {
-                    let action = CPAlertAction(title: "OK", style: .default) { [weak self] _ in self?.interfaceController?.dismissTemplate(animated: true, completion: nil) }
-                    let alert = CPAlertTemplate(titleVariants: ["Unable to play. Open Avid on your phone while parked to refresh access."], actions: [action])
+                    let action = CPAlertAction(title: AvidStrings.text("OK"), style: .default) { [weak self] _ in self?.interfaceController?.dismissTemplate(animated: true, completion: nil) }
+                    let alert = CPAlertTemplate(titleVariants: [AvidStrings.text("Unable to play. Open Avid on your phone while parked to refresh access.")], actions: [action])
                     self?.interfaceController?.presentTemplate(alert, animated: true, completion: nil)
                 }
             }

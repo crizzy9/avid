@@ -32,6 +32,7 @@ class AvidContinueWidget : AppWidgetProvider() {
             }
         } catch (_: Exception) { false }
         fun refresh(context: Context) {
+            AvidQuickActions.refresh(context)
             val manager = AppWidgetManager.getInstance(context)
             update(context, manager, manager.getAppWidgetIds(ComponentName(context, AvidContinueWidget::class.java)))
         }
@@ -40,10 +41,11 @@ class AvidContinueWidget : AppWidgetProvider() {
             // Before first unlock, after logout, and on key failure the launcher shows no private metadata.
             val book = try { AvidContinueStore.recent(context) } catch (_: Exception) { null }
             val views = RemoteViews(context.packageName, R.layout.avid_continue_widget)
+            views.setTextViewText(R.id.avid_widget_heading, "Avid · " + AvidStrings.text(context, "Continue reading"))
             val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             if (book == null) {
-                views.setTextViewText(R.id.avid_widget_title, context.getString(R.string.avid_widget_empty_title))
-                views.setTextViewText(R.id.avid_widget_author, context.getString(R.string.avid_widget_empty_detail))
+                views.setTextViewText(R.id.avid_widget_title, AvidStrings.text(context, "Your next chapter awaits."))
+                views.setTextViewText(R.id.avid_widget_author, AvidStrings.text(context, "Open a book in Avid to continue here."))
                 views.setViewVisibility(R.id.avid_widget_progress, View.GONE)
                 views.setViewVisibility(R.id.avid_widget_percentage, View.GONE)
                 intent.action = Intent.ACTION_MAIN
@@ -51,7 +53,7 @@ class AvidContinueWidget : AppWidgetProvider() {
                 val percentage = (book.getDouble("progress").coerceIn(0.0, 1.0) * 100).roundToInt()
                 views.setTextViewText(R.id.avid_widget_title, book.getString("title"))
                 views.setTextViewText(R.id.avid_widget_author, book.getString("author"))
-                views.setTextViewText(R.id.avid_widget_percentage, context.getString(R.string.avid_widget_progress, percentage))
+                views.setTextViewText(R.id.avid_widget_percentage, AvidStrings.text(context, "{percent}% complete").replace("{percent}", percentage.toString()))
                 views.setViewVisibility(R.id.avid_widget_progress, View.VISIBLE)
                 views.setViewVisibility(R.id.avid_widget_percentage, View.VISIBLE)
                 views.setProgressBar(R.id.avid_widget_progress, 100, percentage, false)

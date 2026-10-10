@@ -8,6 +8,12 @@ const row = (evidence: PlatformCapabilityEvidence, id: PlatformCapabilityId) => 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('installed platform capability evidence', () => {
+  it('accepts a dedicated desktop search store without claiming mobile widgets',()=>{
+    const evidence={browser,surfaces:{installed:true,report:{desktopSearchAvailable:true}}};
+    expect(row(evidence,'spotlight').available).toBe(true);
+    expect(row(evidence,'widgets').available).toBe(false);
+    expect(row({...evidence,surfaces:{installed:true,report:{desktopSearchAvailable:'true'}}},'spotlight').available).toBe(false);
+  });
   it('uses the installed speech owner report without silently substituting browser voices', () => {
     const evidence={browser:{...browser,installedVoices:2},speech:{installed:true,report:{speechAvailable:false}}};
     expect(row(evidence,'speech').available).toBe(false);

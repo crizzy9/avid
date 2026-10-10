@@ -17,7 +17,7 @@ There is a material docs/source discrepancy at this revision: the endpoint docum
 5. **Send EPUB** rechecks device identity, firmware, and directory contents. It refuses case-insensitive filename collisions. The only mutating operation is one multipart POST.
 6. A successful transfer requires downloading the installed copy and matching its size and SHA-256. The result is explicitly `verified`, `missing`, or `different-content`.
 
-The panel defaults to browser fetch. A verified native fetch-compatible transport may be injected by the host app; no native transport or discovery plugin is invented or presumed available. Browser mixed-content, local-network permissions, and origin policies can still block a reachable device. Requests omit credentials and do not copy BookOrbit authorization headers.
+The browser panel uses browser fetch. Installed desktop builds inject their dedicated native CrossPoint transport; other hosts use only transports actually present. No discovery result is invented or presumed available. Browser mixed-content, local-network permissions, and origin policies can still block a reachable device. Requests omit credentials and do not copy BookOrbit authorization headers.
 
 ### Retry and replacement policy
 
@@ -32,16 +32,16 @@ The default file limit is 64 MiB, configurable by the adapter host. Hashing and 
 ### Integration API
 
 ```tsx
-import { CrossPointPanel } from '../../../packages/integrations/src';
+import { CrossPointPanel } from "../../../packages/integrations/src";
 
 <CrossPointPanel
   accountScope={library.repo.scope}
-  fileSources={epubFiles.map(file => ({
+  fileSources={epubFiles.map((file) => ({
     id: file.id,
     name: file.name,
     load: () => library.client.getFileBlob(file.id),
   }))}
-/>
+/>;
 ```
 
 `fileSources` is optional; the panel always supports a user-selected local EPUB. `nativeFetch` may only be passed when a real platform bridge is installed and qualified.
@@ -50,11 +50,11 @@ For non-React callers:
 
 ```ts
 const client = new CrossPointClient();
-const readiness = await client.inspect('crosspoint.local', {
-  ipFallback: '192.168.1.42',
-  directory: '/Books',
+const readiness = await client.inspect("crosspoint.local", {
+  ipFallback: "192.168.1.42",
+  directory: "/Books",
 });
-const plan = await client.prepare(readiness, epubBlob, 'My book.epub');
+const plan = await client.prepare(readiness, epubBlob, "My book.epub");
 // Display the exact plan; call send only for an explicit transfer action.
 const result = await client.send(plan);
 // Recovery after an uncertain response or a persisted receipt:
@@ -67,7 +67,7 @@ No production call to this flow was executed during implementation. Tests prove 
 
 Record the device model, observed firmware version, source commit/build, transport/platform, target directory, test date, input hash, and output hash from a real successful transfer. Test mDNS failure with manual IP, browser/native network permissions, an existing destination name, interrupted upload, rejected/partial responses, a lost success response, device restart, and a corrupted or missing read-back. Inspect existing books afterward. Do not add a version to `qualifiedFirmwareVersions` based only on a successful GET or the unit test transport.
 
-Native discovery, a native LAN transport, and the physical transfer evidence remain open. The firmware's docs/source disagreement also requires a recorded result on the tested release. The HTTP API does not supply a portable conditional-create precondition across known firmware versions; unique names and preflight reduce collisions, but must not be described as a verified cross-version atomic replacement guarantee.
+Desktop now supplies a dedicated Rust LAN transport through `getDesktopCrossPointFetch()`. It permits only the pinned status/list/download/upload routes, resolves and pins private/link-local/loopback addresses, bypasses proxies, strips caller credentials, and refuses redirects and transport retries. Upload cancellation reaches the native request even before response headers arrive; responses cross IPC in bounded chunks. Controlled loopback tests exercise credential stripping and redirect refusal; they are not firmware evidence. Native discovery, mobile-specific transfer qualification, and physical transfer evidence remain open. The firmware's docs/source disagreement also requires a recorded result on the tested release. The HTTP API does not supply a portable conditional-create precondition across known firmware versions; unique names and preflight reduce collisions, but must not be described as a verified cross-version atomic replacement guarantee.
 
 ## Archive of Our Own (F49)
 
@@ -89,13 +89,13 @@ The host/loopback check, explicit origin allowlist and random bearer pairing cre
 
 ### Verified routes and update semantics
 
-| Source route | Connector use |
-| --- | --- |
-| `GET /users/login`, `POST /users/login` | CSRF session sign-in, separate from BookOrbit. |
+| Source route                                        | Connector use                                                                                                                                          |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /users/login`, `POST /users/login`             | CSRF session sign-in, separate from BookOrbit.                                                                                                         |
 | `GET /users/:login/subscriptions?type=works&page=N` | Only the authenticated account's work subscriptions; explicit pagination with stable work IDs. Unrevealed/deleted entries are reported as unavailable. |
-| `GET /works/:id/navigate` | Ordered stable chapter IDs from the chapter index. |
-| `GET /works/:id?view_full_work=true` | Title, author, exact chapter order, chapter content revisions and the observed EPUB link. This normal AO3 page view can update AO3 reading history. |
-| Observed `/downloads/:id/:title.epub?updated_at=…` | Explicit EPUB download only after its link appeared in the authenticated work page. |
+| `GET /works/:id/navigate`                           | Ordered stable chapter IDs from the chapter index.                                                                                                     |
+| `GET /works/:id?view_full_work=true`                | Title, author, exact chapter order, chapter content revisions and the observed EPUB link. This normal AO3 page view can update AO3 reading history.    |
+| Observed `/downloads/:id/:title.epub?updated_at=…`  | Explicit EPUB download only after its link appeared in the authenticated work page.                                                                    |
 
 The source verifies subscription ownership/filtering and pagination, work/chapter rendering and download URL generation. No create/delete-subscription route is exposed. Access restrictions, adult-content preferences, anti-bot challenges or changed markup produce a recoverable error; the connector does not bypass them. Parsed page nodes remain in an inert HTML template and are never attached to Avid's document or executed. Only plain metadata is rendered. [Subscription controller](https://github.com/otwcode/otwarchive/blob/9dd99008f52ccc726978db131181421f4eb38fe5/app/controllers/subscriptions_controller.rb), [subscription page](https://github.com/otwcode/otwarchive/blob/9dd99008f52ccc726978db131181421f4eb38fe5/app/views/subscriptions/index.html.erb), [chapter index](https://github.com/otwcode/otwarchive/blob/9dd99008f52ccc726978db131181421f4eb38fe5/app/views/works/navigate.html.erb), [work rendering/history](https://github.com/otwcode/otwarchive/blob/9dd99008f52ccc726978db131181421f4eb38fe5/app/controllers/works_controller.rb), [download links](https://github.com/otwcode/otwarchive/blob/9dd99008f52ccc726978db131181421f4eb38fe5/app/helpers/works_helper.rb), [download controller](https://github.com/otwcode/otwarchive/blob/9dd99008f52ccc726978db131181421f4eb38fe5/app/controllers/downloads_controller.rb).
 
@@ -107,7 +107,15 @@ Checks are explicit user actions, without background polling. An edition revisio
 <AO3Panel
   key={library.repo.scope}
   accountScope={library.repo.scope}
-  onImport={async ({ accountId, workId, title, author, revision, file, chapterIds }) => {
+  onImport={async ({
+    accountId,
+    workId,
+    title,
+    author,
+    revision,
+    file,
+    chapterIds,
+  }) => {
     // Keep one local book per Avid account + AO3 account + work ID.
     // Use a distinct, deterministic file identity per revision and deduplicate retries.
     // Keep previous edition files, anchors and notes; open the new edition explicitly.
@@ -117,4 +125,4 @@ Checks are explicit user actions, without background polling. An edition revisio
 
 The host must deduplicate the same revision even if an earlier import succeeded before the panel could persist its receipt. Changing an edition never justifies assigning an old CFI to the new file. Avid retains previous source files and reader positions; **exact CFI/chapter-text migration across edited editions is not implemented or claimed**. A canceled request or account change cannot invoke the panel's late import callback. No AO3 flow uploads to the supplied BookOrbit test server.
 
-Controlled tests cover login form fields and CSRF/cookie isolation, origin/pairing rejection, disallowed routes and redirects, session identity changes, rate limiting, subscription pagination, chapter addition/edit detection, edition deduplication, account-scoped receipts, and a work changing during download. Panel tests exercise explicit opt-in/import and cancellation during an account switch. They are not live AO3 service certification. Remaining acceptance includes a real authorized subscription and one new-chapter import, download cache consistency, account-expiry recovery, challenges/content restrictions, representative long works, seven-language connector UI and deployed/native companion packaging.
+Controlled tests cover login form fields and CSRF/cookie isolation, origin/pairing rejection, disallowed routes and redirects, session identity changes, rate limiting, subscription pagination, chapter addition/edit detection, edition deduplication, account-scoped receipts, and a work changing during download. Panel tests exercise explicit opt-in/import and cancellation during an account switch. Both panels now use a complete keyed seven-language catalog (en, fi, fr, de, pl, zh-Hans, es), including setup instructions, pending operations, typed errors, and verified/uncertain outcomes. Tests switch all seven languages during live forms and transfer states, check every interpolation variable, and retain original filenames/publication text. They are not live AO3 service certification. Remaining acceptance includes a real authorized subscription and one new-chapter import, download cache consistency, account-expiry recovery, challenges/content restrictions, representative long works, fluent-speaker/layout review and deployed/native companion packaging.

@@ -9,6 +9,10 @@ import {
   LibraryRepository,
 } from "../../../packages/core/src/repository";
 import { SyncCoordinator } from "../../../packages/core/src/sync";
+import {
+  DexieLibraryStorage,
+  type LibraryStorage,
+} from "../../../packages/core/src/storage";
 import type {
   Annotation,
   Book,
@@ -44,6 +48,8 @@ const serverResource = (id: string) =>
 
 export function useLibrary(
   options: {
+    /** Chosen once at mount; change platform storage only by remounting the library. */
+    storage?: LibraryStorage;
     refreshSession?: ClientOptions["refreshSession"];
     onSessionChange?: (
       session: Session,
@@ -52,6 +58,9 @@ export function useLibrary(
     ) => void | Promise<void>;
   } = {},
 ) {
+  const [storage] = useState(
+    () => options.storage ?? new DexieLibraryStorage(db),
+  );
   const [nativeJournal] = useState(getNativeJournal);
   const recoveryFlight = useRef<{
     repo: LibraryRepository;
@@ -62,7 +71,7 @@ export function useLibrary(
   callbacks.current = options;
   const [client, setClient] = useState<BookOrbitClient | null>(null);
   const [repo, setRepo] = useState(
-    () => new LibraryRepository(db, demoSession),
+    () => new LibraryRepository(storage, demoSession),
   );
   const [books, setBooks] = useState<Book[]>(demoBooks);
   const [collections, setCollections] = useState<Collection[]>(demoCollections);
@@ -186,7 +195,7 @@ export function useLibrary(
       const attempt = ++connectionAttempt.current;
       const active = () =>
         mounted.current && attempt === connectionAttempt.current && isActive();
-      const nextRepo = new LibraryRepository(db, session);
+      const nextRepo = new LibraryRepository(storage, session);
       const nextClient: BookOrbitClient = new BookOrbitClient(session, {
         readOnly,
         fetch: bookOrbitFetch,
@@ -255,7 +264,7 @@ export function useLibrary(
       setLoading(false);
       setSyncStatus(readOnly ? "Read-only server" : "Connected");
     },
-    [clearMedia, presentPage, isCurrent],
+    [clearMedia, presentPage, isCurrent, storage],
   );
   const disconnect = useCallback(() => {
     connectionAttempt.current++;
@@ -263,7 +272,7 @@ export function useLibrary(
     queryAbort.current?.abort();
     clearMedia();
     localProgress.current.clear();
-    const nextRepo = new LibraryRepository(db, demoSession);
+    const nextRepo = new LibraryRepository(storage, demoSession);
     context.current = { repo: nextRepo, client: null };
     activityRead.current++;
     setCoverCache(null);
@@ -277,7 +286,7 @@ export function useLibrary(
     setSyncStatus("On this device");
     setError("");
     setLoading(false);
-  }, [clearMedia]);
+  }, [clearMedia, storage]);
   const query = useCallback(
     async (options: LibraryQuery, signal?: AbortSignal) => {
       if (!client || !isCurrent(repo, client) || signal?.aborted) return;
@@ -576,15 +585,14 @@ export function useLibrary(
     if (!isCurrent(repo, client)) return;
     const progressSnapshot = ++progressRead.current;
     const notesSnapshot = ++annotationRead.current;
-    const [anchors, cached, notes, pending] = await repo.db.transaction(
-      "r",
-      [repo.db.anchors, repo.db.books, repo.db.annotations, repo.db.outbox],
-      () =>
+    const [anchors, cached, notes, pending] = await repo.atomic(
+      ["anchors", "books", "annotations", "outbox"],
+      (transaction) =>
         Promise.all([
-          repo.getAnchors(),
-          repo.getBooks(),
-          repo.getAnnotations(),
-          repo.pendingOperations(),
+          transaction.getAnchors(),
+          transaction.getBooks(),
+          transaction.getAnnotations(),
+          transaction.pendingOperations(),
         ]),
     );
     if (!isCurrent(repo, client)) return;

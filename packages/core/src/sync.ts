@@ -12,7 +12,7 @@ export class SyncCoordinator {
   }
   flush():Promise<SyncResult> {
     if(this.client.readOnly)return Promise.resolve({sent:0,conflicts:0,failed:0,readOnly:true});
-    const key=JSON.stringify([this.repository.db.name,this.repository.scope]);
+    const key=JSON.stringify([this.repository.storage.name,this.repository.scope]);
     const active=activeSyncs.get(key);if(active)return active;
     const running=this.performFlush().finally(()=>{activeSyncs.delete(key);});
     activeSyncs.set(key,running);return running;

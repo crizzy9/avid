@@ -13,7 +13,7 @@ enum AvidSystemSurfaces {
         NotificationCenter.default.post(name: catalogNotification, object: nil)
         let books = AvidSharedStore.shared.recentBooks()
         UIApplication.shared.shortcutItems = Array(books.prefix(4)).map { book in
-            UIApplicationShortcutItem(type: "app.avid.resume-book", localizedTitle: "Continue \(book.title)",
+            UIApplicationShortcutItem(type: "app.avid.resume-book", localizedTitle: AvidStrings.text("Continue {title}").replacingOccurrences(of: "{title}", with: book.title),
                 localizedSubtitle: book.author,
                 icon: UIApplicationShortcutIcon(systemImageName: book.kind == "audio" ? "headphones" : "book"),
                 userInfo: ["id": book.id as NSString])
@@ -29,7 +29,7 @@ enum AvidSystemSurfaces {
             let attributes = CSSearchableItemAttributeSet(contentType: book.kind == "audio" ? .audio : .text)
             attributes.title = book.title
             attributes.authorNames = book.author.isEmpty ? [] : [book.author]
-            attributes.contentDescription = book.kind == "audio" ? "Continue listening in Avid" : "Continue reading in Avid"
+            attributes.contentDescription = book.kind == "audio" ? AvidStrings.text("Continue listening in Avid") : AvidStrings.text("Continue reading in Avid")
             attributes.contentURL = book.deepLink
             return CSSearchableItem(uniqueIdentifier: book.id, domainIdentifier: "avid.\(scope)", attributeSet: attributes)
         }

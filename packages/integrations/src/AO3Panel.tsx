@@ -8,6 +8,12 @@ import {
   type Ao3StoredWork,
   type Ao3WorkEdition,
 } from "./ao3";
+import {
+  connectorError,
+  useConnectorI18n,
+  type ConnectorNotice,
+  type ConnectorMessageKey,
+} from "./messages";
 
 export interface AO3PanelProps {
   accountScope: string;
@@ -15,6 +21,7 @@ export interface AO3PanelProps {
 }
 /** Opt-in account connector. The host preserves one work identity and separate edition file identities. */
 export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
+  const { t } = useConnectorI18n();
   const id = useId();
   const [enabled, setEnabled] = useState(false),
     [address, setAddress] = useState("http://127.0.0.1:43119");
@@ -22,9 +29,9 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
     [login, setLogin] = useState(""),
     [password, setPassword] = useState("");
   const [account, setAccount] = useState<string | null>(null),
-    [busy, setBusy] = useState(""),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+    [busy, setBusy] = useState<ConnectorNotice | null>(null),
+    [error, setError] = useState<ConnectorNotice | null>(null),
+    [notice, setNotice] = useState<ConnectorNotice | null>(null);
   const [works, setWorks] = useState<Ao3FollowedWork[]>([]),
     [nextPage, setNextPage] = useState<number | undefined>();
   const [editions, setEditions] = useState<Record<string, Ao3WorkEdition>>({}),
@@ -49,11 +56,11 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
     setEditions({});
     setTracked([]);
     setNextPage(undefined);
-    setBusy("");
+    setBusy(null);
     setPassword("");
     setPairing("");
-    setNotice("");
-    setError("");
+    setNotice(null);
+    setError(null);
   };
   useEffect(() => {
     ownerScope.current = accountScope;
@@ -61,14 +68,14 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
     setLogin("");
     setPassword("");
     setPairing("");
-    setError("");
-    setNotice("");
+    setError(null);
+    setNotice(null);
     setAccount(null);
     setWorks([]);
     setEditions({});
     setTracked([]);
     setNextPage(undefined);
-    setBusy("");
+    setBusy(null);
     return () => {
       epoch.current++;
       abort.current?.abort();
@@ -79,7 +86,7 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
     };
   }, [accountScope]);
   async function run(
-    label: string,
+    label: ConnectorMessageKey | ConnectorNotice,
     action: (signal: AbortSignal, current: () => boolean) => Promise<void>,
   ) {
     abort.current?.abort();
@@ -91,23 +98,21 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
       generation === epoch.current &&
       scope === currentScope.current &&
       !control.signal.aborted;
-    setBusy(label);
-    setError("");
-    setNotice("");
+    setBusy(typeof label === "string" ? { key: label } : label);
+    setError(null);
+    setNotice(null);
     try {
       await action(control.signal, current);
     } catch (cause) {
       if (current()) {
-        setError(
-          cause instanceof Error ? cause.message : "The AO3 request failed.",
-        );
+        setError(connectorError(cause, "ao3"));
         if (cause instanceof Ao3Error && cause.status === 401) {
           setAccount(null);
           setPassword("");
         }
       }
     } finally {
-      if (current()) setBusy("");
+      if (current()) setBusy(null);
     }
   }
   const readPage = async (
@@ -130,16 +135,17 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
     );
     setNextPage(result.nextPage);
     if (result.unavailable)
-      setNotice(
-        `${result.unavailable} unavailable or unrevealed subscription(s) cannot be inspected.`,
-      );
+      setNotice({
+        key: "unavailableWorks",
+        values: { count: result.unavailable },
+      });
   };
   const connect = () => {
     const user = login,
       secret = password,
       code = pairing;
     setPassword("");
-    void run("Connecting to AO3…", async (signal, current) => {
+    void run("ao3Connecting", async (signal, current) => {
       const next = new Ao3Client(address, code);
       const accountId = await next.connect(user, secret, signal);
       if (!current()) {
@@ -164,26 +170,29 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
     const c = client.current,
       records = store.current;
     if (!c || !records) return;
-    void run(`Checking ${work.title}…`, async (signal, current) => {
-      const edition = await c.edition(work.workId, signal);
-      if (!current()) return;
-      const previous = records
-        .all()
-        .find((item) => item.workId === work.workId);
-      const saved = records.record(edition);
-      setTracked(records.all());
-      setEditions((values) => ({ ...values, [work.workId]: edition }));
-      const added = edition.chapterIds.filter(
-        (chapter) => !previous?.chapterIds.includes(chapter),
-      ).length;
-      setNotice(
-        saved.importedRevisions.includes(edition.revision)
-          ? "This edition is already in Avid."
-          : previous
-            ? `${added} new chapter(s). Review and import this edition; previous editions remain available.`
-            : "Ready to import the first edition of this followed work.",
-      );
-    });
+    void run(
+      { key: "checkingTitle", values: { title: work.title } },
+      async (signal, current) => {
+        const edition = await c.edition(work.workId, signal);
+        if (!current()) return;
+        const previous = records
+          .all()
+          .find((item) => item.workId === work.workId);
+        const saved = records.record(edition);
+        setTracked(records.all());
+        setEditions((values) => ({ ...values, [work.workId]: edition }));
+        const added = edition.chapterIds.filter(
+          (chapter) => !previous?.chapterIds.includes(chapter),
+        ).length;
+        setNotice(
+          saved.importedRevisions.includes(edition.revision)
+            ? { key: "alreadyImported" }
+            : previous
+              ? { key: "newChapters", values: { count: added } }
+              : { key: "firstEdition" },
+        );
+      },
+    );
   };
   const importEdition = (edition: Ao3WorkEdition) => {
     const c = client.current,
@@ -195,30 +204,27 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
         .find((item) => item.workId === edition.workId)
         ?.importedRevisions.includes(edition.revision)
     ) {
-      setNotice("This edition is already in Avid.");
+      setNotice({ key: "alreadyImported" });
       return;
     }
-    void run(`Downloading ${edition.title}…`, async (signal, current) => {
-      const incoming = await c.download(edition, signal);
-      if (!current()) return;
-      await onImport(incoming);
-      if (!current()) return;
-      records.record(edition, true);
-      setTracked(records.all());
-      setNotice(
-        "Edition imported. Previous editions, notes and reading positions are retained.",
-      );
-    });
+    void run(
+      { key: "downloadingTitle", values: { title: edition.title } },
+      async (signal, current) => {
+        const incoming = await c.download(edition, signal);
+        if (!current()) return;
+        await onImport(incoming);
+        if (!current()) return;
+        records.record(edition, true);
+        setTracked(records.all());
+        setNotice({ key: "imported" });
+      },
+    );
   };
   const currentOwner = ownerScope.current === accountScope;
   const visibleAccount = currentOwner ? account : null;
   return (
     <section className="ao3-panel" style={{ display: "grid", gap: 14 }}>
-      <p>
-        Follow works through your own AO3 subscriptions. Checks and EPUB
-        downloads run only when you request them. Opening work pages can update
-        your AO3 reading history.
-      </p>
+      <p>{t("ao3Intro")}</p>
       <label>
         <input
           type="checkbox"
@@ -228,20 +234,14 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
             if (!event.target.checked) disconnect();
           }}
         />{" "}
-        Enable the AO3 account connector
+        {t("ao3Enable")}
       </label>
       {currentOwner && enabled && !visibleAccount && (
         <>
           <details>
-            <summary>Set up the local companion</summary>
+            <summary>{t("setup")}</summary>
             <p>
-              On the same computer, run{" "}
-              <code>node scripts/ao3-companion.mjs</code> using Node 24, then
-              enter its address and pairing code. The companion accepts
-              configured Avid origins and connects only to AO3. Passwords and
-              cookies remain in memory; stopping it clears every session.
-              Mobile-device and hosted-site connection policies still require
-              qualification.
+              {t("setupBody", { command: "node scripts/ao3-companion.mjs" })}
             </p>
           </details>
           <form
@@ -251,7 +251,7 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
               connect();
             }}
           >
-            <label htmlFor={`${id}-address`}>Companion address</label>
+            <label htmlFor={`${id}-address`}>{t("companionAddress")}</label>
             <input
               id={`${id}-address`}
               value={address}
@@ -259,7 +259,7 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
               disabled={!!busy}
               autoCapitalize="none"
             />
-            <label htmlFor={`${id}-pairing`}>Pairing code</label>
+            <label htmlFor={`${id}-pairing`}>{t("pairingCode")}</label>
             <input
               id={`${id}-pairing`}
               type="password"
@@ -268,7 +268,7 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
               disabled={!!busy}
               autoComplete="off"
             />
-            <label htmlFor={`${id}-login`}>AO3 username or email</label>
+            <label htmlFor={`${id}-login`}>{t("ao3Login")}</label>
             <input
               id={`${id}-login`}
               value={login}
@@ -277,7 +277,7 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
               autoComplete="username"
               autoCapitalize="none"
             />
-            <label htmlFor={`${id}-password`}>AO3 password</label>
+            <label htmlFor={`${id}-password`}>{t("ao3Password")}</label>
             <input
               id={`${id}-password`}
               type="password"
@@ -290,7 +290,7 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
               className="primary-button"
               disabled={!!busy || !login || !password || !pairing}
             >
-              Connect AO3 account
+              {t("ao3Connect")}
             </button>
           </form>
         </>
@@ -298,8 +298,7 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
       {currentOwner && enabled && visibleAccount && (
         <>
           <p>
-            Connected as <strong>{visibleAccount}</strong> · {works.length}{" "}
-            followed works loaded.
+            {t("connected", { account: visibleAccount, count: works.length })}
           </p>
           <div className="button-row">
             <button
@@ -308,23 +307,18 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
               onClick={() => {
                 const c = client.current;
                 if (c)
-                  void run("Refreshing subscriptions…", (signal, current) =>
+                  void run("subscriptionsRefreshing", (signal, current) =>
                     readPage(c, 1, signal, current),
                   );
               }}
             >
-              Refresh subscriptions
+              {t("subscriptionsRefresh")}
             </button>
             <button className="secondary-button" onClick={disconnect}>
-              Disconnect and clear session
+              {t("disconnect")}
             </button>
           </div>
-          {!works.length && !busy && (
-            <p>
-              No visible work subscriptions were found. Subscribe to a work on
-              AO3, then refresh.
-            </p>
-          )}
+          {!works.length && !busy && <p>{t("noWorks")}</p>}
           <ul
             style={{ listStyle: "none", padding: 0, display: "grid", gap: 16 }}
           >
@@ -343,22 +337,21 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
                     disabled={!!busy}
                     onClick={() => check(work)}
                   >
-                    Check updates
+                    {t("checkUpdates")}
                   </button>
                   {edition && (
                     <>
                       <p>
-                        {edition.chapterIds.length} chapter(s) ·{" "}
-                        {imported
-                          ? "Edition already imported"
-                          : "New edition available"}
+                        {t(imported ? "editionImported" : "editionAvailable", {
+                          count: edition.chapterIds.length,
+                        })}
                       </p>
                       <button
                         className="primary-button"
                         disabled={!!busy || imported}
                         onClick={() => importEdition(edition)}
                       >
-                        Import this edition
+                        {t("importEdition")}
                       </button>
                     </>
                   )}
@@ -373,38 +366,34 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
               onClick={() => {
                 const c = client.current;
                 if (c)
-                  void run("Loading followed works…", (signal, current) =>
+                  void run("worksLoading", (signal, current) =>
                     readPage(c, nextPage, signal, current),
                   );
               }}
             >
-              Load more followed works
+              {t("worksMore")}
             </button>
           )}
         </>
       )}
       {busy && (
         <p role="status">
-          {busy}{" "}
+          {t(busy.key, busy.values)}{" "}
           <button
             className="text-button"
             onClick={() => {
               epoch.current++;
               abort.current?.abort();
-              setBusy("");
+              setBusy(null);
             }}
           >
-            Cancel
+            {t("cancel")}
           </button>
         </p>
       )}
-      {notice && <p role="status">{notice}</p>}
-      {error && <p role="alert">{error}</p>}
-      <p className="muted">
-        New editions do not replace prior files or translate old CFI positions.
-        This connector does not upload to BookOrbit or change your AO3
-        subscriptions.
-      </p>
+      {notice && <p role="status">{t(notice.key, notice.values)}</p>}
+      {error && <p role="alert">{t(error.key, error.values)}</p>}
+      <p className="muted">{t("editionsHint")}</p>
     </section>
   );
 }

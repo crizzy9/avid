@@ -56,9 +56,14 @@ import type {
   BookOrbitReadStatus,
   Session,
 } from "../../../packages/core/src/types";
-import { resolveAudioResume } from "../../../packages/playback/src";
+import {
+  resolveAudioResume,
+  type PlaybackBook,
+} from "../../../packages/playback/src";
 import { demoBooks } from "./fixtures";
 import { useLibrary } from "./useLibrary";
+import { createDesktopLibraryStorage } from "../../desktop/src/storage";
+import { getDesktopCrossPointFetch } from "../../desktop/src/crosspoint";
 import { useLocalState } from "./useLocalState";
 import { inReadingQueue, serverShelfFilter } from "./queueFilter";
 import { BookCard, Cover, EmptyState, Modal, Shelf, formatTime } from "./ui";
@@ -75,6 +80,10 @@ import { restoreNativeSession } from "./restoreNativeSession";
 import { Player } from "./Player";
 import { BookDetails } from "./BookDetails";
 import { Activity } from "./Activity";
+import {
+  getDesktopFetch,
+  resolveDesktopPlaybackBook,
+} from "../../desktop/src/network";
 import { CrossPointPanel, AO3Panel } from "../../../packages/integrations/src";
 import {
   ProviderCallback,
@@ -161,7 +170,9 @@ export default function App() {
   const [providerCallbackAtLaunch] = useState(
     () => location.pathname === "/oauth2-callback",
   );
+  const [libraryStorage] = useState(createDesktopLibraryStorage);
   const library = useLibrary({
+    storage: libraryStorage,
     refreshSession: nativeAuth ? refreshNativeSession : undefined,
     onSessionChange: (session, readOnly, active) => {
       return sessionPersistence
@@ -431,6 +442,9 @@ export default function App() {
     notify,
   );
   const publishDesktopRecent = useDesktopSurfaces({
+    loadCover: library.client
+      ? (id, signal) => library.client!.coverBlob(id, signal)
+      : undefined,
     repo: library.repo,
     connected: !!library.client,
     controller,
@@ -532,12 +546,13 @@ export default function App() {
         theme === "system" ? (mq.matches ? "dark" : "light") : theme;
       void setNativeAppearance(
         theme === "dark" || theme === "light" ? theme : "system",
+        locale,
       ).catch(() => setToast(appT("appearanceFailed")));
     };
     update();
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
-  }, [theme]);
+  }, [theme, locale]);
   useEffect(() => {
     document.documentElement.dataset.motion = motion;
   }, [motion]);
@@ -922,7 +937,7 @@ export default function App() {
           /* The player remains available if an older server lacks bookmarks. */
         }
       }
-      const source = playbackSource ?? {
+      let source: PlaybackBook = playbackSource ?? {
         bookId: book.id,
         fileId: file.id,
         title: book.title,
@@ -931,6 +946,12 @@ export default function App() {
         tracks: [{ id: file.id, url: url! }],
         chapters: book.chapters,
       };
+      if (getDesktopFetch())
+        source = await resolveDesktopPlaybackBook(
+          source,
+          scope,
+          () => scope === accountScope.current && !request.signal.aborted,
+        );
       const time = saved ? resolveAudioResume(source, saved.locator) : 0;
       if (scope !== accountScope.current || request.signal.aborted)
         return false;
@@ -2563,7 +2584,10 @@ export default function App() {
               </section>
               <section>
                 <h3>{appT("crossPointDelivery")}</h3>
-                <CrossPointPanel accountScope={library.repo.scope} />
+                <CrossPointPanel
+                  accountScope={library.repo.scope}
+                  nativeFetch={getDesktopCrossPointFetch() ?? undefined}
+                />
               </section>
               <section>
                 <h3>Archive of Our Own</h3>

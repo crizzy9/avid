@@ -5,6 +5,7 @@ import {
 } from "@capacitor/core";
 import type { OidcTransaction } from "../../../packages/core/src/oidc";
 import type { ServerProfile } from "../../../packages/core/src/types";
+import { getDesktopOidc } from "../../desktop/src/oidc";
 
 export const NATIVE_OIDC_REDIRECT_URI = "avid://oauth2-callback" as const;
 export interface NativeOidcRouting {
@@ -48,5 +49,5 @@ const plugin = registerPlugin<NativeOidcPlugin>("AvidOidc");
 export function getNativeOidc(): NativeOidcPlugin | null {
   return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("AvidOidc")
     ? plugin
-    : null;
+    : getDesktopOidc();
 }

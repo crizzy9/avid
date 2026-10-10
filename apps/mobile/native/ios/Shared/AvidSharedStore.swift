@@ -31,12 +31,12 @@ enum AvidSurfaceError: LocalizedError {
     case appGroupUnavailable, unavailableBook, expiredSource, noAudioSource, mainAppRequired, invalidInput
     var errorDescription: String? {
         switch self {
-        case .appGroupUnavailable: return "The Avid App Group is not enabled for this signed app."
-        case .unavailableBook: return "This book is not available in the currently signed-in account. Open Avid to continue."
-        case .expiredSource: return "The saved audio access has expired. Open Avid to refresh it."
-        case .noAudioSource: return "Open this audiobook in Avid once before resuming it from a system control."
-        case .mainAppRequired: return "The audio intent must run in Avid's app process."
-        case .invalidInput: return "The system action is missing a valid book identity."
+        case .appGroupUnavailable: return AvidStrings.text("The Avid App Group is not enabled for this signed app.")
+        case .unavailableBook: return AvidStrings.text("This book is not available in the currently signed-in account. Open Avid to continue.")
+        case .expiredSource: return AvidStrings.text("The saved audio access has expired. Open Avid to refresh it.")
+        case .noAudioSource: return AvidStrings.text("Open this audiobook in Avid once before resuming it from a system control.")
+        case .mainAppRequired: return AvidStrings.text("The audio intent must run in Avid's app process.")
+        case .invalidInput: return AvidStrings.text("The system action is missing a valid book identity.")
         }
     }
 }

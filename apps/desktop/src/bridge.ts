@@ -16,6 +16,8 @@ export interface DesktopMedia {
   title: string;
   author: string;
   chapter?: string;
+  /** Bounded image data only. Native sanitization removes metadata before system display. */
+  coverDataUrl?: string;
   position: number;
   duration: number;
   playing: boolean;

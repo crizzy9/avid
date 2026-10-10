@@ -19,6 +19,7 @@ class AvidSystemSurfacesPlugin : Plugin() {
     }
     override fun load() {
         AvidAudioCatalog.initialize(context)
+        AvidContinueWidget.refresh(context)
         signalNavigation()
     }
     override fun handleOnNewIntent(intent: Intent) { signalNavigation() }

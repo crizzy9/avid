@@ -1,0 +1,295 @@
+{
+  "Open Avid": [
+    "Avaa Avid",
+    "Ouvrir Avid",
+    "Avid öffnen",
+    "Otwórz Avid",
+    "打开 Avid",
+    "Abrir Avid"
+  ],
+  "Quit Avid": [
+    "Lopeta Avid",
+    "Quitter Avid",
+    "Avid beenden",
+    "Zamknij Avid",
+    "退出 Avid",
+    "Salir de Avid"
+  ],
+  "Play": ["Toista", "Lire", "Wiedergeben", "Odtwórz", "播放", "Reproducir"],
+  "Pause": ["Keskeytä", "Pause", "Pausieren", "Wstrzymaj", "暂停", "Pausar"],
+  "Resume": ["Jatka", "Reprendre", "Fortsetzen", "Wznów", "继续", "Reanudar"],
+  "OK": ["OK", "OK", "OK", "OK", "好", "Aceptar"],
+  "Book": ["Kirja", "Livre", "Buch", "Książka", "图书", "Libro"],
+  "Avid book": [
+    "Avid-kirja",
+    "Livre Avid",
+    "Avid-Buch",
+    "Książka Avid",
+    "Avid 图书",
+    "Libro de Avid"
+  ],
+  "Continue {title}": [
+    "Jatka: {title}",
+    "Continuer {title}",
+    "{title} fortsetzen",
+    "Kontynuuj {title}",
+    "继续《{title}》",
+    "Continuar {title}"
+  ],
+  "Continue listening": [
+    "Jatka kuuntelua",
+    "Continuer l’écoute",
+    "Weiterhören",
+    "Kontynuuj słuchanie",
+    "继续收听",
+    "Seguir escuchando"
+  ],
+  "Prepared audiobooks": [
+    "Valmistellut äänikirjat",
+    "Livres audio préparés",
+    "Vorbereitete Hörbücher",
+    "Przygotowane audiobooki",
+    "已准备的有声书",
+    "Audiolibros preparados"
+  ],
+  "Open Avid to sign in": [
+    "Avaa Avid kirjautuaksesi",
+    "Ouvrez Avid pour vous connecter",
+    "Zum Anmelden Avid öffnen",
+    "Otwórz Avid, aby się zalogować",
+    "打开 Avid 登录",
+    "Abre Avid para iniciar sesión"
+  ],
+  "Connect your book server on your phone while parked.": [
+    "Yhdistä kirjapalvelimeen puhelimella auton ollessa pysäköitynä.",
+    "Connectez votre serveur de livres sur votre téléphone à l’arrêt.",
+    "Verbinde deinen Buchserver am Telefon, während das Auto geparkt ist.",
+    "Połącz serwer książek na telefonie po zaparkowaniu.",
+    "请在停车后用手机连接图书服务器。",
+    "Conecta tu servidor de libros desde el teléfono con el coche estacionado."
+  ],
+  "No prepared audiobooks": [
+    "Ei valmisteltuja äänikirjoja",
+    "Aucun livre audio préparé",
+    "Keine vorbereiteten Hörbücher",
+    "Brak przygotowanych audiobooków",
+    "暂无已准备的有声书",
+    "No hay audiolibros preparados"
+  ],
+  "Open an audiobook in Avid on your phone before driving.": [
+    "Avaa äänikirja puhelimen Avidissa ennen ajoa.",
+    "Ouvrez un livre audio dans Avid sur votre téléphone avant de conduire.",
+    "Öffne vor der Fahrt ein Hörbuch in Avid auf deinem Telefon.",
+    "Przed jazdą otwórz audiobook w Avid na telefonie.",
+    "请在驾驶前用手机在 Avid 中打开有声书。",
+    "Abre un audiolibro en Avid desde el teléfono antes de conducir."
+  ],
+  "Unable to play. Open Avid on your phone while parked to refresh access.": [
+    "Toisto ei onnistu. Avaa Avid puhelimella pysäköitynä ja päivitä käyttöoikeus.",
+    "Lecture impossible. Ouvrez Avid sur votre téléphone à l’arrêt pour renouveler l’accès.",
+    "Wiedergabe nicht möglich. Öffne Avid am Telefon im geparkten Auto, um den Zugang zu erneuern.",
+    "Nie można odtworzyć. Po zaparkowaniu otwórz Avid na telefonie, aby odnowić dostęp.",
+    "无法播放。请在停车后用手机打开 Avid 以刷新访问权限。",
+    "No se puede reproducir. Abre Avid en el teléfono con el coche estacionado para renovar el acceso."
+  ],
+  "Your next chapter awaits.": [
+    "Seuraava lukusi odottaa.",
+    "Votre prochain chapitre vous attend.",
+    "Dein nächstes Kapitel wartet.",
+    "Czeka na Ciebie kolejny rozdział.",
+    "下一章在等你。",
+    "Tu próximo capítulo te espera."
+  ],
+  "Open a book in Avid to continue here.": [
+    "Avaa kirja Avidissa jatkaaksesi tästä.",
+    "Ouvrez un livre dans Avid pour continuer ici.",
+    "Öffne ein Buch in Avid, um hier weiterzulesen.",
+    "Otwórz książkę w Avid, aby kontynuować tutaj.",
+    "在 Avid 中打开一本书，即可在此继续。",
+    "Abre un libro en Avid para continuar aquí."
+  ],
+  "Continue with Avid": [
+    "Jatka Avidilla",
+    "Continuer avec Avid",
+    "Mit Avid fortsetzen",
+    "Kontynuuj z Avid",
+    "使用 Avid 继续",
+    "Continuar con Avid"
+  ],
+  "Return to your recent book or control its audiobook.": [
+    "Palaa viimeksi lukemaasi kirjaan tai ohjaa sen äänikirjaa.",
+    "Retrouvez votre dernier livre ou contrôlez son livre audio.",
+    "Kehre zu deinem letzten Buch zurück oder steuere das Hörbuch.",
+    "Wróć do ostatniej książki lub steruj jej audiobookiem.",
+    "返回最近阅读的图书或控制有声书播放。",
+    "Vuelve a tu último libro o controla su audiolibro."
+  ],
+  "Resume Avid": [
+    "Jatka Avidia",
+    "Reprendre Avid",
+    "Avid fortsetzen",
+    "Wznów Avid",
+    "继续 Avid",
+    "Reanudar Avid"
+  ],
+  "Resume Avid audio": [
+    "Jatka Avidin ääntä",
+    "Reprendre l’audio Avid",
+    "Avid-Audio fortsetzen",
+    "Wznów dźwięk Avid",
+    "继续 Avid 音频",
+    "Reanudar el audio de Avid"
+  ],
+  "Pause Avid audio": [
+    "Keskeytä Avidin ääni",
+    "Mettre l’audio Avid en pause",
+    "Avid-Audio pausieren",
+    "Wstrzymaj dźwięk Avid",
+    "暂停 Avid 音频",
+    "Pausar el audio de Avid"
+  ],
+  "Continue reading in Avid": [
+    "Jatka lukemista Avidissa",
+    "Continuer la lecture dans Avid",
+    "In Avid weiterlesen",
+    "Kontynuuj czytanie w Avid",
+    "在 Avid 中继续阅读",
+    "Seguir leyendo en Avid"
+  ],
+  "Continue listening in Avid": [
+    "Jatka kuuntelua Avidissa",
+    "Continuer l’écoute dans Avid",
+    "In Avid weiterhören",
+    "Kontynuuj słuchanie w Avid",
+    "在 Avid 中继续收听",
+    "Seguir escuchando en Avid"
+  ],
+  "Resume audio": [
+    "Jatka ääntä",
+    "Reprendre l’audio",
+    "Audio fortsetzen",
+    "Wznów dźwięk",
+    "继续音频",
+    "Reanudar audio"
+  ],
+  "Pause audio": [
+    "Keskeytä ääni",
+    "Mettre l’audio en pause",
+    "Audio pausieren",
+    "Wstrzymaj dźwięk",
+    "暂停音频",
+    "Pausar audio"
+  ],
+  "Continue reading": [
+    "Jatka lukemista",
+    "Continuer la lecture",
+    "Weiterlesen",
+    "Kontynuuj czytanie",
+    "继续阅读",
+    "Seguir leyendo"
+  ],
+  "The Avid App Group is not enabled for this signed app.": [
+    "Avidin sovellusryhmää ei ole otettu käyttöön tässä allekirjoitetussa sovelluksessa.",
+    "Le groupe d’apps Avid n’est pas activé pour cette application signée.",
+    "Die Avid-App-Gruppe ist für diese signierte App nicht aktiviert.",
+    "Grupa aplikacji Avid nie jest włączona dla tej podpisanej aplikacji.",
+    "此已签名应用尚未启用 Avid App Group。",
+    "El grupo de apps de Avid no está activado para esta aplicación firmada."
+  ],
+  "This book is not available in the currently signed-in account. Open Avid to continue.": [
+    "Kirja ei ole saatavilla kirjautuneella tilillä. Avaa Avid jatkaaksesi.",
+    "Ce livre n’est pas disponible dans le compte connecté. Ouvrez Avid pour continuer.",
+    "Dieses Buch ist im angemeldeten Konto nicht verfügbar. Öffne Avid, um fortzufahren.",
+    "Ta książka nie jest dostępna na zalogowanym koncie. Otwórz Avid, aby kontynuować.",
+    "当前登录账户无法访问此书。请打开 Avid 继续。",
+    "Este libro no está disponible en la cuenta actual. Abre Avid para continuar."
+  ],
+  "The saved audio access has expired. Open Avid to refresh it.": [
+    "Tallennettu äänen käyttöoikeus on vanhentunut. Avaa Avid päivittääksesi sen.",
+    "L’accès audio enregistré a expiré. Ouvrez Avid pour le renouveler.",
+    "Der gespeicherte Audiozugang ist abgelaufen. Öffne Avid, um ihn zu erneuern.",
+    "Zapisany dostęp do dźwięku wygasł. Otwórz Avid, aby go odnowić.",
+    "保存的音频访问权限已过期。请打开 Avid 刷新。",
+    "El acceso guardado al audio ha caducado. Abre Avid para renovarlo."
+  ],
+  "Open this audiobook in Avid once before resuming it from a system control.": [
+    "Avaa äänikirja ensin Avidissa, jotta voit jatkaa sitä järjestelmän säätimellä.",
+    "Ouvrez d’abord ce livre audio dans Avid pour le reprendre depuis une commande système.",
+    "Öffne dieses Hörbuch zuerst in Avid, bevor du es über eine Systemsteuerung fortsetzt.",
+    "Otwórz ten audiobook w Avid przed wznowieniem go z elementu sterowania systemu.",
+    "请先在 Avid 中打开此有声书，再通过系统控件继续播放。",
+    "Abre primero este audiolibro en Avid para reanudarlo desde un control del sistema."
+  ],
+  "The audio intent must run in Avid's app process.": [
+    "Äänitoiminto on suoritettava Avid-sovelluksessa.",
+    "L’action audio doit s’exécuter dans l’application Avid.",
+    "Die Audioaktion muss in der Avid-App ausgeführt werden.",
+    "Działanie audio musi zostać wykonane w aplikacji Avid.",
+    "音频操作必须在 Avid 应用中运行。",
+    "La acción de audio debe ejecutarse en la aplicación Avid."
+  ],
+  "The system action is missing a valid book identity.": [
+    "Järjestelmätoiminnosta puuttuu kelvollinen kirjan tunniste.",
+    "L’action système ne contient pas d’identifiant de livre valide.",
+    "Der Systemaktion fehlt eine gültige Buchkennung.",
+    "W działaniu systemowym brakuje prawidłowego identyfikatora książki.",
+    "系统操作缺少有效的图书标识。",
+    "La acción del sistema no tiene un identificador de libro válido."
+  ],
+  "Resume audio in ${applicationName}": [
+    "Jatka ääntä sovelluksessa ${applicationName}",
+    "Reprendre l’audio dans ${applicationName}",
+    "Audio in ${applicationName} fortsetzen",
+    "Wznów dźwięk w ${applicationName}",
+    "在 ${applicationName} 中继续音频",
+    "Reanudar audio en ${applicationName}"
+  ],
+  "Pause audio in ${applicationName}": [
+    "Keskeytä ääni sovelluksessa ${applicationName}",
+    "Mettre l’audio en pause dans ${applicationName}",
+    "Audio in ${applicationName} pausieren",
+    "Wstrzymaj dźwięk w ${applicationName}",
+    "在 ${applicationName} 中暂停音频",
+    "Pausar audio en ${applicationName}"
+  ],
+  "Continue reading in ${applicationName}": [
+    "Jatka lukemista sovelluksessa ${applicationName}",
+    "Continuer la lecture dans ${applicationName}",
+    "In ${applicationName} weiterlesen",
+    "Kontynuuj czytanie w ${applicationName}",
+    "在 ${applicationName} 中继续阅读",
+    "Seguir leyendo en ${applicationName}"
+  ],
+  "Resume a recent audiobook in Avid.": [
+    "Jatka viimeksi kuunneltua äänikirjaa Avidissa.",
+    "Reprenez un livre audio récent dans Avid.",
+    "Setze ein zuletzt gehörtes Hörbuch in Avid fort.",
+    "Wznów ostatni audiobook w Avid.",
+    "在 Avid 中继续播放最近的有声书。",
+    "Reanuda un audiolibro reciente en Avid."
+  ],
+  "Resume your recent audiobook in Avid.": [
+    "Jatka viimeksi kuunneltua äänikirjaa Avidissa.",
+    "Reprenez votre dernier livre audio dans Avid.",
+    "Setze dein letztes Hörbuch in Avid fort.",
+    "Wznów swój ostatni audiobook w Avid.",
+    "在 Avid 中继续播放最近的有声书。",
+    "Reanuda tu último audiolibro en Avid."
+  ],
+  "{percent}% complete": [
+    "{percent}% valmiina",
+    "{percent} % terminé",
+    "{percent} % abgeschlossen",
+    "Ukończono {percent}%",
+    "已完成 {percent}%",
+    "{percent}% completado"
+  ],
+  "Resume your latest book in Avid.": [
+    "Jatka viimeisintä kirjaasi Avidissa.",
+    "Reprenez votre dernier livre dans Avid.",
+    "Setze dein letztes Buch in Avid fort.",
+    "Wznów ostatnią książkę w Avid.",
+    "在 Avid 中继续最近阅读的图书。",
+    "Continúa tu último libro en Avid."
+  ]
+}

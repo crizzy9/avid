@@ -28,10 +28,16 @@ public class AvidAppearancePlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "setTheme", returnType: CAPPluginReturnPromise)]
     @objc func setTheme(_ call: CAPPluginCall) {
         guard let theme = call.getString("theme"), ["light", "dark", "system"].contains(theme) else { call.reject("Choose light, dark, or system appearance."); return }
+        let locale = call.getString("locale") ?? "en"
+        guard AvidStrings.supported.contains(locale) else { call.reject("Unsupported language."); return }
         DispatchQueue.main.async {
+            let changed = AvidStrings.locale != locale
+            UserDefaults.standard.set(locale, forKey: "avid.locale")
+            UserDefaults(suiteName: "group.app.avid.reader")?.set(locale, forKey: "avid.locale")
             UserDefaults.standard.set(theme, forKey: "avid.appearance")
             guard let controller = self.bridge?.viewController else { call.reject("The native window is unavailable."); return }
             AvidAppearance.apply(to: controller)
+            if changed { AvidSystemSurfaces.refresh() }
             call.resolve()
         }
     }

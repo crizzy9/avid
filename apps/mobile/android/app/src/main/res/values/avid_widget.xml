@@ -1,11 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="avid_widget_name">Continue Reading</string>
-    <string name="avid_widget_description">Resume your latest book in Avid.</string>
-    <string name="avid_widget_heading">AVID · CONTINUE READING</string>
-    <string name="avid_widget_empty_title">Open a book to begin</string>
-    <string name="avid_widget_empty_detail">Your latest read will appear here</string>
-    <string name="avid_widget_progress">%1$d%% complete</string>
     <color name="avid_widget_background">#F7F6F2</color>
     <color name="avid_widget_primary">#1E211F</color>
     <color name="avid_widget_secondary">#626B64</color>

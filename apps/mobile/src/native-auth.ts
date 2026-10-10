@@ -10,6 +10,7 @@ import {
 } from "../../../packages/core/src/bookorbit";
 import type { Session } from "../../../packages/core/src/types";
 import type { NativeSessionRecord } from "./native-session";
+import { getDesktopAuth } from "../../desktop/src/network";
 
 export interface NativeAuthPlugin {
   /** Isolated cookies are committed only while this captured vault generation still owns the attempt. */
@@ -35,7 +36,7 @@ const plugin = registerPlugin<NativeAuthPlugin>("AvidAuth");
 export function getNativeAuth(): NativeAuthPlugin | null {
   return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("AvidAuth")
     ? plugin
-    : null;
+    : getDesktopAuth();
 }
 /** Capture this immediately after the attempt's credential-clear barrier, never during a delayed request. */
 export function createNativeAuthFetch(

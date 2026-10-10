@@ -70,20 +70,18 @@ export class SyncRecovery {
     return (await this.repository.pendingOperations()).filter(blocked);
   }
   async receipts(): Promise<RecoveryReceipt[]> {
-    return (
-      await this.repository.db.preferences
-        .where("scope")
-        .equals(this.repository.scope)
-        .toArray()
-    )
+    return (await this.repository.readRecords("preferences"))
       .filter((record) => record.id.startsWith("sync-recovery:"))
       .map((record) => record.value as unknown as RecoveryReceipt)
       .sort((a, b) => b.resolvedAt.localeCompare(a.resolvedAt));
   }
-  private async local(operation: OutboxOperation): Promise<SyncPayload> {
+  private async local(
+    operation: OutboxOperation,
+    repository = this.repository,
+  ): Promise<SyncPayload> {
     const payload = operation.payload;
     if (payload.kind === "preferences") {
-      const queued = (await this.repository.pendingOperations()).flatMap(
+      const queued = (await repository.pendingOperations()).flatMap(
         (operation) =>
           operation.payload.kind === "preferences" &&
           operation.payload.fileId === payload.fileId
@@ -96,7 +94,7 @@ export class SyncRecovery {
           {},
           payload.localSet,
           ...queued,
-          await this.repository.getPreferences(
+          await repository.getPreferences(
             `reader-file-overrides:${payload.fileId}`,
           ),
         ),
@@ -105,18 +103,14 @@ export class SyncRecovery {
     if (payload.kind === "progress")
       return {
         kind: "progress",
-        anchor:
-          (await this.repository.getAnchor(payload.anchor)) ?? payload.anchor,
+        anchor: (await repository.getAnchor(payload.anchor)) ?? payload.anchor,
       };
     if (payload.kind === "annotation")
       return {
         kind: "annotation",
         annotation:
           (
-            await this.repository.getAnnotations(
-              payload.annotation.bookId,
-              true,
-            )
+            await repository.getAnnotations(payload.annotation.bookId, true)
           ).find((note) => note.id === payload.annotation.id) ??
           payload.annotation,
       };
@@ -236,22 +230,22 @@ export class SyncRecovery {
       action,
       review,
     };
-    const { db, scope } = this.repository;
-    await db.transaction(
-      "rw",
-      [db.outbox, db.anchors, db.annotations, db.books, db.preferences],
-      async () => {
+    const { scope } = this.repository;
+    await this.repository.atomic(
+      ["outbox", "anchors", "annotations", "books", "preferences"],
+      async (repository) => {
         this.active();
-        const operations = (await this.repository.pendingOperations()).filter(
+        const operations = (await repository.pendingOperations()).filter(
           (item) => item.entityKey === review.operation.entityKey,
         );
         if (
           !same(operations, review.operations) ||
           operations.some(liveLease) ||
-          !same(await this.local(review.operation), review.local)
+          !same(await this.local(review.operation, repository), review.local)
         )
           throw new RecoveryChangedError();
-        await db.preferences.put(
+        await repository.putRecord(
+          "preferences",
           row(
             scope,
             `sync-recovery:${receipt.id}`,
@@ -265,7 +259,7 @@ export class SyncRecovery {
             operation.payload.annotation.kind !== "audio" &&
             !/^\d+$/.test(operation.payload.annotation.id) &&
             operation.attempts > 0;
-          await this.repository.updateOperation(operation.id, {
+          await repository.updateOperation(operation.id, {
             status: uncertainCreate ? "uncertain" : "pending",
             error: undefined,
             nextAttemptAt: undefined,
@@ -273,9 +267,8 @@ export class SyncRecovery {
           });
           return;
         }
-        await db.outbox.bulkDelete(
-          operations.map((operation) => operation.key),
-        );
+        for (const operation of operations)
+          await repository.deleteRecord("outbox", operation.id);
         if (action === "keep-device") {
           if (review.local.kind === "preferences") {
             const local = Object.assign(
@@ -287,7 +280,7 @@ export class SyncRecovery {
               ),
               review.local.localSet,
             );
-            await this.repository.patchPreferences(
+            await repository.patchPreferences(
               local,
               `reader-file-overrides:${review.local.fileId}`,
             );
@@ -331,10 +324,15 @@ export class SyncRecovery {
         } else throw new RecoveryChangedError();
         if (payload.kind === "progress") {
           const anchor = payload.anchor;
-          await db.anchors.put(row(scope, anchorIdentity(anchor), anchor));
-          const book = await db.books.get(key(scope, anchor.bookId));
+          await repository.putRecord(
+            "anchors",
+            row(scope, anchorIdentity(anchor), anchor),
+          );
+          const book = (
+            await repository.readRecords("books", { ids: [anchor.bookId] })
+          )[0];
           if (book)
-            await db.books.put({
+            await repository.putRecord("books", {
               ...book,
               value: {
                 ...book.value,
@@ -343,12 +341,13 @@ export class SyncRecovery {
               },
             });
         } else if (payload.kind === "annotation")
-          await db.annotations.put(
+          await repository.putRecord(
+            "annotations",
             row(scope, payload.annotation.id, payload.annotation),
           );
         if (action === "use-local") {
           const id = crypto.randomUUID();
-          await db.outbox.put({
+          await repository.putRecord("outbox", {
             key: key(scope, id),
             scope,
             id,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getDesktopFetch } from "../../desktop/src/network";
 import {
   normalizeServerUrl,
   type ClientOptions,
@@ -164,7 +165,7 @@ export class NativeOidcCoordinator {
       // BookOrbit's web exchange seeds native HTTP/WebView cookies needed for streaming.
       clientOptions: {
         ...this.options.clientOptions(routing.profile.url, generation),
-        clientKind: "web",
+        clientKind: getDesktopFetch() ? "native" : "web",
       },
     });
   }

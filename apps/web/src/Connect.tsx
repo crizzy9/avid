@@ -11,6 +11,7 @@ import { BookOrbitClient } from "../../../packages/core/src/bookorbit";
 import type { Session } from "../../../packages/core/src/types";
 import { ProviderSignIn } from "./ProviderSignIn";
 import { createNativeAuthFetch } from "../../mobile/src/native-auth";
+import { getDesktopFetch } from "../../desktop/src/network";
 
 export interface ConnectionAttemptBinding {
   nativeGeneration?: string;
@@ -62,6 +63,7 @@ export function Connect({
       };
       const session = await BookOrbitClient.login(profile, password, {
         readOnly,
+        clientKind: getDesktopFetch() ? "native" : "web",
         fetch: binding?.nativeGeneration
           ? createNativeAuthFetch(binding.nativeGeneration, bookOrbitFetch)
           : bookOrbitFetch,
@@ -173,6 +175,8 @@ export function Connect({
 
 /** The development proxy is optional and only forwards to the explicitly configured server. */
 export const bookOrbitFetch: typeof fetch = (input, init) => {
+  const desktop = getDesktopFetch();
+  if (desktop) return desktop(input, init);
   const configured = import.meta.env.DEV
     ? (import.meta.env.VITE_BOOKORBIT_PROXY_ORIGIN as string | undefined)
     : undefined;
@@ -191,6 +195,7 @@ export const bookOrbitFetch: typeof fetch = (input, init) => {
 };
 
 export function proxyBaseFor(serverUrl: string): string | undefined {
+  if (getDesktopFetch()) return undefined;
   const configured = import.meta.env.DEV
     ? (import.meta.env.VITE_BOOKORBIT_PROXY_ORIGIN as string | undefined)
     : undefined;

@@ -92,7 +92,7 @@ export function getPlatformCapabilities(
   const widgets = (sharedStore && reports(surfaces, 'widgetExtensionEmbedded')) || reports(surfaces, 'androidWidgetAvailable');
   const intents = sharedStore && nativeAudio && reports(surfaces, 'audioIntentsAvailable');
   const controls = widgets && nativeAudio && reports(surfaces, 'controlsAvailable');
-  const spotlight = sharedStore && reports(surfaces, 'spotlightAvailable');
+  const spotlight = (sharedStore && reports(surfaces, 'spotlightAvailable')) || reports(surfaces, 'desktopSearchAvailable');
   const detail = (available: boolean, ready: CapabilityMessageKey, source?: NativeCapabilityEvidence, missing: CapabilityMessageKey = 'unavailable') =>
     available ? ready : source?.installed && source.checking ? 'checking' : missing;
   const row = (id: PlatformCapabilityId, label: CapabilityMessageKey, available: boolean, description: CapabilityMessageKey): PlatformCapability =>

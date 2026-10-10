@@ -46,6 +46,7 @@ object AvidAudioCatalog {
         }
     }
     fun observe(callback: (Boolean) -> Unit): () -> Unit { observers.add(callback); return { observers.remove(callback) } }
+    fun refreshLabels() { observers.toList().forEach { it(false) } }
     fun activate(accountScope: String) {
         require(accountScope.isNotBlank())
         if (scope == accountScope) return

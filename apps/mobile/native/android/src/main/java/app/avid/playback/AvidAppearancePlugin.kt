@@ -20,10 +20,15 @@ class AvidAppearancePlugin : Plugin() {
     override fun handleOnConfigurationChanged(newConfig: Configuration) { activity.runOnUiThread { apply(storedTheme()) } }
     @PluginMethod fun setTheme(call: PluginCall) {
         val theme = call.getString("theme")
+        val locale = call.getString("locale") ?: "en"
+        if (!AvidStrings.valid(locale)) { call.reject("Unsupported language."); return }
         if (theme !in listOf("light", "dark", "system")) { call.reject("Choose light, dark, or system appearance."); return }
         activity.runOnUiThread {
-            context.getSharedPreferences("avid-appearance", Context.MODE_PRIVATE).edit().putString("theme", theme).apply()
+            val preferences = context.getSharedPreferences("avid-appearance", Context.MODE_PRIVATE)
+            val changed = preferences.getString("locale", "en") != locale
+            preferences.edit().putString("theme", theme).putString("locale", locale).apply()
             apply(theme!!)
+            if (changed) { AvidContinueWidget.refresh(context); AvidAudioCatalog.refreshLabels() }
             call.resolve()
         }
     }

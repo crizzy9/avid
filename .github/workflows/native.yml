@@ -5,6 +5,7 @@ on:
     paths:
       - 'apps/mobile/**'
       - 'apps/desktop/**'
+      - 'packages/i18n/native-messages.json'
       - '.github/workflows/native.yml'
       - 'pnpm-lock.yaml'
 permissions:
@@ -97,3 +98,20 @@ jobs:
       - name: Compile linked desktop binary
         working-directory: apps/desktop/src-tauri
         run: cargo build --locked
+      - name: Test desktop storage and protocol boundaries
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --locked
+      - name: Package unsigned macOS application
+        if: runner.os == 'macOS'
+        run: pnpm --filter @avid/desktop exec tauri build --debug --ci --no-sign --bundles app
+      - name: Package Linux installer
+        if: runner.os == 'Linux'
+        run: pnpm --filter @avid/desktop exec tauri build --debug --ci --no-sign --bundles deb
+      - name: Package unsigned Windows installer
+        if: runner.os == 'Windows'
+        run: pnpm --filter @avid/desktop exec tauri build --debug --ci --no-sign --bundles nsis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avid-desktop-${{ runner.os }}-unsigned-debug
+          path: apps/desktop/src-tauri/target/debug/bundle
+          retention-days: 14

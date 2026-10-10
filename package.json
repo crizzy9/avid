@@ -8,6 +8,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
+    "i18n:native": "node scripts/generate-native-messages.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."
