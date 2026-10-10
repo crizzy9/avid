@@ -12,12 +12,15 @@ A bounded **Phase 2/3 read-along slice** is implemented: chapter-relative player
 
 ## Run
 
-Requires Node.js 24 and pnpm 10.
+The Nix development shell provides Node.js 24 and pnpm 10.34.5. With Nix's `nix-command` and `flakes` features enabled:
 
 ```sh
-pnpm install
+nix develop
+pnpm install --frozen-lockfile
 pnpm dev
 ```
+
+Without Nix, install those Node/pnpm versions, skip `nix develop`, and run the pnpm commands directly. The [development environment guide](docs/dev-environment.md) covers optional direnv setup and the separate desktop/Android shells. Entering a shell does not install workspace dependencies or start a server.
 
 Open `http://127.0.0.1:5173`. The initial library is an explicitly labeled local sample. Its original covers and reader content are included, so exploring it sends no third-party requests. Use **More → Open or upload a book** to try a real file, or connect a BookOrbit server.
 
