@@ -20,7 +20,7 @@ Imported-book listing requests only file identities; it does not read file bodie
 
 Twelve parity and bridge-boundary tests exercise the same repository behavior with real fake-indexeddb transactions and an instrumented native CAS protocol fixture. They cover rollback, immutable scope after caller session mutation, account clearing, backward checkpoints, read-only edits, tombstones, canonical note IDs, concurrent activity and lease creation, idempotent native event receipts, forced CAS retry, exact multi-chunk bytes, metadata-only file listing, wrong-account responses, truncated file reads, and re-upload after temporary receipt expiry or account clearing. Existing synchronization/recovery/hook/native-journal tests pass through the port. All 14 disposable BookOrbit v3.3.0 smoke checks also pass after this refactor.
 
-The protocol fixture is not SQLite, filesystem durability, or crash-injection evidence. The Rust backend has a separate thirteen-test real SQLite/file suite. At native checkpoint `63f8d8f`, [CI run 38017248168](https://github.com/crizzy9/avid/actions/runs/38017248168) passed all five platform jobs, including 50 Rust tests on each of Linux and macOS and 47 on Windows across storage and the other desktop boundaries. Real installation, platform restart/kill acceptance and filesystem failure qualification remain separate. The copy-before-activation migration described below preserves the browser database and schema; no legacy account is deleted by migration.
+The protocol fixture is not SQLite, filesystem durability, or crash-injection evidence. The Rust backend has a separate thirteen-test real SQLite/file suite. At native checkpoint `430b8b6`, [CI run 38019033815](https://github.com/crizzy9/avid/actions/runs/38019033815) passed all five platform jobs, including 50 Rust tests on each of Linux and macOS and 47 on Windows across storage and the other desktop boundaries. Real installation, platform restart/kill acceptance and filesystem failure qualification remain separate. The copy-before-activation migration described below preserves the browser database and schema; no legacy account is deleted by migration.
 
 ## iOS repository backend
 
@@ -30,14 +30,14 @@ Private file transfers use exact sequential chunks of at most 256 KiB, 4 GiB per
 
 Pending handles bind the process and native connection epoch. Logout or a different-account adoption invalidates them, while same-account token renewal preserves them. The epoch lock prevents a queued append or finish from crossing the account-change barrier. Completed references remain account-scoped and readable after a new connection; metadata partitions are not treated as network authorization.
 
-Fifteen standalone native tests compile the production Foundation/SQLite implementation and exercise real files and SQLite, including reopening, CAS, multi-table rollback, ordered clearing, byte-exact Unicode identities, filtered queries, exact multi-chunk files, partial/wrong-scope requests, epoch/process invalidation, receipt corruption, quotas, expiration/read grace, symlinks, and schema/size validation. The suite passes locally with Swift 5.10.1, Foundation and SQLite on Linux, and all 15 tests passed on macOS in CI at `63f8d8f`. Run the same source on macOS with:
+Fifteen standalone native tests compile the production Foundation/SQLite implementation and exercise real files and SQLite, including reopening, CAS, multi-table rollback, ordered clearing, byte-exact Unicode identities, filtered queries, exact multi-chunk files, partial/wrong-scope requests, epoch/process invalidation, receipt corruption, quotas, expiration/read grace, symlinks, and schema/size validation. The suite passes locally with Swift 5.10.1, Foundation and SQLite on Linux, and all 15 tests passed on macOS in CI at `430b8b6`. Run the same source on macOS with:
 
 ```sh
 swiftc apps/mobile/native/ios/AvidLibraryStorage.swift apps/mobile/native/ios/tests/LibraryStorageTests.swift -o /tmp/avid-library-tests
 /tmp/avid-library-tests
 ```
 
-These tests exercise the real backend. The Capacitor wrapper also compiled as part of the unsigned iOS app/widget and opt-in CarPlay builds at `63f8d8f`. Installed bridge calls, iOS data-protection behavior while locked, signing and physical-device recovery remain separate acceptance gates.
+These tests exercise the real backend. The Capacitor wrapper also compiled as part of the unsigned iOS app/widget and opt-in CarPlay builds at `430b8b6`. Installed bridge calls, iOS data-protection behavior while locked, signing and physical-device recovery remain separate acceptance gates.
 
 ## Android repository backend
 
@@ -47,7 +47,7 @@ Binary receipts and metadata live below Android's private `noBackupFilesDir`, wi
 
 Sixteen tests pass against Robolectric 4.16.1's native AOSP SQLite runtime at Android API 28, using real temporary database and file paths. They cover durable reopening and schema rejection, multi-table CAS and SQL-trigger rollback, ordered mutations and revision preservation, separate database connections, filtered outbox/session/receipt queries, JSON larger than CursorWindow, 1,001-ID batches, exact file chunks and EOF, corrupt or wrong-scope receipts, epoch/process invalidation, sparse 4 GiB offsets, quotas, expiration, private permissions and symlinks. A test-only `LibraryFileOs` adapter maps six Android filesystem methods to the host's real Unix attributes, permissions and file-channel sync because Robolectric's default filesystem shadow reports synthetic missing-file attributes. SQLite is not replaced by a protocol fixture or mock database.
 
-The integrated local Android run passed all 62 tests with zero skipped cases. CI at `63f8d8f` also passed the Android unit-test task and compiled both default and Auto-enabled debug APKs, including the Capacitor repository wrapper. From `apps/mobile/android`, run `./gradlew :app:testDebugUnitTest :app:assembleDebug` with a configured Android SDK and writable test home. This evidence does not qualify installed Capacitor calls, Android filesystem behavior across power loss, low-storage failures, or restart/kill behavior on physical devices. Those remain device acceptance gates; API 24–27 compatibility paths also need device qualification.
+The integrated local Android run passed all 62 tests with zero skipped cases. CI at `430b8b6` also passed the Android unit-test task and compiled both default and Auto-enabled debug APKs, including the Capacitor repository wrapper. From `apps/mobile/android`, run `./gradlew :app:testDebugUnitTest :app:assembleDebug` with a configured Android SDK and writable test home. This evidence does not qualify installed Capacitor calls, Android filesystem behavior across power loss, low-storage failures, or restart/kill behavior on physical devices. Those remain device acceptance gates; API 24–27 compatibility paths also need device qualification.
 
 ## Copy before native activation
 
