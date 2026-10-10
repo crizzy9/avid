@@ -132,6 +132,7 @@ export function BookCard({
       onFocus={onFocus}
       style={{ width: "100%" }}
       className={`book-card ${list ? "list-card" : ""}`}
+      data-format={book.format}
       onClick={() => onSelect(book)}
       aria-label={t("library.openLabel", {
         title: book.title,

@@ -1,5 +1,6 @@
 /** Each row is English, Finnish, French, German, Polish, Simplified Chinese, Spanish. */
 export const messages = {
+  "nav.more": ["More", "Lisää", "Plus", "Mehr", "Więcej", "更多", "Más"],
   "detail.edition": [
     "File or edition",
     "Tiedosto tai laitos",

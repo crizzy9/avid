@@ -17,6 +17,15 @@ type Translations = readonly [
 ];
 /** Complete interface sentences; book metadata and quoted passages remain user content. */
 export const appMessages = {
+  detailInformation: ["Information", "Tiedot", "Informations", "Informationen", "Informacje", "图书信息", "Información"],
+  detailGenres: ["Genres", "Lajityypit", "Genres", "Genres", "Gatunki", "分类", "Géneros"],
+  detailPublished: ["Published", "Julkaistu", "Publication", "Erschienen", "Rok wydania", "出版年份", "Publicación"],
+  detailPublisher: ["Publisher", "Kustantaja", "Éditeur", "Verlag", "Wydawca", "出版社", "Editorial"],
+  detailCommunityRatings: ["Community ratings", "Yhteisön arviot", "Notes de la communauté", "Bewertungen der Community", "Oceny społeczności", "社区评分", "Valoraciones de la comunidad"],
+  detailRatingCount: ["{count} ratings", "{count} arviota", "{count} notes", "{count} Bewertungen", "{count} ocen", "{count} 个评分", "{count} valoraciones"],
+  detailYourRating: ["Your rating: {rating} out of 5", "Oma arviosi: {rating}/5", "Votre note : {rating} sur 5", "Deine Bewertung: {rating} von 5", "Twoja ocena: {rating} z 5", "你的评分：{rating} / 5", "Tu valoración: {rating} de 5"],
+  detailReadMore: ["Read more", "Lue lisää", "Lire la suite", "Mehr lesen", "Czytaj więcej", "展开简介", "Leer más"],
+  detailShowLess: ["Show less", "Näytä vähemmän", "Réduire", "Weniger anzeigen", "Pokaż mniej", "收起简介", "Mostrar menos"],
   nativeRenewalUnavailable: [
     "Native credential renewal is unavailable.",
     "Laitteen kirjautumistietojen uusinta ei ole käytettävissä.",

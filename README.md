@@ -2,6 +2,8 @@
 
 A personal BookOrbit reader built with React and TypeScript. Avid follows Apogee Reader's cover-first library, resume, reading, listening, and notebook workflows with original application code and artwork.
 
+The interface follows the observed Apogee phone and tablet layouts: Home/Library/Browse/More navigation, a separate Search control, tinted resume view, compact media shelves, book sheets, and quiet reading chrome. The user's replica request supersedes the saved research's earlier redesign direction. [Reference coverage](docs/reference-layout.md) records what was compared and what still needs an installed-app audit.
+
 **Status: working Phase 1 development preview, not a completed parity release.** The research calls for 66 Phase 1 requirements across web, iOS, Android, macOS, Windows, and Linux. Web and native implementations, tests and unsigned build packages are included. Signed builds, installed-device acceptance and live integration qualification remain open. See [the feature checklist](docs/phase-1-status.md).
 
 ## Run
@@ -13,7 +15,7 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://127.0.0.1:5173`. The initial library is an explicitly labeled local sample. Its original covers and reader content are included, so exploring it sends no third-party requests. Use **+ → Open a book from this device** to try a real file, or connect a BookOrbit server.
+Open `http://127.0.0.1:5173`. The initial library is an explicitly labeled local sample. Its original covers and reader content are included, so exploring it sends no third-party requests. Use **More → Open or upload a book** to try a real file, or connect a BookOrbit server.
 
 ```sh
 pnpm typecheck

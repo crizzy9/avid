@@ -28,6 +28,14 @@ export interface ReaderPreferencePort {
 export interface TocItem { label: string; href: string | number; subitems?: TocItem[]; pageNumber?: number; fileName?: string }
 export interface SearchResult { label: string; locator: string; excerpt: string; pageNumber?: number }
 export interface SelectionAnchor { quote: string; locator: string }
+export interface ReaderPageInfo {
+  /** Publication page-list label, including Roman numerals; never an estimated location. */
+  pageLabel?: string;
+  pageNumber?: number;
+  pageCount?: number;
+  /** Actual remaining paginator screens in the current spine section. */
+  sectionRemaining?: number;
+}
 export interface ReaderSettings {
   theme: 'light' | 'warm' | 'dark' | 'custom';
   background: string; foreground: string;
@@ -51,7 +59,9 @@ export interface EngineProps extends ReaderProps {
   file: BookFile;
   settings: ReaderSettings;
   onReady: (handle: EngineHandle, toc: TocItem[]) => void;
-  onLocation: (locator: string, progress: number, label: string) => void;
+  onLocation: (locator: string, progress: number, label: string, pageInfo?: ReaderPageInfo) => void;
+  onReadingTap?: () => void;
+  onReadingEscape?: () => void;
   onError: (error: string) => void;
   onNotice: (message: string) => void;
   onSelection: (selection: SelectionAnchor | undefined) => void;
@@ -59,8 +69,8 @@ export interface EngineProps extends ReaderProps {
   onMediaState: (state: { available: boolean; playing: boolean; seconds: number }) => void;
 }
 export const defaultSettings: ReaderSettings = {
-  theme: 'warm', background: '#f5eddb', foreground: '#302b22', font: 'Literata',
-  fontSize: 21, lineHeight: 1.8, margin: 9, flow: 'paginated', animation: 'none',
+  theme: 'light', background: '#f5eddb', foreground: '#302b22', font: 'Georgia',
+  fontSize: 18, lineHeight: 1.55, margin: 6, flow: 'paginated', animation: 'none',
   comicMode: 'paged', direction: 'ltr', voice: '', speechRate: 1,
 };
 export function themeColors(settings: ReaderSettings) {

@@ -9,6 +9,7 @@ import {
 import { registerSpeechProvider } from "../../../packages/playback/src/speechRuntime";
 import { getDesktopSpeech } from "../../desktop/src/bridge";
 import "./styles.css";
+import "./reference-shell.css";
 
 const nativeSpeech = getNativeSpeech() ?? getDesktopSpeech();
 if (nativeSpeech) registerSpeechProvider(nativeSpeechProvider(nativeSpeech));

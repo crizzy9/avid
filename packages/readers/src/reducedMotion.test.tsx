@@ -103,10 +103,10 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
-const render = async (animation: ReaderSettings["animation"]) => {
+const render = async (animation: ReaderSettings["animation"], flow: ReaderSettings["flow"] = 'paginated') => {
   localStorage.setItem(
     "avid.reader.settings.v2.motion-account.motion-file",
-    JSON.stringify({ animation }),
+    JSON.stringify({ animation, flow }),
   );
   await act(async () =>
     root.render(
@@ -212,4 +212,23 @@ it("uses the current preference when an asynchronous publication finishes openin
   await setApp("system");
   expect(renderer().hasAttribute("animated")).toBe(true);
   expect(engine.open).toHaveBeenCalledTimes(1);
+});
+
+it('keeps continuous ebook flow calm and restores slide only after returning to pagination', async () => {
+  await render('slide', 'scrolled');
+  expect(renderer().hasAttribute('animated')).toBe(false);
+  await next(); expect(engine.next).toHaveBeenCalledOnce();
+  await act(async () => (host.querySelector('[aria-label="Reading settings"]') as HTMLButtonElement).click());
+  const flow = [...host.querySelectorAll('select')].find(select => [...select.options].some(option => option.value === 'scrolled'))!;
+  await act(async () => { flow.value = 'paginated'; flow.dispatchEvent(new Event('change', { bubbles: true })); });
+  expect(renderer().hasAttribute('animated')).toBe(true);
+  await act(async () => { flow.value = 'scrolled'; flow.dispatchEvent(new Event('change', { bubbles: true })); });
+  expect(renderer().hasAttribute('animated')).toBe(false);
+  expect(engine.open).toHaveBeenCalledOnce();
+});
+
+it.each(['fade', 'fast-fade'] as const)('does not flash continuous ebook scrolling for %s', async animation => {
+  await render(animation, 'scrolled'); await next();
+  expect(host.querySelector('.reader-stage.turning')).toBeNull();
+  expect(engine.next).toHaveBeenCalledOnce();
 });

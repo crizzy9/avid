@@ -1,0 +1,164 @@
+.reference-library {
+  position: relative;
+  min-width: 0;
+  padding-top: 1px;
+}
+.reference-library-shelf {
+  --reference-cover-width: 109px;
+  --reference-cover-height: 164px;
+  padding: 12px 12px 2px;
+}
+.reference-library-shelf + .reference-library-shelf {
+  border-top: 1px solid var(--line);
+}
+.reference-library-audio {
+  --reference-cover-width: 164px;
+}
+.reference-library-heading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  margin-bottom: 13px;
+}
+.reference-library-heading h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 18px;
+}
+.reference-library-see-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--ink) 15%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--accent, #83400f);
+  font-size: 9px;
+  line-height: 12px;
+  white-space: nowrap;
+}
+.reference-library-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  padding-bottom: 2px;
+}
+.reference-library-track {
+  display: grid;
+  grid-template-columns: repeat(
+    var(--reference-columns),
+    var(--reference-cover-width)
+  );
+  grid-auto-rows: calc(var(--reference-cover-height) + 29px);
+  align-items: start;
+  column-gap: 8px;
+  row-gap: 6px;
+  width: max-content;
+}
+.reference-library .book-card {
+  border: 0;
+  background: transparent;
+}
+.reference-library .book-card .cover {
+  width: var(--reference-cover-width);
+  height: var(--reference-cover-height);
+  aspect-ratio: auto;
+  border-radius: 3px;
+  box-shadow: none;
+}
+.reference-library .book-card:hover .cover {
+  transform: none;
+  box-shadow: none;
+}
+.reference-library .book-card:hover .book-title {
+  text-decoration: underline;
+}
+.reference-library .cover-format,
+.reference-library .cover-percent,
+.reference-library .cover-progress {
+  display: none;
+}
+.reference-library .book-card .book-caption {
+  padding-top: 3px;
+}
+.reference-library .book-card .book-title {
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 13px;
+}
+.reference-library .book-card .book-author {
+  margin-top: 1px;
+  font-size: 8px;
+  font-weight: 400;
+  line-height: 12px;
+}
+.reference-library .cover-fallback {
+  padding: 12% 10%;
+}
+.reference-library .cover-fallback > span {
+  font-size: 15px;
+}
+.reference-library .cover-fallback small {
+  font-size: 7px;
+}
+.reference-library-more {
+  width: var(--reference-cover-width);
+  height: var(--reference-cover-height);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  color: var(--ink);
+  font-size: 9px;
+}
+.reference-library-more:hover {
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+}
+.reference-library-loading {
+  position: absolute;
+  right: 0;
+  top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.reference-library-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 10px 0 14px;
+  padding: 3px 0;
+  background: transparent;
+  border: 0;
+  color: var(--accent, #83400f);
+  font-size: 13px;
+}
+.reference-library :is(button, .reference-library-scroll):focus-visible,
+.reference-library-back:focus-visible {
+  outline: 2px solid var(--accent, #83400f);
+  outline-offset: 3px;
+}
+@media (max-width: 480px) {
+  .reference-library-shelf {
+    --reference-cover-width: 103px;
+    --reference-cover-height: 155px;
+  }
+  .reference-library-audio {
+    --reference-cover-width: 155px;
+  }
+  .reference-library-heading {
+    margin-bottom: 10px;
+  }
+}

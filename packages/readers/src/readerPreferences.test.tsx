@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Reader } from "./Reader";
+import { defaultSettings } from "./contracts";
 import type {
   Book,
   ReaderPreferencePort,
@@ -91,11 +92,13 @@ it("does not overwrite a user change when a slow server preference load finishes
   });
   await click("Reading settings");
   await click("Increase font size");
-  expect(patch).toHaveBeenCalledWith({ fontSize: 22 });
+  expect(patch).toHaveBeenCalledWith({
+    fontSize: defaultSettings.fontSize + 1,
+  });
   await act(async () => load.resolve({ fontSize: 14, lineHeight: 2 }));
   expect(
     host.querySelector("[data-font-size]")?.getAttribute("data-font-size"),
-  ).toBe("22");
+  ).toBe(String(defaultSettings.fontSize + 1));
   expect(
     host.querySelector("[data-line-height]")?.getAttribute("data-line-height"),
   ).toBe("2");
@@ -134,11 +137,11 @@ it("keeps file settings separate when using local files without a server adapter
   await render(undefined, "6");
   expect(
     host.querySelector("[data-font-size]")?.getAttribute("data-font-size"),
-  ).toBe("21");
+  ).toBe(String(defaultSettings.fontSize));
   await render();
   expect(
     host.querySelector("[data-font-size]")?.getAttribute("data-font-size"),
-  ).toBe("22");
+  ).toBe(String(defaultSettings.fontSize + 1));
 });
 it("keeps the reader available with a notice when local preference storage fails", async () => {
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {

@@ -47,6 +47,7 @@ import {
   RefreshCw,
   ArrowLeft,
   FolderPlus,
+  UserRound,
 } from "lucide-react";
 import type {
   Annotation,
@@ -63,7 +64,10 @@ import {
 import { demoBooks } from "./fixtures";
 import { useLibrary } from "./useLibrary";
 import { createPlatformLibraryStorage } from "../../mobile/src/native-storage";
-import { getCrossPointFetch, getReaderDiscovery } from "../../mobile/src/native-crosspoint";
+import {
+  getCrossPointFetch,
+  getReaderDiscovery,
+} from "../../mobile/src/native-crosspoint";
 import { useLocalState } from "./useLocalState";
 import { inReadingQueue, serverShelfFilter } from "./queueFilter";
 import { BookCard, Cover, EmptyState, Modal, Shelf, formatTime } from "./ui";
@@ -79,6 +83,7 @@ import { SessionPersistence } from "./sessionPersistence";
 import { restoreNativeSession } from "./restoreNativeSession";
 import { Player } from "./Player";
 import { BookDetails } from "./BookDetails";
+import { LibraryGlyph, BrowseGlyph } from "./NavigationIcons";
 import { Activity } from "./Activity";
 import {
   getDesktopFetch,
@@ -94,6 +99,8 @@ import { startNativeAuthentication } from "./nativeAuthentication";
 import { setNativeAppearance } from "../../mobile/src/native-appearance";
 import { useImportedBooks } from "./useImportedBooks";
 import { useHomeShelves, uniqueBooks } from "./useHomeShelves";
+import { useCurrentBookDescription } from "./useCurrentBookDescription";
+import { descriptionToPlainText } from "./descriptionText";
 import { useDesktopSurfaces } from "./useDesktopSurfaces";
 import { SyncRecoveryPanel } from "./SyncRecoveryPanel";
 import { readRemotePolicy } from "../../../packages/playback/src/remotePolicy";
@@ -112,6 +119,11 @@ import type { NativeNavigation } from "../../mobile/src/native-surfaces";
 import { useReadingActivity } from "./useReadingActivity";
 import { SeriesBrowser } from "./SeriesBrowser";
 import { VirtualBookGrid } from "./VirtualBookGrid";
+import { ReferenceLibrary } from "./ReferenceLibrary";
+import {
+  partitionReferenceBooks,
+  upsertCatalogBook,
+} from "./referenceLibraryData";
 import { CoverContext } from "./CoverContext";
 import {
   chooseBookFile,
@@ -127,7 +139,8 @@ import {
   type VerifiedAudioAlignment,
 } from "../../../packages/playback/src/standalone-alignment";
 
-type View = "home" | "library" | "browse" | "search" | "notebook" | "activity";
+type View =
+  "home" | "library" | "browse" | "search" | "notebook" | "activity" | "more";
 const Reader = lazy(() =>
   import("../../../packages/readers/src/Reader").then((module) => ({
     default: module.Reader,
@@ -156,10 +169,9 @@ export default function App() {
   const platformCapabilities = usePlatformCapabilities();
   const navigation = [
     { id: "home", label: t("nav.home"), icon: Home },
-    { id: "library", label: t("nav.library"), icon: Library },
-    { id: "browse", label: t("nav.browse"), icon: Compass },
-    { id: "notebook", label: t("nav.notebook"), icon: NotebookPen },
-    { id: "search", label: t("nav.search"), icon: Search },
+    { id: "library", label: t("nav.library"), icon: LibraryGlyph },
+    { id: "browse", label: t("nav.browse"), icon: BrowseGlyph },
+    { id: "more", label: t("nav.more"), icon: MoreHorizontal },
   ] as const;
 
   const [sessionPersistence] = useState(
@@ -188,7 +200,17 @@ export default function App() {
   const syncMessage = appMessageKeysByEnglish[library.syncStatus];
   const [view, setView] = useState<View>(() => {
     const v = new URLSearchParams(location.search).get("view");
-    return navigation.some((n) => n.id === v) ? (v as View) : "home";
+    return [
+      "home",
+      "library",
+      "browse",
+      "more",
+      "search",
+      "notebook",
+      "activity",
+    ].includes(v ?? "")
+      ? (v as View)
+      : "home";
   });
   const [dialog, setDialog] = useState<Dialog>(null);
   const connectionGeneration = useRef(0);
@@ -281,6 +303,7 @@ export default function App() {
   const [noteQuery, setNoteQuery] = useState("");
   const [noteBook, setNoteBook] = useState("all");
   const [format, setFormat] = useLocalState("format", "all");
+  const [libraryNavigationRevision, setLibraryNavigationRevision] = useState(0);
   const [layout, setLayout] = useLocalState("layout", "grid");
   const [sort, setSort] = useLocalState("sort", "addedAt");
   const [theme, setTheme] = useLocalState("theme", "light");
@@ -300,16 +323,22 @@ export default function App() {
   const [showPlayer, setShowPlayer] = useState(false);
   const accountScope = useRef(library.repo.scope);
   accountScope.current = library.repo.scope;
-  const crossPointContext = useRef({ repo: library.repo, client: library.client });
+  const crossPointContext = useRef({
+    repo: library.repo,
+    client: library.client,
+  });
   crossPointContext.current = { repo: library.repo, client: library.client };
   const crossPointFiles = useMemo(() => {
-    const repo = library.repo, client = library.client;
+    const repo = library.repo,
+      client = library.client;
     return createCrossPointLibrarySources({
       books: catalogBooks,
       repo,
       client,
-      isActive: () => accountScope.current === repo.scope &&
-        crossPointContext.current.repo === repo && crossPointContext.current.client === client,
+      isActive: () =>
+        accountScope.current === repo.scope &&
+        crossPointContext.current.repo === repo &&
+        crossPointContext.current.client === client,
     });
   }, [catalogBooks, library.repo, library.client]);
   const readOnlyConnection = useRef(true);
@@ -669,6 +698,8 @@ export default function App() {
   }
   function navigate(next: View) {
     setView(next);
+    if (next === "library")
+      setLibraryNavigationRevision((revision) => revision + 1);
     setMenu(false);
     setActiveCollection(null);
     if (next === "home" || next === "browse") setFormat("all");
@@ -677,16 +708,12 @@ export default function App() {
   }
 
   const books = useMemo(() => {
-    let items = catalogBooks.filter(
-      (b) =>
-        format === "all" ||
-        (format === "audio"
-          ? b.files.some((f) => f.format === "AUDIO")
-          : format === "comics"
-            ? ["CBZ", "CBR", "CB7"].includes(b.format)
-            : b.format !== "AUDIO" &&
-              !["CBZ", "CBR", "CB7"].includes(b.format)),
-    );
+    let items =
+      format === "all"
+        ? catalogBooks
+        : partitionReferenceBooks(catalogBooks)[
+            format === "audio" || format === "comics" ? format : "books"
+          ];
     if (library.client) {
       items = items.filter(
         (book) =>
@@ -733,6 +760,11 @@ export default function App() {
     home.continuing[0] ??
     catalogBooks.find((b) => b.progress > 0 && b.progress < 1) ??
     catalogBooks[0];
+  const currentDescription = useCurrentBookDescription(
+    library.client,
+    currentBook,
+    view === "home" && !reader,
+  );
   const selectedBook = selected
     ? (catalogBooks.find((b) => b.id === selected.id) ?? selected)
     : null;
@@ -1160,9 +1192,7 @@ export default function App() {
       if (library.client) {
         await library.repo.putBooks([updated]);
         if (scope !== accountScope.current) return;
-        library.setBooks((previous) =>
-          previous.map((b) => (b.id === book.id ? updated : b)),
-        );
+        library.setBooks((previous) => upsertCatalogBook(previous, updated));
       } else await library.updateDemoBook(updated);
       if (scope === accountScope.current) {
         setHomeRevision((revision) => revision + 1);
@@ -1251,7 +1281,15 @@ export default function App() {
 
   return (
     <CoverContext.Provider value={library.coverCache}>
-      <div className={`app-shell ${playerBook ? "has-player" : ""}`}>
+      <div
+        className={`app-shell reference-layout ${playerBook ? "has-player" : ""}`}
+        data-view={view}
+        style={
+          {
+            "--library-tint": currentBook?.color ?? "#a9a9a9",
+          } as React.CSSProperties
+        }
+      >
         <a className="skip-link" href="#main-content">
           {t("a11y.skip")}
         </a>
@@ -1264,19 +1302,38 @@ export default function App() {
             <BookOpen size={27} strokeWidth={1.7} />
             <span>avid</span>
           </button>
-          <nav className="main-nav" aria-label={t("a11y.navigation")}>
-            {navigation.map((item) => (
-              <button
-                key={item.id}
-                className={view === item.id ? "active" : ""}
-                aria-current={view === item.id ? "page" : undefined}
-                onClick={() => navigate(item.id)}
-              >
-                <item.icon size={17} />
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
+          <h1 className="mobile-page-title">
+            {view === "activity"
+              ? t("nav.activity")
+              : view === "notebook"
+                ? t("nav.notebook")
+                : view === "search"
+                  ? t("nav.search")
+                  : navigation.find((item) => item.id === view)?.label}
+          </h1>
+          <div className="navigation-dock">
+            <nav className="main-nav" aria-label={t("a11y.navigation")}>
+              {navigation.map((item) => (
+                <button
+                  key={item.id}
+                  className={view === item.id ? "active" : ""}
+                  aria-current={view === item.id ? "page" : undefined}
+                  onClick={() => navigate(item.id)}
+                >
+                  <item.icon size={23} />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </nav>
+            <button
+              className={`navigation-search ${view === "search" ? "active" : ""}`}
+              aria-label={t("nav.search")}
+              aria-current={view === "search" ? "page" : undefined}
+              onClick={() => navigate("search")}
+            >
+              <Search size={23} />
+            </button>
+          </div>
           <div className="header-actions">
             <button
               className="icon-button"
@@ -1300,11 +1357,13 @@ export default function App() {
               aria-expanded={menu}
               onClick={() => setMenu(!menu)}
             >
-              {library.client
-                ? library.client.session.profile.username
-                    ?.slice(0, 1)
-                    .toUpperCase() || "A"
-                : "A"}
+              {library.client ? (
+                library.client.session.profile.username
+                  ?.slice(0, 1)
+                  .toUpperCase() || "A"
+              ) : (
+                <UserRound size={23} />
+              )}
             </button>
           </div>
           {menu && (
@@ -1328,6 +1387,10 @@ export default function App() {
               <button onClick={() => navigate("activity")}>
                 <BarChart3 size={17} />
                 {t("nav.activity")}
+              </button>
+              <button onClick={() => navigate("notebook")}>
+                <NotebookPen size={17} />
+                {t("nav.notebook")}
               </button>
               <button
                 onClick={() => {
@@ -1384,7 +1447,9 @@ export default function App() {
               notify(t("common.connected"));
             }}
           />
-          <div className="connection-line">
+          <div
+            className={`connection-line ${library.client && ["Needs review", "Sync failed"].includes(library.syncStatus) ? "connection-needs-review" : ""}`}
+          >
             <span>
               <span
                 className={`status-dot ${library.client ? "connected" : ""}`}
@@ -1427,47 +1492,96 @@ export default function App() {
             </div>
           )}
 
+          {view === "more" && (
+            <section className="reference-more" aria-label={t("nav.more")}>
+              <h1>{t("nav.more")}</h1>
+              <div className="more-group">
+                <button onClick={() => navigate("notebook")}>
+                  <NotebookPen />
+                  {t("nav.notebook")}
+                  <ChevronRight />
+                </button>
+                <button onClick={() => navigate("activity")}>
+                  <BarChart3 />
+                  {t("nav.activity")}
+                  <ChevronRight />
+                </button>
+                <button onClick={() => setDialog("upload")}>
+                  <Plus />
+                  {t("upload.open")}
+                  <ChevronRight />
+                </button>
+                <button onClick={() => setDialog("integrations")}>
+                  <Layers />
+                  {appT("integrations")}
+                  <ChevronRight />
+                </button>
+              </div>
+              <div className="more-group">
+                <button onClick={openConnection}>
+                  <Library />
+                  {t("connect.aServer")}
+                  <ChevronRight />
+                </button>
+                <button onClick={() => setDialog("settings")}>
+                  <SlidersHorizontal />
+                  {t("common.settings")}
+                  <ChevronRight />
+                </button>
+                <button onClick={() => setDialog("help")}>
+                  <CircleHelp />
+                  {appT("guide")}
+                  <ChevronRight />
+                </button>
+              </div>
+              <p className="more-brand">
+                avid <span>{t("footer.tagline")}</span>
+              </p>
+            </section>
+          )}
+
           {view === "home" && (
             <>
               {currentBook ? (
                 <section
-                  className="resume-hero"
+                  className={`resume-hero ${currentBook.format === "AUDIO" ? "audio-hero" : ""}`}
                   style={
                     { "--hero-color": currentBook.color } as React.CSSProperties
                   }
                 >
-                  <div
+                  <button
                     className="hero-art"
                     onClick={() => setSelected(currentBook)}
+                    aria-label={appT("detailsFor", {
+                      title: currentBook.title,
+                    })}
                   >
                     <Cover book={currentBook} large />
-                  </div>
+                  </button>
                   <div className="hero-copy">
-                    <div className="eyebrow">
-                      <span />
-                      {t("home.eyebrow")}
-                    </div>
-                    <p className="hero-kicker">{t("home.heading")}</p>
-                    <h1>{currentBook.title}</h1>
-                    <p className="hero-author">
-                      {currentBook.authors.join(", ")}
-                    </p>
-                    <p className="hero-description">
-                      {currentBook.description.replace(/<[^>]*>/g, "")}
-                    </p>
-                    <div className="hero-meta">
-                      <BookOpen size={15} />
-                      <span>
-                        {t("common.complete", {
-                          percent: Math.round(currentBook.progress * 100),
-                        })}
-                      </span>
-                      <span className="meta-divider">·</span>
-                      <span>
-                        {currentBook.format === "AUDIO"
-                          ? t("common.audiobook")
-                          : currentBook.format}
-                      </span>
+                    <div className="hero-summary">
+                      <p className="hero-kicker">{t("home.heading")}</p>
+                      <h1>{currentBook.title}</h1>
+                      <p className="hero-author">
+                        {currentBook.authors.join(", ")}
+                      </p>
+                      <div className="hero-meta">
+                        <BookOpen size={15} />
+                        <span>
+                          {t("common.complete", {
+                            percent: Math.round(currentBook.progress * 100),
+                          })}
+                        </span>
+                        <span className="meta-divider">·</span>
+                        <span>
+                          {currentBook.format === "AUDIO"
+                            ? t("common.audiobook")
+                            : currentBook.format}
+                        </span>
+                      </div>
+                      <p className="hero-description">
+                        {descriptionToPlainText(currentDescription)}
+                      </p>
                     </div>
                     <div className="hero-buttons">
                       <button
@@ -1492,9 +1606,6 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                  <div className="hero-ornament" aria-hidden="true">
-                    <BookOpen />
-                  </div>
                 </section>
               ) : (
                 <EmptyState
@@ -1505,14 +1616,12 @@ export default function App() {
               )}
               <Shelf
                 title={t("home.continue")}
-                subtitle={t("home.continueHint")}
                 books={continuing}
                 onSelect={setSelected}
                 onSeeAll={() => navigate("library")}
               />
               <Shelf
                 title={t("home.queue")}
-                subtitle={t("home.queueHint")}
                 books={queue}
                 onSelect={setSelected}
                 onSeeAll={() => {
@@ -1547,7 +1656,16 @@ export default function App() {
           )}
 
           {(view === "library" || view === "search") && (
-            <>
+            <ReferenceLibrary
+              books={catalogBooks}
+              client={library.client}
+              repo={library.repo}
+              enabled={view === "library" && !activeCollection}
+              resetKey={libraryNavigationRevision}
+              onBrowse={setFormat}
+              onSelect={setSelected}
+              onError={library.setError}
+            >
               <div className="page-heading">
                 <div>
                   <span className="eyebrow">
@@ -1731,7 +1849,7 @@ export default function App() {
                   </button>
                 </div>
               )}
-            </>
+            </ReferenceLibrary>
           )}
 
           {view === "browse" && (

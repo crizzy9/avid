@@ -32,6 +32,8 @@ const bookSchema = z.object({
   readingProgress: z.number().nullable().optional(), readStatus: z.object({status: z.string()}).nullable().optional(),
   seriesId:numericId.nullable().optional(),seriesName: z.string().nullable().optional(), seriesIndex: z.union([z.string(), z.number()]).nullable().optional(),
   addedAt: z.string(), hasCover: z.boolean().optional(), coverVersion: z.string().optional(),
+  publisher: z.string().nullish(), publishedYear: z.number().int().nullish(), rating: z.number().min(0).max(5).nullish(),
+  communityRatings: z.array(z.object({provider:z.string().min(1),rating:z.number().min(0).max(5),ratingCount:z.number().int().nonnegative().nullish()})).nullish(),
 }).passthrough();
 const booksPageSchema = z.object({items: z.array(bookSchema), total: z.number(), page: z.number(), size: z.number()});
 const seriesSchema=z.object({id:numericId,name:z.string(),bookCount:z.number().int().nonnegative(),readCount:z.number().int().nonnegative(),authors:z.array(z.string()),coverBookIds:z.array(numericId).optional().default([]),expectedBookCount:z.number().nullable().optional(),gapCount:z.number().optional()});
@@ -267,6 +269,8 @@ export class BookOrbitClient {
       status:status==='read' || status==='skimmed' ? 'finished' : ['reading','rereading','on_hold'].includes(status ?? '') ? 'reading' : 'unread',
       serverStatus:serverStatusSchema.safeParse(status).success?status as BookOrbitReadStatus:undefined,
       series:value.seriesName ?? undefined,seriesId:value.seriesId??undefined,seriesIndex:value.seriesIndex==null?undefined:Number(value.seriesIndex),genres:value.genres,addedAt:value.addedAt,
+      publisher:value.publisher?.trim()||undefined,publishedYear:value.publishedYear??undefined,rating:value.rating??undefined,
+      communityRatings:value.communityRatings?.map(({provider,rating,ratingCount})=>({provider,rating,ratingCount:ratingCount??undefined})),
       coverUrl:value.hasCover===false?undefined:this.coverUrl(value.id,value.coverVersion),};
   }
   async listBooks(query: BookQuery = {}, signal?: AbortSignal): Promise<BooksPage> {

@@ -12,6 +12,7 @@ import { alignedPassageAtRange, verifyPublicationAudiobook } from './alignedPass
 import { alignmentSha256 } from '../../playback/src/standalone-alignment';
 import { speechProvider } from '../../playback/src/speechRuntime';
 import { prefersReducedMotion, useReducedMotion } from './reducedMotion';
+import { bindReadingTap, foliatePageInfo } from './readerChrome';
 import '../vendor/foliate/view.js';
 import { makeBook } from '../vendor/foliate/view.js';
 import { Overlayer } from '../vendor/foliate/overlayer.js';
@@ -47,14 +48,19 @@ export function EbookView(props: EngineProps) {
     };
     view.addEventListener('relocate', ((event: CustomEvent) => {
       const detail = event.detail;
-      current.current.onLocation(detail.cfi, clamp(detail.fraction ?? 0), detail.tocItem?.label || t('reading'));
+      current.current.onLocation(detail.cfi, clamp(detail.fraction ?? 0), detail.tocItem?.label || '', foliatePageInfo({ isFixedLayout: view.isFixedLayout, book: view.book, renderer: view.renderer }, detail));
     }) as EventListener);
     view.addEventListener('load', ((event: CustomEvent) => {
       const { doc } = event.detail;
+      bindReadingTap(doc, () => { if (!cancelled) current.current.onReadingTap?.(); });
       doc.addEventListener('selectionchange', () => current.current.onSelection(selection()));
       doc.addEventListener('keydown', (event: KeyboardEvent) => {
-        if (event.key === 'ArrowRight') void view.goRight();
-        if (event.key === 'ArrowLeft') void view.goLeft();
+        if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const target = event.target as Element | null;
+        if (target?.closest?.('input,textarea,select,[contenteditable]')) return;
+        if (event.key === 'Escape') { event.preventDefault(); current.current.onReadingEscape?.(); }
+        if (event.key === 'ArrowRight') { event.preventDefault(); void view.goRight(); }
+        if (event.key === 'ArrowLeft') { event.preventDefault(); void view.goLeft(); }
       });
       applyAnnotations();
     }) as EventListener);
@@ -227,8 +233,8 @@ export function EbookView(props: EngineProps) {
   useEffect(() => { if (viewRef.current?.renderer) applyStyle(viewRef.current, props.settings, props.accountScope); }, [props.settings, props.accountScope]);
   useEffect(() => {
     // Foliate renders inside a shadow root, beyond the host's motion CSS.
-    viewRef.current?.renderer?.toggleAttribute('animated', props.settings.animation === 'slide' && !reducedMotion);
-  }, [props.settings.animation, reducedMotion]);
+    viewRef.current?.renderer?.toggleAttribute('animated', props.settings.animation === 'slide' && props.settings.flow !== 'scrolled' && !reducedMotion);
+  }, [props.settings.animation, props.settings.flow, reducedMotion]);
   useEffect(() => {
     const view = viewRef.current;
     if (!view?.renderer) return;
@@ -242,11 +248,11 @@ function applyStyle(view: FoliateView, settings: EngineProps['settings'], scope 
   const colors = themeColors(settings);
   view.renderer.setAttribute('flow', settings.flow);
   view.renderer.setAttribute('gap', `${settings.margin}%`);
-  view.renderer.setAttribute('margin', '36px');
+  view.renderer.setAttribute('margin', '12px');
   view.renderer.setAttribute('max-inline-size', '740px');
   view.renderer.setAttribute('max-column-count', '2');
   const reduced = prefersReducedMotion();
-  view.renderer.toggleAttribute('animated', settings.animation === 'slide' && !reduced);
+  view.renderer.toggleAttribute('animated', settings.animation === 'slide' && settings.flow !== 'scrolled' && !reduced);
   const family = settings.font.replace(/["\\;{}]/g, '');
   view.renderer.setStyles(`${fontRules(scope)} html { color: ${colors.foreground}; background: ${colors.background}; } body { font-family: "${family}", Georgia, serif !important; font-size: ${settings.fontSize}px !important; line-height: ${settings.lineHeight} !important; } p { line-height: inherit !important; } h1, h2 { line-height: 1.3; font-weight: 500; } a { color: inherit; } ::selection { background: #d9b97188; } img { max-width:100%; } .${CSS.escape(view.book.media?.activeClass || "avid-narration-active")} { background: #d6b96e88 !important; color: inherit !important; }`);
 }

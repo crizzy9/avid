@@ -8,3 +8,19 @@ dialog.avid-reader{width:100vw;max-width:none;max-height:none;height:100dvh;marg
  .reader-manga-rule label { display:flex; gap:6px; align-items:center; font-size:13px; }
 .avid-reader[data-reduced-motion="true"] .reader-spinner{animation:none}
 .avid-reader[data-reduced-motion="true"] .reader-stage,.avid-reader[data-reduced-motion="true"] .reader-progress>span{transition:none}
+.avid-comic-sheet{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;height:100%;min-width:0}
+.avid-pdf-scroll{overflow-x:hidden}
+
+/* Quiet reading chrome: title, chapter and real position remain in a stable frame. */
+dialog.avid-reader{overflow:hidden;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.reader-running-heading{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:none;width:100%;height:65px;padding:12px 28px 7px;border:0;background:var(--reader-bg);color:color-mix(in srgb,var(--reader-fg) 66%,var(--reader-bg))!important;font:12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;text-align:center}
+.reader-running-heading>span,.reader-running-heading>small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:inherit}
+.reader-running-heading>small{font-size:11px;min-height:15px}
+.avid-reader [data-reader-controls][hidden]{display:none!important}
+.avid-reader-header{position:absolute;top:calc(env(safe-area-inset-top,0px) + 65px);left:12px;right:12px;z-index:8;min-height:54px;height:54px;padding:0 14px;gap:12px;border:1px solid color-mix(in srgb,var(--reader-fg) 12%,transparent);border-radius:12px;background:var(--reader-bg);box-shadow:0 8px 24px #0002}
+.avid-reader-footer{height:48px;min-height:48px;display:flex;justify-content:space-between;gap:20px;padding:7px 24px 12px;border:0;font:11px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:color-mix(in srgb,var(--reader-fg) 75%,var(--reader-bg))}
+.reader-page-label,.reader-section-remaining{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reader-section-remaining{text-align:right}
+.avid-reader-footer .reader-page-controls{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);gap:18px;padding:5px 10px;border:1px solid color-mix(in srgb,var(--reader-fg) 12%,transparent);border-radius:26px;box-shadow:0 4px 18px #0002;background:var(--reader-bg);color:var(--reader-fg)}
+.avid-reader[data-controls-visible="true"] .reader-panel{padding-top:74px}
+@media(max-width:750px){.avid-reader-header .reader-heading{display:none}.avid-reader-header .reader-toolbar{flex:1;justify-content:space-around}.avid-reader-header .reader-icon{width:34px;height:36px}.reader-running-heading{height:62px;padding-inline:22px}.avid-reader-header{top:calc(env(safe-area-inset-top,0px) + 62px)}.avid-reader-footer{height:44px;min-height:44px;padding:6px 16px 11px;font-size:10px;gap:12px}}

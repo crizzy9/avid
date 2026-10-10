@@ -1,0 +1,612 @@
+/* Layout proportions follow the observed phone and tablet reference states. */
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg: #f5f5f5;
+  --surface: #fff;
+  --ink: #191919;
+  --muted: #464646;
+  --line: #d8d8d8;
+  --accent: #7c4e29;
+  --accent-soft: #ebe5df;
+  --paper: #ededed;
+  background: var(--bg);
+  color: var(--ink);
+}
+:root[data-theme="dark"] {
+  --bg: #171717;
+  --surface: #242424;
+  --ink: #f4f4f4;
+  --muted: #cccccc;
+  --line: #434343;
+  --accent: #e0b68c;
+  --accent-soft: #443a31;
+  --paper: #292929;
+}
+.reference-layout {
+  min-height: 100dvh;
+  background: var(--bg);
+}
+.reference-layout[data-view="home"] {
+  background: linear-gradient(
+    125deg,
+    color-mix(in srgb, var(--library-tint) 25%, var(--bg)),
+    var(--bg) 85%
+  );
+}
+.reference-layout .app-header {
+  max-width: none;
+  height: 64px;
+  padding: 10px 16px;
+  margin: 0;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+.reference-layout[data-view="home"] .app-header {
+  background: transparent;
+}
+.reference-layout .wordmark,
+.mobile-page-title {
+  display: none;
+}
+.reference-layout .navigation-dock {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--surface) 90%, transparent);
+  border-radius: 50px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  box-shadow: 0 4px 30px #00000008;
+  backdrop-filter: blur(24px);
+  padding: 3px;
+}
+.reference-layout .main-nav {
+  position: static;
+  transform: none;
+  width: auto;
+  max-width: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  gap: 2px;
+  box-shadow: none;
+}
+.reference-layout .main-nav button {
+  display: flex;
+  min-height: 32px;
+  padding: 5px 14px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.reference-layout .main-nav button.active {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--accent);
+  box-shadow: none;
+}
+.reference-layout .navigation-search {
+  width: 34px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.reference-layout .navigation-search svg {
+  width: 17px;
+  height: 17px;
+}
+.reference-layout .navigation-search.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.reference-layout .header-actions {
+  margin-left: auto;
+  padding: 2px 5px;
+  gap: 3px;
+  border-radius: 30px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+}
+.reference-layout .header-actions .avatar {
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  order: -1;
+  display: grid;
+  place-items: center;
+}
+.reference-layout .account-menu {
+  top: 56px;
+  right: 16px;
+}
+.reference-layout .main-content {
+  max-width: none;
+  padding: 0;
+}
+.reference-layout .connection-line:not(.connection-needs-review) {
+  display: none;
+}
+.reference-layout .connection-needs-review {
+  padding: 8px 16px;
+  background: var(--surface);
+}
+.reference-layout .resume-hero {
+  margin: 0;
+  padding: 12px 16px 22px;
+  min-height: 330px;
+  gap: 26px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  align-items: stretch;
+}
+.reference-layout .hero-art {
+  width: min(30vw, 220px);
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+  align-self: center;
+  perspective: none;
+}
+.reference-layout .hero-art .cover {
+  width: 100%;
+  height: auto;
+  transform: none;
+  box-shadow: 0 5px 8px #0003;
+}
+.reference-layout .hero-art::after {
+  display: none;
+}
+.reference-layout .audio-hero .hero-art {
+  width: min(40vw, 340px);
+}
+.reference-layout .audio-hero .hero-art .cover {
+  aspect-ratio: 1;
+}
+.reference-layout .hero-copy {
+  display: flex;
+  flex-direction: column;
+  max-width: 660px;
+  padding: 2px 0;
+  align-self: stretch;
+  min-width: 0;
+}
+.reference-layout .hero-copy h1 {
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.1;
+  margin: 0 0 8px;
+}
+.reference-layout .hero-kicker {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 9px;
+}
+.reference-layout .hero-author {
+  color: var(--muted);
+  font-size: 16px;
+  margin-bottom: 5px;
+}
+.reference-layout .hero-meta {
+  color: var(--muted);
+  font-size: 12px;
+  gap: 5px;
+  margin: 0 0 12px;
+}
+.reference-layout .hero-meta svg {
+  display: none;
+}
+.reference-layout .hero-description {
+  display: -webkit-box;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: none;
+  -webkit-line-clamp: 6;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 13%, transparent);
+  padding-top: 12px;
+  margin: 0 0 20px;
+}
+.reference-layout .hero-buttons {
+  margin-top: auto;
+  gap: 8px;
+}
+.reference-layout .hero-buttons .primary-button {
+  font-size: 13px;
+  min-height: 38px;
+  padding: 8px 19px;
+}
+.reference-layout .hero-detail-button {
+  background: color-mix(in srgb, var(--surface) 42%, transparent);
+}
+.reference-layout .shelf {
+  margin: 0;
+  padding: 12px 16px 6px;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 9%, transparent);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--ink) 7%, transparent),
+    transparent 80%
+  );
+}
+.reference-layout .shelf .section-heading {
+  margin-bottom: 10px;
+  justify-content: flex-start;
+  gap: 12px;
+}
+.reference-layout .shelf .section-heading h2 {
+  font-size: 20px;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+.reference-layout .shelf .section-heading .text-button {
+  font-size: 10px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 2px 7px;
+}
+.reference-layout .shelf-track {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  padding: 0 0 6px;
+  margin-right: -16px;
+  scrollbar-width: none;
+}
+.reference-layout .shelf-track .book-card {
+  flex: 0 0 124px;
+}
+.reference-layout .shelf-track .book-card[data-format="AUDIO"] {
+  flex-basis: 166px;
+}
+.reference-layout .shelf-track .book-card[data-format="AUDIO"] .cover {
+  aspect-ratio: 1;
+}
+.reference-layout .book-caption {
+  padding-top: 4px;
+}
+.reference-layout .book-title {
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 400;
+  -webkit-line-clamp: 1;
+}
+.reference-layout .book-author {
+  font-size: 10px;
+  line-height: 1.3;
+  margin-top: 3px;
+}
+.reference-layout .cover {
+  box-shadow: none;
+  border-radius: 4px;
+}
+.reference-layout .cover-percent {
+  border-radius: 12px;
+  bottom: 11px;
+  padding: 3px 5px;
+  font-size: 10px;
+}
+.reference-layout .cover-progress {
+  background: #895c2f;
+  height: 4px;
+}
+.reference-layout .shelf .cover-percent {
+  display: none;
+}
+.reference-layout .library-invitation {
+  margin: 20px 16px;
+}
+.reference-layout .app-footer {
+  margin: 24px 16px 0;
+  padding-bottom: 28px;
+}
+.reference-layout .main-content > .page-heading,
+.reference-layout .main-content > .library-toolbar,
+.reference-layout .main-content > .search-toolbar,
+.reference-layout .main-content > .search-box,
+.reference-layout .main-content > .recent-searches,
+.reference-layout .main-content > .book-grid,
+.reference-layout .main-content > .book-list,
+.reference-layout .main-content > .notebook-toolbar,
+.reference-layout .main-content > .notes-grid,
+.reference-layout .main-content > .collections-grid,
+.reference-layout .main-content > .genre-grid {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+.reference-layout[data-view="browse"] .main-content > section {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+.reference-layout[data-view="more"] .app-footer {
+  display: none;
+}
+.reference-more {
+  max-width: 680px;
+  padding: 24px 16px;
+  margin: auto;
+}
+.reference-more h1 {
+  margin-bottom: 20px;
+}
+.more-group {
+  background: var(--surface);
+  border-radius: 14px;
+  margin-bottom: 22px;
+  overflow: hidden;
+}
+.more-group button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 14px;
+  padding: 16px;
+  text-align: left;
+  font-size: 15px;
+  border-bottom: 1px solid var(--line);
+}
+.more-group button:last-child {
+  border-bottom: 0;
+}
+.more-group button > svg:first-child {
+  color: var(--accent);
+  width: 21px;
+}
+.more-group button > svg:last-child {
+  margin-left: auto;
+  color: var(--muted);
+  width: 17px;
+}
+.more-group button:hover {
+  background: var(--paper);
+}
+.more-brand {
+  font-family: var(--serif);
+  font-size: 28px;
+  color: var(--muted);
+  text-align: center;
+}
+.more-brand span {
+  display: block;
+  font:
+    12px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  margin-top: 5px;
+}
+@media (max-width: 600px) {
+  .reference-layout .app-header {
+    height: 94px;
+    padding: 20px 18px 10px;
+    align-items: center;
+    background: transparent;
+  }
+  .mobile-page-title {
+    display: block;
+    font-size: 40px;
+    line-height: 1.1;
+    margin: 0;
+    letter-spacing: -1px;
+  }
+  .reference-layout .navigation-dock {
+    position: fixed;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    left: 14px;
+    right: 14px;
+    width: auto;
+    transform: none;
+    border: 0;
+    background: none;
+    padding: 0;
+    gap: 8px;
+    backdrop-filter: none;
+    box-shadow: none;
+    z-index: 30;
+  }
+  .reference-layout .main-nav {
+    flex: 1;
+    display: flex;
+    gap: 0;
+    padding: 4px;
+    border: 1px solid #ffffff70;
+    border-radius: 45px;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(24px);
+    box-shadow: 0 4px 24px #0001;
+  }
+  .reference-layout .main-nav button {
+    min-width: 0;
+    flex: 1;
+    padding: 7px 2px;
+    font-size: 10px;
+    gap: 3px;
+    flex-direction: column;
+    min-height: 53px;
+    border-radius: 40px;
+  }
+  .reference-layout .main-nav button svg {
+    display: block;
+    width: 23px;
+    height: 23px;
+    stroke-width: 2.3;
+  }
+  .reference-layout .main-nav button:last-child svg {
+    background: var(--ink);
+    color: var(--surface);
+    border-radius: 50%;
+    padding: 3px;
+    stroke-width: 2.8;
+  }
+  .reference-layout .navigation-search {
+    width: 62px;
+    height: 62px;
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border: 1px solid #ffffff70;
+    backdrop-filter: blur(24px);
+    box-shadow: 0 4px 24px #0001;
+  }
+  .reference-layout .navigation-search svg {
+    width: 26px;
+    height: 26px;
+  }
+  .reference-layout .header-actions {
+    background: none;
+    gap: 0;
+    padding: 0;
+    position: relative;
+  }
+  .reference-layout .header-actions > .icon-button:first-child {
+    display: none;
+  }
+  .reference-layout .header-actions > .icon-button:nth-child(2) {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    background: var(--accent);
+    color: var(--surface);
+    width: 25px;
+    height: 25px;
+    z-index: 1;
+  }
+  .reference-layout .header-actions > .icon-button:nth-child(2) svg {
+    width: 15px;
+    height: 15px;
+  }
+  .reference-layout .header-actions .avatar {
+    width: 43px;
+    height: 43px;
+    font-size: 18px;
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+    border: 1px solid #fff9;
+  }
+  .reference-layout .account-menu {
+    top: 84px;
+    right: 16px;
+  }
+  .reference-layout .resume-hero {
+    margin: 0 12px 12px;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 12px 14px;
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+    align-items: start;
+    min-height: 0;
+    text-align: left;
+  }
+  .reference-layout .hero-art,
+  .reference-layout .audio-hero .hero-art {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    align-self: start;
+  }
+  .reference-layout .hero-art .cover {
+    width: 100%;
+    height: auto;
+    box-shadow: none;
+    transform: none;
+  }
+  .reference-layout .hero-copy {
+    display: contents;
+  }
+  .reference-layout .hero-summary {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+  .reference-layout .hero-copy h1 {
+    font-size: 23px;
+    margin: 3px 0 4px;
+    padding-right: 0;
+    line-height: 1.13;
+  }
+  .reference-layout .hero-kicker,
+  .reference-layout .hero-meta {
+    display: none;
+  }
+  .reference-layout .hero-author {
+    font-size: 14px;
+    margin: 0 0 17px;
+  }
+  .reference-layout .hero-description {
+    margin: 0;
+    padding-top: 0;
+    border: 0;
+    font-size: 13px;
+    line-height: 1.4;
+    -webkit-line-clamp: 5;
+  }
+  .reference-layout .hero-buttons {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin: 0;
+    gap: 0;
+  }
+  .reference-layout .hero-buttons .primary-button {
+    flex: 1;
+    border-radius: 16px;
+    min-height: 50px;
+    justify-content: flex-start;
+    padding: 12px 18px;
+    font-size: 14px;
+  }
+  .reference-layout .hero-buttons .primary-button svg {
+    box-sizing: content-box;
+    padding: 6px;
+    background: #ffffff24;
+    border-radius: 50%;
+    width: 13px;
+    height: 13px;
+  }
+  .reference-layout .hero-detail-button {
+    display: none;
+  }
+  .reference-layout .shelf {
+    padding: 12px 18px 5px;
+  }
+  .reference-layout .shelf .section-heading {
+    margin-bottom: 10px;
+  }
+  .reference-layout .shelf .section-heading h2 {
+    font-size: 23px;
+  }
+  .reference-layout .shelf-track {
+    gap: 11px;
+    margin-right: -18px;
+  }
+  .reference-layout .shelf-track .book-card {
+    flex-basis: 106px;
+  }
+  .reference-layout .shelf-track .book-card[data-format="AUDIO"] {
+    flex-basis: 135px;
+  }
+  .reference-layout .book-title {
+    font-size: 12px;
+  }
+  .reference-layout .book-author {
+    font-size: 10px;
+  }
+  .reference-layout .app-footer {
+    padding-bottom: 100px;
+  }
+  .reference-layout .reference-more {
+    padding-top: 0;
+  }
+  .reference-more h1 {
+    display: none;
+  }
+  .reference-layout .page-heading h1 {
+    display: none;
+  }
+  .reference-layout .mini-player {
+    bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+  .reference-layout.has-player .app-footer {
+    padding-bottom: 172px;
+  }
+}

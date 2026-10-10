@@ -4,6 +4,7 @@ import { GlobalWorkerOptions, getDocument, TextLayer, type PDFDocumentProxy } fr
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { EngineProps, SelectionAnchor } from './contracts';
 import { detectContentBounds, pageLocator, parsePageAnchor } from './anchors';
+import { usePageSlide } from './pageSlide';
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 const noCrop = { top: 0, right: 0, bottom: 0, left: 0 };
 export function PdfView(props: EngineProps) {
@@ -14,6 +15,8 @@ export function PdfView(props: EngineProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const text = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
+  const pageSurface = useRef<HTMLDivElement>(null);
+  const pageDisplayed = usePageSlide(pageSurface, { identity: JSON.stringify([props.book.id, props.file.id]), enabled: props.settings.animation === 'slide', direction: props.settings.direction });
   const current = useRef(props); current.current = props;
   const currentPage = useRef(page); currentPage.current = page;
   const selection = (): SelectionAnchor | undefined => {
@@ -79,6 +82,8 @@ export function PdfView(props: EngineProps) {
       if (cancelled) return;
       textLayer = new TextLayer({ textContentSource: await pdfPage.getTextContent(), container: text.current, viewport });
       await textLayer.render();
+      if (cancelled) return;
+      pageDisplayed(page);
       current.current.onLocation(pageLocator(page), (page - 1) / Math.max(1, pdf.numPages - 1), t('pageOf', { number: page, count: pdf.numPages }));
     };
     void render().catch(error => { if (!cancelled && error?.name !== 'RenderingCancelledException') current.current.onError(readerError(error, 'renderFailed')); });
@@ -91,7 +96,7 @@ export function PdfView(props: EngineProps) {
   }, []);
   return <div className="avid-pdf-scroll" ref={container}>
     <div className="avid-pdf-crop-controls"><span>{t('trimMargins')}</span>{(['top', 'right', 'bottom', 'left'] as const).map(side => <label key={side}>{t(side)}<input aria-label={t('crop', { side: t(side) })} type="range" min="0" max="40" value={crop[side] * 100} onChange={event => setCrop(value => ({ ...value, [side]: Number(event.target.value) / 100 }))} /></label>)}</div>
-    <div className="avid-pdf-page" style={{ clipPath: `inset(${crop.top * 100}% ${crop.right * 100}% ${crop.bottom * 100}% ${crop.left * 100}%)` }}><canvas ref={canvas} aria-label={t('pdfPage', { number: page })} /><div className="textLayer" ref={text} />
+    <div className="avid-pdf-page" ref={pageSurface} style={{ clipPath: `inset(${crop.top * 100}% ${crop.right * 100}% ${crop.bottom * 100}% ${crop.left * 100}%)` }}><canvas ref={canvas} aria-label={t('pdfPage', { number: page })} /><div className="textLayer" ref={text} />
       {props.annotations.filter(annotation => !annotation.deleted && annotation.bookId === props.book.id && annotation.fileId === props.file.id).map(annotation => {
         try { const locator = JSON.parse(annotation.locator); return locator.page === page ? (locator.rectangles ?? []).map((rect: { x: number; y: number; width: number; height: number }, index: number) => <span key={`${annotation.id}-${index}`} className="avid-pdf-highlight" style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%`, background: annotation.color }} />) : null; } catch { return null; }
       })}

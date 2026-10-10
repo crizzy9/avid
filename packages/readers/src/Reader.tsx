@@ -3,12 +3,13 @@ import { ArrowLeft, BookOpen, Bookmark, ChevronLeft, ChevronRight, Highlighter, 
 import { EbookView } from './EbookView';
 import { PdfView } from './PdfView';
 import { ComicView } from './ComicView';
-import { defaultSettings, themeColors, type Annotation, type EngineHandle, type ReaderProps, type ReaderSettings, type ReaderPreferenceValues, type SearchResult, type SelectionAnchor, type TocItem } from './contracts';
+import { defaultSettings, themeColors, type Annotation, type EngineHandle, type ReaderProps, type ReaderSettings, type ReaderPreferenceValues, type ReaderPageInfo, type SearchResult, type SelectionAnchor, type TocItem } from './contracts';
 import { importFont, storedFonts } from './fonts';
 import { parsePageAnchor } from './anchors';
 import { useReaderI18n, readerError } from './readerI18n';
 import { speechProvider, type InstalledVoice } from '../../playback/src/speechRuntime';
 import { prefersReducedMotion, useReducedMotion } from './reducedMotion';
+import { bindReadingTap } from './readerChrome';
 import { getComicDirectionMode, setComicDirectionMode, getMangaRule, setMangaRule, resolveComicDirection, type ComicDirectionMode, type MangaRule, type MangaRuleField } from './comicDirection';
 import './reader.css';
 export type { ReaderProps } from './contracts';
@@ -38,12 +39,15 @@ export function Reader(props: ReaderProps) {
   const changeComicDirection = (mode: ComicDirectionMode) => { try { setComicDirectionMode(localStorage, scope, book.id, mode); refreshComicPreferences(value => value + 1); persistPreference({ comicDirection: mode }); } catch (error) { setNotice(readerError(error, 'preferenceSaveFailed')); } };
   const [settingsAccount, setSettingsAccount] = useState(settingsIdentity);
   const dialog = useRef<HTMLDialogElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const runningHeading = useRef<HTMLButtonElement>(null);
+  const [controls, setControls] = useState(false);
   const [panel, setPanel] = useState<'contents' | 'settings' | 'search' | 'notes' | null>(null);
   const [toc, setToc] = useState<TocItem[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [location, setLocation] = useState({ locator: props.initialAnchor?.locator || '', progress: props.initialAnchor?.progress ?? book.progress, label: t('opening') });
+  const [location, setLocation] = useState<{ locator: string; progress: number; label: string; pageInfo?: ReaderPageInfo }>({ locator: props.initialAnchor?.locator || '', progress: props.initialAnchor?.progress ?? book.progress, label: '' });
   const [selected, setSelected] = useState<SelectionAnchor>();
   const [speaking, setSpeaking] = useState(false);
   const [media, setMedia] = useState({ available: false, playing: false, seconds: 0 });
@@ -67,8 +71,8 @@ export function Reader(props: ReaderProps) {
   const kind = file.format === 'PDF' ? 'pdf' : ['CBZ', 'CBR', 'CB7'].includes(file.format) ? 'comic' : 'epub';
   const notes = annotations.filter(annotation => annotation.bookId === book.id && annotation.fileId === file.id && !annotation.deleted);
   const colors = themeColors(settings);
-  const persistAnchor = useCallback((locator: string, progress: number, label: string) => {
-    setLocation({ locator, progress, label });
+  const persistAnchor = useCallback((locator: string, progress: number, label: string, pageInfo?: ReaderPageInfo) => {
+    setLocation({ locator, progress, label, pageInfo });
     callbacks.current.onAnchor({ bookId: book.id, fileId: file.id, kind, locator, progress, updatedAt: new Date().toISOString() });
   }, [book.id, file.id, kind]);
   useEffect(() => { if (settingsAccount !== settingsIdentity) { setSettings(getSettings(scope, file.id)); setFonts(storedFonts(scope).map(font => font.name)); setSettingsAccount(settingsIdentity); } }, [scope, file.id, settingsIdentity, settingsAccount]);
@@ -96,9 +100,11 @@ export function Reader(props: ReaderProps) {
   useEffect(() => {
     const element = dialog.current;
     const previouslyFocused = document.activeElement as HTMLElement | null;
+    const overflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
     element?.showModal();
-    element?.querySelector<HTMLButtonElement>('button')?.focus();
-    return () => { element?.close(); if (previouslyFocused?.isConnected) previouslyFocused.focus(); };
+    element?.focus();
+    return () => { element?.close(); document.documentElement.style.overflow = overflow; if (previouslyFocused?.isConnected) previouslyFocused.focus(); };
   }, []);
   useEffect(() => { if (noteDraftKey !== draftKey) { setNoteText(sessionStorage.getItem(draftKey) || ''); setNoteDraftKey(draftKey); setEditing(undefined); } }, [draftKey, noteDraftKey]);
   useEffect(() => { if (noteDraftKey === draftKey) { if (noteText) sessionStorage.setItem(draftKey, noteText); else sessionStorage.removeItem(draftKey); } }, [noteText, draftKey, noteDraftKey]);
@@ -116,21 +122,45 @@ export function Reader(props: ReaderProps) {
   }, [reducedMotion]);
   const turn = useCallback((direction: 'next' | 'prev') => {
     window.clearTimeout(flashTimer.current);
-    if (['fade', 'fast-fade'].includes(settings.animation) && !prefersReducedMotion()) {
+    const continuous = kind === 'comic' ? settings.comicMode === 'webtoon' : kind === 'epub' && settings.flow === 'scrolled';
+    if (!continuous && ['fade', 'fast-fade'].includes(settings.animation) && !prefersReducedMotion()) {
       setFlash(true); flashTimer.current = window.setTimeout(() => setFlash(false), settings.animation === 'fade' ? 250 : 100);
     } else setFlash(false);
     engine.current?.[direction]();
-  }, [settings.animation]);
+  }, [settings.animation, settings.comicMode, settings.flow, kind]);
+  const controlsVisible = controls || panel !== null || Boolean(error);
+  const toggleControls = useCallback(() => {
+    if (selected || (kind === 'epub' && engine.current?.selection()?.quote)) return;
+    setControls(previous => !previous); setPanel(null);
+  }, [selected, kind]);
+  const escape = useCallback(() => {
+    if (panel) { setPanel(null); setControls(true); runningHeading.current?.focus(); }
+    else if (!controlsVisible) { setControls(true); runningHeading.current?.focus(); }
+    else onClose();
+  }, [panel, controlsVisible, onClose]);
+  useEffect(() => {
+    if (!stage.current) return;
+    return bindReadingTap(stage.current, toggleControls);
+  }, [toggleControls]);
+  useEffect(() => {
+    if (!controls || panel || selected || error || !ready) return;
+    const timer = window.setTimeout(() => {
+      // Never remove controls from under a keyboard or assistive-technology user.
+      if (!dialog.current?.querySelector('[data-reader-controls]:focus-within')) setControls(false);
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [controls, panel, selected, error, ready]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.key === 'Escape') { event.preventDefault(); escape(); return; }
       if ((event.target as HTMLElement).closest('input,textarea,select,[contenteditable]')) return;
       if (event.key === 'ArrowRight') { event.preventDefault(); turn(settings.direction === 'rtl' && kind === 'comic' ? 'prev' : 'next'); }
       if (event.key === 'ArrowLeft') { event.preventDefault(); turn(settings.direction === 'rtl' && kind === 'comic' ? 'next' : 'prev'); }
-      if (event.key === 'Escape') { event.preventDefault(); if (panel) setPanel(null); else onClose(); }
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [turn, panel, onClose, kind, settings.direction]);
+  }, [turn, escape, kind, settings.direction]);
   useEffect(() => { callbacks.current.onActivity?.(media.playing ? 'listening' : speaking ? 'speech' : 'reading'); }, [media.playing, speaking]);
   const change = <K extends keyof ReaderSettings>(key: K, value: ReaderSettings[K]) => { setSettings(previous => ({ ...previous, [key]: value })); persistPreference({ [key]: value }); };
   const saveAnnotation = (note: boolean) => {
@@ -145,11 +175,16 @@ export function Reader(props: ReaderProps) {
     setSearching(true); setResults([]);
     try { setResults(await engine.current.search(query.trim())); } catch (error) { setNotice(readerError(error, 'searchFailed')); } finally { setSearching(false); }
   };
-  const engineProps = { ...props, file, settings, onReady: (handle: EngineHandle, entries: TocItem[]) => { engine.current = handle; setToc(entries); setReady(true); }, onLocation: persistAnchor, onError: setError, onNotice: setNotice, onSelection: setSelected, onSpeaking: setSpeaking, onMediaState: setMedia };
+  const engineProps = { ...props, file, settings, onReady: (handle: EngineHandle, entries: TocItem[]) => { engine.current = handle; setToc(entries); setReady(true); }, onLocation: persistAnchor, onReadingTap: toggleControls, onReadingEscape: escape, onError: setError, onNotice: setNotice, onSelection: setSelected, onSpeaking: setSpeaking, onMediaState: setMedia };
   const locationLabel = !ready ? t('opening') : kind === 'epub' || !toc.length ? location.label : t('pageOf', { number: parsePageAnchor(location.locator, toc.length).page, count: toc.length });
+  const pageInfo = location.pageInfo;
+  const pageLabel = !ready ? t('opening') : kind !== 'epub' ? locationLabel : pageInfo?.pageNumber && pageInfo.pageCount
+    ? t('pageOf', { number: pageInfo.pageNumber, count: pageInfo.pageCount }) : pageInfo?.pageLabel
+    ? t('page', { number: pageInfo.pageLabel }) : t('progressPercent', { percent: Math.round(location.progress * 100) });
   const togglePanel = (name: typeof panel) => setPanel(previous => previous === name ? null : name);
-  return <dialog ref={dialog} onCancel={event => { event.preventDefault(); if (panel) setPanel(null); else onClose(); }} className={`avid-reader theme-${settings.theme}`} data-reduced-motion={reducedMotion} role="dialog" aria-modal="true" lang={locale} aria-label={t('readingTitle', { title: book.title })} style={{ '--reader-bg': colors.background, '--reader-fg': colors.foreground } as CSSProperties}>
-    <header className="avid-reader-header">
+  return <dialog ref={dialog} onCancel={event => { event.preventDefault(); escape(); }} className={`avid-reader theme-${settings.theme}`} data-controls-visible={controlsVisible} data-reduced-motion={reducedMotion} role="dialog" aria-modal="true" lang={locale} aria-label={t('readingTitle', { title: book.title })} style={{ '--reader-bg': colors.background, '--reader-fg': colors.foreground } as CSSProperties}>
+    <button ref={runningHeading} className="reader-running-heading" aria-label={t(controlsVisible ? 'hideControls' : 'showControls')} aria-expanded={controlsVisible} aria-controls="reader-controls" onClick={() => { setControls(!controlsVisible); setPanel(null); }}><span>{book.title}</span><small>{kind === 'epub' && ready ? location.label : ''}</small></button>
+    <header id="reader-controls" className="avid-reader-header" data-reader-controls hidden={!controlsVisible}>
       <button className="reader-icon" aria-label={t('closeReader')} onClick={onClose}><ArrowLeft size={20} /></button>
       <div className="reader-heading"><span>{book.title}</span><small>{book.authors.join(', ')}</small></div>
       <div className="reader-toolbar">
@@ -181,14 +216,14 @@ export function Reader(props: ReaderProps) {
           <label className="reader-field">{t('pageTurn')}<select value={settings.animation} onChange={event => change('animation', event.target.value as ReaderSettings['animation'])}><option value="none">{t('none')}</option><option value="slide">{t('slide')}</option><option value="fade">{t('fade')}</option><option value="fast-fade">{t('fastFade')}</option></select></label><p className="reader-muted">{t(props.preferences && !props.preferences.readOnly ? 'preferencesSyncHint' : 'preferencesHint')}</p>
         </div>}
       </aside>}
-      <div className={`reader-stage ${flash && !reducedMotion ? 'turning' : ''}`}>
+      <div ref={stage} className={`reader-stage ${flash && !reducedMotion ? 'turning' : ''}`}>
         {error ? <div className="reader-error" role="alert"><BookOpen size={32} /><h2>{t('cannotOpen')}</h2><p>{error}</p><button className="reader-primary" onClick={() => setError('')}>{t('dismiss')}</button><button className="reader-secondary" onClick={onClose}>{t('backLibrary')}</button></div> : <>{kind === 'epub' ? <EbookView {...engineProps} /> : kind === 'pdf' ? <PdfView {...engineProps} /> : <ComicView {...engineProps} />}{!ready && <div className="reader-opening"><span className="reader-spinner" />{t('opening')}</div>}</>}
       </div>
       {selected && panel !== 'notes' && <div className="reader-selection-tools"><button onClick={() => saveAnnotation(false)}><Highlighter size={16} />{t('highlight')}</button><button onClick={() => { setPanel('notes'); setNoteText(''); setEditing(undefined); }}><Bookmark size={16} />{t('addNote')}</button><button aria-label={t('dismissSelection')} onClick={() => setSelected(undefined)}><X size={16} /></button></div>}
     </div>
     {media.available && <div className="reader-media-bar"><span><Volume2 size={16} />{t('alignedNarration')}</span><button className="reader-icon" aria-label={t('previousPassage')} onClick={() => engine.current?.mediaPrevious?.()}><ChevronLeft size={18} /></button><button className="reader-primary" onClick={() => media.playing ? engine.current?.pauseMedia?.() : engine.current?.playMedia?.()}>{t(media.playing ? 'pauseNarration' : 'readListen')}</button><button className="reader-icon" aria-label={t('nextPassage')} onClick={() => engine.current?.mediaNext?.()}><ChevronRight size={18} /></button><time>{Math.floor(media.seconds / 60)}:{String(Math.floor(media.seconds % 60)).padStart(2, '0')}</time><label><input type="checkbox" checked={followMedia} onChange={event => { setFollowMedia(event.target.checked); engine.current?.setMediaFollow?.(event.target.checked); }} />{t('followText')}</label><select aria-label={t('narrationSpeed')} value={mediaRate} onChange={event => { const rate = Number(event.target.value); setMediaRate(rate); engine.current?.setMediaRate?.(rate); }}>{[.75, 1, 1.25, 1.5, 1.75, 2].map(rate => <option key={rate} value={rate}>{new Intl.NumberFormat(locale).format(rate)}×</option>)}</select></div>}
     {props.modeControls && <div className="reader-media-bar">{props.modeControls}</div>}
-    <footer className="avid-reader-footer"><span className="reader-chapter-label">{locationLabel}</span><div className="reader-page-controls"><button className="reader-icon" disabled={!ready} aria-label={t('previousPage')} onClick={() => turn('prev')}><ChevronLeft size={19} /></button><span>{Math.round(location.progress * 100)}%</span><button className="reader-icon" disabled={!ready} aria-label={t('nextPage')} onClick={() => turn('next')}><ChevronRight size={19} /></button></div><span className="reader-footer-brand">avid <span>·</span> {file.format}</span><div className="reader-progress"><span style={{ width: `${location.progress * 100}%` }} /></div></footer>
+    <footer className="avid-reader-footer"><span className="reader-page-label">{pageLabel}</span><span className="reader-section-remaining">{ready && pageInfo?.sectionRemaining !== undefined ? t('sectionPagesLeft', { count: pageInfo.sectionRemaining }) : ''}</span><div className="reader-page-controls" data-reader-controls hidden={!controlsVisible}><button className="reader-icon" disabled={!ready} aria-label={t('previousPage')} onClick={() => turn('prev')}><ChevronLeft size={19} /></button><button className="reader-icon" disabled={!ready} aria-label={t('nextPage')} onClick={() => turn('next')}><ChevronRight size={19} /></button></div></footer>
   </dialog>;
 }
 function Contents({ items, go }: { items: TocItem[]; go: (locator: string | number) => void }) {
