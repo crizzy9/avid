@@ -8,6 +8,8 @@ The interface follows the observed Apogee phone and tablet layouts: Home/Library
 
 The [current roadmap](docs/roadmap.md) is: **1 — core online product; 2 — complete audiobook experience; 3 — full offline support; 4 — Apple Pencil and reader enhancements; 5 — UI enhancements; 6 — comparison-reference cleanup, README/docs and launch.** The [Phase 1 validation guide](docs/phase-1-validation.md) gives build/install steps, required devices/accounts and the checks needed to finish pending items. Phase 6 includes removing all Apogee mentions from release content.
 
+A bounded **Phase 2/3 read-along slice** is implemented: chapter-relative player controls, verified passage text/highlighting, explicit reading/listening handoff and small offline read-along packages. The [read-along guide](docs/phase-2-3-read-along.md) explains the supported flows, limits, test procedure and evidence. Integration qualification is in progress; neither phase is complete, and Phase 1 still has implementation and acceptance work.
+
 ## Run
 
 Requires Node.js 24 and pnpm 10.
@@ -46,7 +48,9 @@ For a development server without CORS, copy `.env.example` to `.env.local`, set 
 
 ## Boundaries
 
-Full offline downloads are Phase 3. Locally opening a file or caching a checkpoint does not make a book an offline download. Browser audio and speech depend on browser lifecycle and available codecs/voices. Unsigned iOS app/widget/CarPlay, Android debug/Auto, and linked macOS/Windows/Linux hosts compile in CI. Signing, installation, physical background playback, widgets, intents and car acceptance remain release gates. Read and Listen requires real EPUB media overlays or a verified alignment map. Explicit standalone linking verifies complete matching audio bytes and the exact EPUB/manifest edition; it does not generate alignment.
+Full offline support remains Phase 3 work. The current offline slice saves a complete narrated EPUB, optionally paired with all assets of its verified audiobook, with limits of **64 MiB per EPUB, 64 MiB per audio asset and 256 MiB total per package**. It supports foreground playback and reopening from this browser's storage. Web cold starts require the production build over HTTPS or localhost, loaded and reopened once so the service worker controls the app. Development mode needs Vite running. Offline notes and checkpoints use a separate account/edition database and never enter the server sync outbox; full reconciliation, resumable multi-gigabyte downloads and native offline background playback are pending. Browser storage can be evicted or cleared. See the [test and recovery instructions](docs/phase-2-3-read-along.md).
+
+Browser audio and speech depend on browser lifecycle and available codecs/voices. Unsigned iOS app/widget/CarPlay, Android debug/Auto, and linked macOS/Windows/Linux hosts compile in CI. Signing, installation, physical background playback, widgets, intents and car acceptance remain release gates. Read and Listen requires real EPUB media overlays or a verified alignment map. Explicit standalone linking verifies complete matching audio bytes and the exact EPUB/manifest edition; it does not generate alignment.
 
 CrossPoint delivery includes device inspection, a reviewed EPUB transfer and checksum verification, with isolated native transports and explicit discovery. Physical reader/firmware qualification remains open.
 

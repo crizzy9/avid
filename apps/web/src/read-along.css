@@ -1,0 +1,164 @@
+.read-along-panel {
+  width: 100%;
+  padding: 16px 0;
+  border-top: 1px solid var(--line, #ffffff30);
+  text-align: left;
+}
+.read-along-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.read-along-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.82rem;
+  margin: 10px 0;
+}
+.read-along-check input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent, #ac8b55);
+}
+.read-along-lines {
+  max-height: 300px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: relative;
+  border-radius: 14px;
+  padding: 14px 8px;
+  background: #00000010;
+}
+.read-along-lines button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  opacity: 0.55;
+  text-align: left;
+  padding: 12px 8px;
+  font:
+    600 clamp(17px, 3vw, 24px)/1.55 Georgia,
+    serif;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.read-along-lines button[aria-current="true"] {
+  opacity: 1;
+  background: #b69b6630;
+  box-shadow: inset 3px 0 #b69b66;
+}
+.read-along-lines button:focus-visible {
+  outline: 2px solid currentColor;
+  opacity: 1;
+}
+.read-along-gap {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.read-along-settings {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+  width: 100%;
+  font: 13px/1.5 system-ui;
+}
+.read-along-settings select {
+  max-width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  color: inherit;
+  background: var(--surface, #faf7f0);
+  border: 1px solid var(--line, #bbb);
+}
+.read-along-settings p {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+.read-along-reader-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px;
+  max-height: 32vh;
+  overflow: auto;
+  background: var(--surface, #f7f5f0);
+  color: var(--text, #272923);
+}
+.read-along-reader-controls .read-along-settings {
+  padding: 0;
+}
+.read-along-reader-controls button {
+  min-height: 38px;
+}
+.offline-library {
+  display: grid;
+  gap: 16px;
+  padding: 8px 0;
+}
+.offline-package {
+  padding: 16px;
+  border: 1px solid var(--line, #ddd);
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+}
+.offline-package h3,
+.offline-package p {
+  margin: 0;
+}
+.offline-package-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.offline-disclosure {
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.8;
+}
+.offline-workspace {
+  position: fixed;
+  inset: 0;
+  background: var(--bg, #f7f5f0);
+  z-index: 90;
+  overflow: auto;
+  padding: 20px max(16px, calc((100vw - 580px) / 2));
+  box-sizing: border-box;
+}
+.offline-workspace > .player-view {
+  margin: 16px auto;
+}
+.offline-workspace-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.offline-workspace .reader-shell {
+  z-index: 95;
+}
+.offline-audio-notes {
+  margin-top: 16px;
+  text-align: left;
+}
+.offline-audio-notes summary {
+  cursor: pointer;
+  padding: 12px 0;
+}
+.offline-audio-notes button {
+  width: 100%;
+  margin: 6px 0;
+  gap: 12px;
+  text-align: left;
+}
+.offline-audio-notes span {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -270,10 +270,24 @@ export class View extends HTMLElement {
             const playbackActiveClass = book.media.playbackActiveClass
             this.mediaOverlay = book.getMediaOverlay()
             let lastActive
+            let navigation = Promise.resolve()
+            // Avid: a pending renderer navigation must not resurrect a superseded clip.
+            let highlightGeneration = 0
+            const clearHighlight = () => {
+                const el = lastActive?.deref()
+                if (el) {
+                    el.classList.remove(activeClass)
+                    if (playbackActiveClass) el.ownerDocument
+                        .documentElement.classList.remove(playbackActiveClass)
+                }
+                lastActive = null
+            }
             this.mediaOverlay.addEventListener('highlight', e => {
+                const generation = ++highlightGeneration
+                clearHighlight()
                 const resolved = this.resolveNavigation(e.detail.text)
-                ;(this.mediaOverlayFollow === false ? Promise.resolve() : this.renderer.goTo(resolved))
-                    .then(() => {
+                const apply = () => {
+                        if (generation !== highlightGeneration || !this.renderer) return
                         const content = this.renderer.getContents().find(x => x.index === resolved.index)
                         if (!content) return
                         const el = resolved.anchor(content.doc)
@@ -282,15 +296,19 @@ export class View extends HTMLElement {
                         if (playbackActiveClass) el.ownerDocument
                             .documentElement.classList.add(playbackActiveClass)
                         lastActive = new WeakRef(el)
-                    })
+                }
+                if (this.mediaOverlayFollow === false) Promise.resolve().then(apply)
+                else navigation = navigation.catch(() => {}).then(async () => {
+                    if (generation !== highlightGeneration || !this.renderer) return
+                    this.mediaOverlayNavigating = true
+                    try { await this.renderer.goTo(resolved) }
+                    finally { this.mediaOverlayNavigating = false }
+                    apply()
+                }).catch(() => {})
             })
             this.mediaOverlay.addEventListener('unhighlight', () => {
-                const el = lastActive?.deref()
-                if (el) {
-                    el.classList.remove(activeClass)
-                    if (playbackActiveClass) el.ownerDocument
-                        .documentElement.classList.remove(playbackActiveClass)
-                }
+                ++highlightGeneration
+                clearHighlight()
             })
         }
     }

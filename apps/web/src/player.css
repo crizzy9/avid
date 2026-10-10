@@ -1,0 +1,230 @@
+.player-view.chapter-player {
+  --player-width: 440px;
+  width: 100%;
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 20px clamp(18px, 5vw, 44px) 28px;
+  text-align: center;
+}
+.chapter-player .player-art {
+  width: min(100%, 320px);
+  margin: 0 auto 24px;
+}
+.chapter-player .player-art .cover {
+  aspect-ratio: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 14px 32px #0002;
+}
+.chapter-player .player-art .cover img {
+  object-fit: contain;
+}
+.chapter-player .player-art .cover-format,
+.chapter-player .player-art .cover-percent,
+.chapter-player .player-art .cover-progress {
+  display: none;
+}
+.player-view.chapter-player > .eyebrow {
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+.player-view.chapter-player > h2 {
+  font-family: var(--font-ui, inherit);
+  font-size: clamp(21px, 4.5vw, 27px);
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+  margin: 0 auto 8px;
+}
+.player-view.chapter-player > .player-authors {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 25px;
+}
+.player-chapter-heading {
+  margin-bottom: 14px;
+}
+.player-chapter-count {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.player-chapter-heading h3 {
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1.35;
+  font-weight: 600;
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+.chapter-player .audio-range {
+  min-height: 26px;
+  margin: 0;
+  accent-color: var(--accent);
+  touch-action: pan-y;
+}
+.chapter-player .timeline-labels {
+  font-size: 13px;
+  margin-top: 0;
+  font-variant-numeric: tabular-nums;
+}
+.chapter-player .player-transport {
+  display: grid;
+  grid-template-columns: 44px 48px 76px 48px 44px;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(6px, 3vw, 22px);
+  margin: 24px 0 20px;
+}
+.chapter-player .player-transport .icon-button {
+  min-width: 44px;
+  min-height: 48px;
+  color: var(--ink);
+}
+.chapter-player .play-button {
+  width: 76px;
+  height: 76px;
+  color: var(--surface);
+}
+.chapter-player .play-button svg {
+  width: 30px;
+  height: 30px;
+}
+.chapter-player .skip-button small {
+  inset: 19px 0 0;
+  font-size: 10px;
+}
+.chapter-player .skip-button svg {
+  width: 36px;
+  height: 36px;
+}
+.chapter-player .player-chapter-button svg {
+  width: 23px;
+  height: 23px;
+  stroke-width: 1.5;
+}
+.chapter-player button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.player-book-summary {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 24px;
+}
+.player-book-summary > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.player-book-summary strong {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.player-book-summary progress {
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 9px;
+  background: var(--line);
+  color: var(--accent);
+}
+.player-book-summary progress::-webkit-progress-bar {
+  background: var(--line);
+}
+.player-book-summary progress::-webkit-progress-value {
+  background: var(--accent);
+}
+.player-book-summary progress::-moz-progress-bar {
+  background: var(--accent);
+}
+.chapter-player .player-options {
+  gap: 12px;
+  padding: 17px 0;
+  margin-bottom: 18px;
+}
+.chapter-player .player-options label > span {
+  min-height: 34px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.chapter-player .player-options select {
+  font-size: 13px;
+  min-height: 44px;
+  border-radius: 8px;
+}
+.chapter-player .player-bottom {
+  gap: 12px;
+  align-items: stretch;
+}
+.chapter-player .player-bottom .text-button {
+  min-height: 44px;
+  font-size: 13px;
+  text-align: start;
+}
+.chapter-player .chapter-list {
+  margin-top: 14px;
+}
+.chapter-player .chapter-list button {
+  align-items: center;
+  min-height: 56px;
+  padding: 12px 10px;
+  font-size: 14px;
+  gap: 12px;
+}
+.chapter-player .chapter-list .player-chapter-number {
+  min-width: 20px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.chapter-player .chapter-list .player-chapter-name {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.chapter-player .chapter-list small {
+  font-size: 13px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.player-read-along,
+.player-offline-control {
+  margin: 16px 0;
+  text-align: start;
+}
+.chapter-player :is(button, select, input):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+@media (max-width: 370px) {
+  .player-view.chapter-player {
+    padding-inline: 14px;
+  }
+  .chapter-player .player-transport {
+    gap: 4px;
+    grid-template-columns: 40px 44px 68px 44px 40px;
+  }
+  .chapter-player .play-button {
+    width: 68px;
+    height: 68px;
+  }
+  .chapter-player .player-options {
+    gap: 6px;
+  }
+}
+@media (max-height: 760px) {
+  .chapter-player .player-art {
+    width: min(100%, clamp(170px, 31vh, 240px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chapter-player *,
+  .chapter-player *::before,
+  .chapter-player *::after {
+    transition: none;
+    animation: none;
+  }
+}

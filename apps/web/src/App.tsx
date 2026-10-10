@@ -48,6 +48,7 @@ import {
   ArrowLeft,
   FolderPlus,
   UserRound,
+  Download,
 } from "lucide-react";
 import type {
   Annotation,
@@ -131,19 +132,45 @@ import {
 } from "../../../packages/readers/src/bookFile";
 import { newestAnchor } from "./resume";
 import { AlignmentControls } from "./AlignmentControls";
-import type { ReaderAlignmentHandle } from "../../../packages/readers/src/alignedPassage";
+import type {
+  ReaderAlignmentHandle,
+  AlignedPassageText,
+} from "../../../packages/readers/src/alignedPassage";
 import {
   alignedAudioAnchor,
+  alignedTextTarget,
   alignmentSha256,
   handoffToText,
   type VerifiedAudioAlignment,
 } from "../../../packages/playback/src/standalone-alignment";
+import { ReadAlongPanel } from "./ReadAlongPanel";
+import { HandoffControls } from "./HandoffControls";
+import { useReadAlongI18n } from "./readAlongMessages";
+import {
+  readHandoffPolicy,
+  handoffPolicyKey,
+  latestConfirmedPosition,
+  validReaderPosition,
+  matchingAlignedPlayback,
+  type HandoffPolicy,
+  type ConfirmedLinkedPosition,
+} from "./readAlongState";
+import { DownloadReadAlongButton } from "./DownloadReadAlongButton";
+import { seedOfflineReadAlongProgress } from "../../../packages/core/src/offlineReadAlongProgress";
+import type { OfflineReadAlongDescriptor } from "../../../packages/core/src/offlineReadAlong";
+import { playerTimeline } from "./playerTimeline";
+import { playerRemainingLabel } from "./playerMessages";
 
 type View =
   "home" | "library" | "browse" | "search" | "notebook" | "activity" | "more";
 const Reader = lazy(() =>
   import("../../../packages/readers/src/Reader").then((module) => ({
     default: module.Reader,
+  })),
+);
+const OfflineDownloads = lazy(() =>
+  import("./OfflineDownloads").then((module) => ({
+    default: module.OfflineDownloads,
   })),
 );
 type Dialog =
@@ -166,6 +193,7 @@ type ReaderState = {
 export default function App() {
   const { t, locale, setLocale } = useI18n();
   const { t: appT } = useAppI18n();
+  const readAlongText = useReadAlongI18n();
   const platformCapabilities = usePlatformCapabilities();
   const navigation = [
     { id: "home", label: t("nav.home"), icon: Home },
@@ -298,6 +326,37 @@ export default function App() {
     null,
   );
   const [readingBusy, setReadingBusy] = useState(false);
+  const [timedText, setTimedText] = useState<readonly AlignedPassageText[]>([]);
+  const [linkedSource, setLinkedSource] = useState<ReaderState | null>(null);
+  const [handoffPolicy, setHandoffPolicy] = useState<HandoffPolicy>("manual");
+  const [previewReading, setPreviewReading] = useState(false);
+  const [followAudio, setFollowAudio] = useState(false);
+  const [showDownloads, setShowDownloads] = useState(false);
+  const [undoAudioPosition, setUndoAudioPosition] = useState<{
+    source: PlaybackBook;
+    seconds: number;
+  }>();
+  const [previewPosition, setPreviewPosition] = useState<{
+    source: ReaderState;
+    anchor: ReadingAnchor;
+  }>();
+  const confirmedPositions = useRef<ConfirmedLinkedPosition[]>([]);
+  const lastAudioCheckpoint = useRef<
+    { bookId: string; fileId: string; seconds: number } | undefined
+  >(undefined);
+  const confirmedAudioAnchor = useRef<ReadingAnchor | undefined>(undefined);
+  const confirmedTextAnchor = useRef<
+    { source: ReaderState; anchor: ReadingAnchor } | undefined
+  >(undefined);
+  const currentAlignment = useRef(alignment);
+  currentAlignment.current = alignment;
+  const readingConfirmation = useRef(0);
+  const alignmentAttempt = useRef(0);
+  const pendingReadingConfirmation = useRef<Promise<boolean> | null>(null);
+  const currentReader = useRef(reader);
+  currentReader.current = reader;
+  const currentReaderHandle = useRef(readerAlignment);
+  currentReaderHandle.current = readerAlignment;
   const [toast, setToast] = useState("");
   const [search, setSearch] = useState("");
   const [noteQuery, setNoteQuery] = useState("");
@@ -374,6 +433,63 @@ export default function App() {
   const playback = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
+  );
+  useEffect(() => {
+    const map = alignment,
+      handle = readerAlignment;
+    if (
+      !reader ||
+      !map ||
+      !handle ||
+      map.edition.bookId !== reader.book.id ||
+      map.edition.textFileId !== reader.file.id ||
+      !matchingAlignedPlayback(map, controller.getBook(), library.repo.scope)
+    ) {
+      handle?.clearAudioHighlight?.();
+      return;
+    }
+    if (previewReading) {
+      handle.clearAudioHighlight?.();
+      return;
+    }
+    let active = true;
+    void handle
+      .followAudio?.(map, map.edition, playback.currentTime, {
+        follow: followAudio,
+      })
+      .catch((error) => {
+        if (active) setToast(String(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    alignment,
+    readerAlignment,
+    reader,
+    playback.currentTime,
+    playback.bookId,
+    playback.fileId,
+    playback.status,
+    playback.duration,
+    playback.trackIndex,
+    previewReading,
+    followAudio,
+    library.repo.scope,
+    controller,
+  ]);
+  useEffect(
+    () => () => {
+      readerAlignment?.clearAudioHighlight?.();
+    },
+    [
+      alignment,
+      readerAlignment,
+      reader,
+      library.repo.scope,
+      playback.bookId,
+      playback.fileId,
+    ],
   );
   const disposeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -505,7 +621,7 @@ export default function App() {
     publishDesktopRecent(book, file, anchor);
   }
   const changeReadingActivity = useReadingActivity(
-    reader,
+    playback.status === "playing" ? null : reader,
     library.recordSession,
     {
       accountScope: library.repo.scope,
@@ -530,6 +646,19 @@ export default function App() {
     setShowPlayer(false);
     setReadingBusy(false);
     setAlignment(null);
+    setTimedText([]);
+    setLinkedSource(null);
+    setPreviewReading(false);
+    setFollowAudio(false);
+    setUndoAudioPosition(undefined);
+    setPreviewPosition(undefined);
+    lastAudioCheckpoint.current = undefined;
+    readingConfirmation.current++;
+    alignmentAttempt.current++;
+    pendingReadingConfirmation.current = null;
+    confirmedPositions.current = [];
+    confirmedAudioAnchor.current = undefined;
+    confirmedTextAnchor.current = undefined;
     setReaderAlignment(null);
     uploadAttempt.current++;
     setServerLibraries([]);
@@ -651,6 +780,51 @@ export default function App() {
   useEffect(
     () =>
       controller.onCheckpoint((anchor) => {
+        let seconds: number;
+        try {
+          seconds = JSON.parse(anchor.locator).time;
+        } catch {
+          return;
+        }
+        if (!Number.isFinite(seconds)) return;
+        const previousClock = lastAudioCheckpoint.current;
+        if (
+          previousClock?.bookId === anchor.bookId &&
+          previousClock.fileId === anchor.fileId &&
+          previousClock.seconds === seconds &&
+          controller.getSnapshot().status !== "playing"
+        )
+          return;
+        lastAudioCheckpoint.current = {
+          bookId: anchor.bookId,
+          fileId: anchor.fileId,
+          seconds,
+        };
+        if (playbackScope.current === library.repo.scope)
+          confirmedAudioAnchor.current = anchor;
+        const linked = currentAlignment.current;
+        if (
+          playbackScope.current === library.repo.scope &&
+          linked &&
+          matchingAlignedPlayback(
+            linked,
+            controller.getBook(),
+            library.repo.scope,
+          ) &&
+          linked.edition.bookId === anchor.bookId &&
+          linked.edition.audioFileId === anchor.fileId
+        ) {
+          const previous = confirmedPositions.current.find(
+            (item) => item.source === "listening",
+          );
+          if (previous?.seconds !== seconds)
+            confirmedPositions.current = [
+              ...confirmedPositions.current.filter(
+                (item) => item.source !== "listening",
+              ),
+              { source: "listening", seconds, updatedAt: anchor.updatedAt },
+            ];
+        }
         if (!getNativeJournal() && playbackScope.current === library.repo.scope)
           void library.saveAnchor(anchor);
       }),
@@ -694,6 +868,9 @@ export default function App() {
   }, [dialog, library.client, library.repo.scope]);
 
   function finishReading() {
+    currentReader.current = null;
+    alignmentAttempt.current++;
+    setPreviewPosition(undefined);
     setReader(null);
   }
   function navigate(next: View) {
@@ -790,8 +967,13 @@ export default function App() {
     book: Book,
     requestedAnchor?: ReadingAnchor,
     expectedTextHash?: string,
+    keepAudio = false,
   ): Promise<boolean> {
-    controller.pause();
+    if (
+      !keepAudio &&
+      ["playing", "buffering"].includes(controller.getSnapshot().status)
+    )
+      controller.pause();
     const scope = accountScope.current;
     openRequest.current?.abort();
     const request = new AbortController();
@@ -825,6 +1007,40 @@ export default function App() {
                 ? "comic"
                 : "epub",
         }));
+      const mapped =
+        alignment?.edition.bookId === book.id &&
+        alignment.edition.accountScope === scope
+          ? alignment
+          : null;
+      const confirmed = latestConfirmedPosition(confirmedPositions.current);
+      if (
+        !requestedAnchor &&
+        mapped &&
+        handoffPolicy === "latest" &&
+        confirmed?.source === "listening"
+      ) {
+        const target = alignedTextTarget(
+          mapped,
+          mapped.edition,
+          confirmed.seconds,
+        );
+        if (
+          target &&
+          target.fileId === file.id &&
+          (!anchor ||
+            Date.parse(confirmed.updatedAt) > Date.parse(anchor.updatedAt))
+        ) {
+          anchor = {
+            bookId: book.id,
+            fileId: file.id,
+            kind: "epub",
+            locator: target.locator,
+            progress: confirmed.seconds / mapped.duration,
+            updatedAt: confirmed.updatedAt,
+          };
+          expectedTextHash = mapped.edition.textSha256;
+        }
+      }
       if (library.client && !requestedAnchor && !book.id.startsWith("local-")) {
         try {
           const remote = await library.client.getProgress({
@@ -882,9 +1098,18 @@ export default function App() {
       }
       if (scope !== accountScope.current || request.signal.aborted)
         return false;
+      alignmentAttempt.current++;
+      readingConfirmation.current++;
+      pendingReadingConfirmation.current = null;
+      currentReaderHandle.current = null;
       setReaderAlignment(null);
-      setReader({ book, file, source, anchor, ownerScope: scope });
-      publishNativeRecent(book, file, anchor);
+      setPreviewPosition(undefined);
+      setPreviewReading(false);
+      setFollowAudio(keepAudio);
+      const openedReader = { book, file, source, anchor, ownerScope: scope };
+      currentReader.current = openedReader;
+      setReader(openedReader);
+      if (!keepAudio) publishNativeRecent(book, file, anchor);
       setSelected(null);
       return true;
     } catch (e) {
@@ -905,7 +1130,8 @@ export default function App() {
     openRequest.current?.abort();
     const request = new AbortController();
     openRequest.current = request;
-    controller.pause();
+    if (["playing", "buffering"].includes(controller.getSnapshot().status))
+      controller.pause();
     let file: BookFile | undefined;
     try {
       file = chooseBookFile(book, requestedAnchor, "audio");
@@ -997,11 +1223,28 @@ export default function App() {
           scope,
           () => scope === accountScope.current && !request.signal.aborted,
         );
-      const time = saved ? resolveAudioResume(source, saved.locator) : 0;
+      let time = saved ? resolveAudioResume(source, saved.locator) : 0;
+      const confirmed = latestConfirmedPosition(confirmedPositions.current);
+      if (
+        !requestedAnchor &&
+        handoffPolicy === "latest" &&
+        matchingAlignedPlayback(alignment, source, scope) &&
+        confirmed?.source === "reading" &&
+        (!saved ||
+          Date.parse(confirmed.updatedAt) > Date.parse(saved.updatedAt))
+      )
+        time = confirmed.seconds;
       if (scope !== accountScope.current || request.signal.aborted)
         return false;
       controller.checkpoint();
       playbackScope.current = null;
+      lastAudioCheckpoint.current = {
+        bookId: source.bookId,
+        fileId: source.fileId,
+        seconds: time,
+      };
+      confirmedAudioAnchor.current = saved;
+      setUndoAudioPosition(undefined);
       controller.load(source, time);
       playbackScope.current = scope;
       setPlayerBook(book);
@@ -1029,21 +1272,303 @@ export default function App() {
     if (
       !activeReader ||
       map.edition.accountScope !== accountScope.current ||
-      activeReader.book.id !== map.edition.bookId
+      activeReader.book.id !== map.edition.bookId ||
+      activeReader.file.id !== map.edition.textFileId ||
+      currentReader.current !== activeReader ||
+      currentReaderHandle.current !== handle
     )
       return;
     try {
       const passage = await handle.currentPassage(map, map.edition);
       if (!passage) throw new Error(appT("noAudioPosition"));
       const anchor = alignedAudioAnchor(map, map.edition, passage.textLocator);
-      if (!anchor || map.edition.accountScope !== accountScope.current) return;
+      if (
+        !anchor ||
+        map.edition.accountScope !== accountScope.current ||
+        currentReader.current !== activeReader ||
+        currentReaderHandle.current !== handle
+      )
+        return;
       handle.pauseNarration();
       const opened = await listen(activeReader.book, anchor);
-      if (opened) setReader(null);
+      if (opened && currentReader.current === activeReader) finishReading();
       else throw new Error(appT("linkedAudioFailed"));
     } catch (error) {
       if (map.edition.accountScope === accountScope.current) throw error;
     }
+  }
+  async function acceptAlignment(map: VerifiedAudioAlignment) {
+    const source = reader,
+      handle = readerAlignment;
+    const attempt = ++alignmentAttempt.current;
+    const active = () =>
+      currentReader.current === source &&
+      currentReaderHandle.current === handle &&
+      accountScope.current === map.edition.accountScope &&
+      alignmentAttempt.current === attempt;
+    if (
+      !source ||
+      !handle ||
+      !active() ||
+      source.book.id !== map.edition.bookId ||
+      source.file.id !== map.edition.textFileId
+    )
+      return;
+    try {
+      const text = (await handle.getTimedText?.(map, map.edition)) ?? [];
+      if (!active()) return;
+      currentAlignment.current = map;
+      setAlignment(map);
+      setTimedText(text);
+      setLinkedSource(source);
+      setUndoAudioPosition(undefined);
+      setHandoffPolicy(
+        readHandoffPolicy(map.edition.accountScope, map.edition.bookId),
+      );
+      confirmedPositions.current = [];
+      // Seed only checkpoints actually observed and stored for this mounted text source.
+      await pendingReadingConfirmation.current;
+      if (!active() || currentAlignment.current !== map) return;
+      const reading = confirmedTextAnchor.current;
+      if (
+        reading?.source === source &&
+        validReaderPosition(source, accountScope.current, reading.anchor)
+      ) {
+        const passage = await handle.passageAtLocator?.(
+          map,
+          map.edition,
+          reading.anchor.locator,
+        );
+        if (!active() || currentAlignment.current !== map) return;
+        if (passage && confirmedTextAnchor.current === reading)
+          confirmedPositions.current = [
+            ...confirmedPositions.current.filter(
+              (item) => item.source !== "reading",
+            ),
+            {
+              source: "reading",
+              seconds: passage.start,
+              updatedAt: reading.anchor.updatedAt,
+              textAnchor: reading.anchor,
+            },
+          ];
+      }
+      const audio = confirmedAudioAnchor.current;
+      if (
+        audio &&
+        audio.bookId === map.edition.bookId &&
+        audio.fileId === map.edition.audioFileId &&
+        matchingAlignedPlayback(map, controller.getBook(), accountScope.current)
+      ) {
+        try {
+          const clock = JSON.parse(audio.locator);
+          if (
+            clock.manifestRevision === map.edition.manifestRevision &&
+            Number.isFinite(clock.time)
+          )
+            confirmedPositions.current = [
+              ...confirmedPositions.current.filter(
+                (item) => item.source !== "listening",
+              ),
+              {
+                source: "listening",
+                seconds: clock.time,
+                updatedAt: audio.updatedAt,
+              },
+            ];
+        } catch {
+          /* A malformed saved locator is not a confirmed linked position. */
+        }
+      }
+    } catch (error) {
+      if (active())
+        notify(error instanceof Error ? error.message : appT("linkFailed"));
+    }
+  }
+  async function seedObservedReading(
+    source: ReaderState,
+    handle: ReaderAlignmentHandle,
+  ) {
+    const map = currentAlignment.current;
+    const active = () =>
+      currentReader.current === source &&
+      currentReaderHandle.current === handle &&
+      currentAlignment.current === map &&
+      source.ownerScope === accountScope.current;
+    if (
+      !map ||
+      map.edition.bookId !== source.book.id ||
+      map.edition.textFileId !== source.file.id ||
+      map.edition.accountScope !== source.ownerScope ||
+      !active()
+    )
+      return;
+    await pendingReadingConfirmation.current;
+    const reading = confirmedTextAnchor.current;
+    if (
+      !active() ||
+      reading?.source !== source ||
+      !validReaderPosition(source, accountScope.current, reading.anchor)
+    )
+      return;
+    const passage = await handle.passageAtLocator?.(
+      map,
+      map.edition,
+      reading.anchor.locator,
+    );
+    if (passage && active() && confirmedTextAnchor.current === reading)
+      confirmedPositions.current = [
+        ...confirmedPositions.current.filter(
+          (item) => item.source !== "reading",
+        ),
+        {
+          source: "reading",
+          seconds: passage.start,
+          updatedAt: reading.anchor.updatedAt,
+          textAnchor: reading.anchor,
+        },
+      ];
+  }
+  function changeHandoffPolicy(value: HandoffPolicy) {
+    setHandoffPolicy(value);
+    if (alignment)
+      try {
+        localStorage.setItem(
+          handoffPolicyKey(
+            alignment.edition.accountScope,
+            alignment.edition.bookId,
+          ),
+          value,
+        );
+      } catch (error) {
+        notify(String(error));
+      }
+  }
+  async function returnToPlayer() {
+    const source = reader,
+      map = alignment,
+      handle = readerAlignment,
+      audio = controller.getBook();
+    // Keep the publication alive until a just-observed page has resolved and saved.
+    let pending;
+    do {
+      pending = pendingReadingConfirmation.current;
+      await pending;
+    } while (pending !== pendingReadingConfirmation.current);
+    if (
+      !source ||
+      currentReader.current !== source ||
+      source.ownerScope !== accountScope.current ||
+      currentAlignment.current !== map ||
+      controller.getBook() !== audio
+    )
+      return;
+    const confirmed = latestConfirmedPosition(confirmedPositions.current);
+    if (
+      handoffPolicy === "latest" &&
+      confirmed?.source === "reading" &&
+      matchingAlignedPlayback(map, audio, accountScope.current)
+    ) {
+      setUndoAudioPosition({
+        source: audio!,
+        seconds: controller.getSnapshot().currentTime,
+      });
+      controller.seek(confirmed.seconds);
+    }
+    handle?.pauseNarration();
+    finishReading();
+    setShowPlayer(true);
+  }
+  function saveReadingPosition(anchor: ReadingAnchor): Promise<boolean> {
+    const source = reader,
+      handle = readerAlignment,
+      map = alignment;
+    if (
+      !source ||
+      currentReader.current !== source ||
+      !validReaderPosition(source, accountScope.current, anchor)
+    )
+      return Promise.resolve(false);
+    const confirmation = ++readingConfirmation.current;
+    const active = () =>
+      currentReader.current === source &&
+      source.ownerScope === accountScope.current &&
+      confirmation === readingConfirmation.current;
+    // Resolve the captured anchor while the publication is alive, before storage waits.
+    const passage =
+      map &&
+      handle &&
+      map.edition.bookId === source.book.id &&
+      map.edition.textFileId === source.file.id &&
+      map.edition.accountScope === source.ownerScope
+        ? handle
+            .passageAtLocator?.(map, map.edition, anchor.locator)
+            .catch(() => null)
+        : undefined;
+    const pending = (async () => {
+      await library.saveAnchor(anchor);
+      const stored = await library.repo.getAnchor(anchor);
+      if (
+        !active() ||
+        stored?.locator !== anchor.locator ||
+        stored.updatedAt !== anchor.updatedAt
+      )
+        return false;
+      confirmedTextAnchor.current = { source, anchor };
+      publishNativeRecent(source.book, source.file, anchor);
+      const resolved = await passage;
+      if (
+        resolved &&
+        active() &&
+        currentReaderHandle.current === handle &&
+        currentAlignment.current === map
+      )
+        confirmedPositions.current = [
+          ...confirmedPositions.current.filter(
+            (item) => item.source !== "reading",
+          ),
+          {
+            source: "reading",
+            seconds: resolved.start,
+            updatedAt: anchor.updatedAt,
+            textAnchor: anchor,
+          },
+        ];
+      return active();
+    })();
+    pendingReadingConfirmation.current = pending;
+    return pending;
+  }
+  async function seedDownloadedProgress(
+    pkg: OfflineReadAlongDescriptor,
+    source: ReaderState,
+  ) {
+    if (
+      source.ownerScope !== accountScope.current ||
+      pkg.scope !== source.ownerScope
+    )
+      return;
+    const confirmedText = confirmedTextAnchor.current;
+    const reading =
+      confirmedText &&
+      confirmedText.source.source === source.source &&
+      confirmedText.source.book.id === pkg.book.id &&
+      confirmedText.anchor.fileId === pkg.textFileId
+        ? confirmedText.anchor
+        : undefined;
+    let audio = confirmedAudioAnchor.current;
+    try {
+      if (
+        !audio ||
+        audio.bookId !== pkg.book.id ||
+        audio.fileId !== pkg.alignmentSnapshot?.edition.audioFileId ||
+        JSON.parse(audio.locator).manifestRevision !== pkg.manifest?.revision
+      )
+        audio = undefined;
+    } catch {
+      audio = undefined;
+    }
+    await seedOfflineReadAlongProgress(pkg, { reading, audio });
   }
   async function readFromAudio() {
     const map = alignment;
@@ -1054,6 +1579,8 @@ export default function App() {
     )
       return;
     try {
+      const audio = controller.getBook();
+      const playing = controller.getSnapshot().status === "playing";
       const target = handoffToText(map, map.edition, controller);
       if (!target) throw new Error(appT("noTextPosition"));
       const opened = await openReader(
@@ -1067,8 +1594,18 @@ export default function App() {
           updatedAt: new Date().toISOString(),
         },
         map.edition.textSha256,
+        true,
       );
-      if (opened) setShowPlayer(false);
+      if (
+        opened &&
+        currentAlignment.current === map &&
+        controller.getBook() === audio &&
+        map.edition.accountScope === accountScope.current
+      ) {
+        setShowPlayer(false);
+        setFollowAudio(true);
+        if (playing) await controller.play();
+      }
     } catch (error) {
       if (map.edition.accountScope === accountScope.current)
         notify(error instanceof Error ? error.message : appT("linkFailed"));
@@ -1509,6 +2046,17 @@ export default function App() {
                 <button onClick={() => setDialog("upload")}>
                   <Plus />
                   {t("upload.open")}
+                  <ChevronRight />
+                </button>
+                <button
+                  onClick={() => {
+                    controller.pause();
+                    controller.checkpoint();
+                    setShowDownloads(true);
+                  }}
+                >
+                  <Download />
+                  {readAlongText("downloads")}
                   <ChevronRight />
                 </button>
                 <button onClick={() => setDialog("integrations")}>
@@ -2137,8 +2685,10 @@ export default function App() {
               <span>
                 <strong>{playerBook.title}</strong>
                 <small>
-                  {playerBook.authors.join(", ")} ·{" "}
-                  {formatTime(playback.currentTime)}
+                  {playerRemainingLabel(
+                    playerTimeline(controller.getBook(), playback),
+                    locale,
+                  )}
                 </small>
               </span>
             </button>
@@ -2231,6 +2781,14 @@ export default function App() {
                 (library.client?.readOnly ?? false)
               }
               client={library.client}
+              audioRemaining={
+                selectedBook.id === playerBook?.id
+                  ? playerRemainingLabel(
+                      playerTimeline(controller.getBook(), playback),
+                      locale,
+                    )
+                  : undefined
+              }
               onRead={(fileId) =>
                 void openReader(
                   fileId
@@ -2264,24 +2822,145 @@ export default function App() {
             }
           >
             <Reader
+              externalNarration={
+                alignment?.edition.bookId === reader.book.id &&
+                alignment.edition.textFileId === reader.file.id &&
+                matchingAlignedPlayback(
+                  alignment,
+                  controller.getBook(),
+                  library.repo.scope,
+                )
+              }
               preferences={readerPreferences}
               key={`${reader.ownerScope}:${reader.book.id}:${reader.file.id}`}
-              onAlignmentReady={setReaderAlignment}
+              onAlignmentReady={(handle) => {
+                if (currentReader.current === reader) {
+                  currentReaderHandle.current = handle;
+                  setReaderAlignment(handle);
+                  if (handle)
+                    void seedObservedReading(reader, handle).catch((error) => {
+                      if (currentReader.current === reader)
+                        notify(String(error));
+                    });
+                }
+              }}
+              persistProgress={!previewReading && !followAudio}
+              onPreviewAnchor={(anchor) => {
+                if (
+                  currentReader.current === reader &&
+                  validReaderPosition(reader, accountScope.current, anchor)
+                )
+                  setPreviewPosition({ source: reader, anchor });
+              }}
               modeControls={
-                library.client &&
-                reader.file.format === "EPUB" &&
-                reader.book.files.some((file) => file.format === "AUDIO") &&
-                !reader.book.id.startsWith("local-") ? (
-                  <AlignmentControls
-                    key={`${reader.ownerScope}:${reader.book.id}:${reader.file.id}`}
-                    client={library.client}
-                    book={reader.book}
-                    fileId={reader.file.id}
-                    handle={readerAlignment}
-                    alignment={alignment}
-                    onVerified={setAlignment}
-                    onListen={listenFromText}
-                  />
+                reader.file.format === "EPUB" ? (
+                  <>
+                    {library.client &&
+                      reader.book.files.some(
+                        (file) => file.format === "AUDIO",
+                      ) &&
+                      !reader.book.id.startsWith("local-") && (
+                        <AlignmentControls
+                          key={`${reader.ownerScope}:${reader.book.id}:${reader.file.id}`}
+                          client={library.client}
+                          book={reader.book}
+                          fileId={reader.file.id}
+                          handle={readerAlignment}
+                          alignment={alignment}
+                          onVerified={(map) => void acceptAlignment(map)}
+                          onListen={listenFromText}
+                        />
+                      )}
+                    <div className="read-along-reader-controls">
+                      <HandoffControls
+                        policy={handoffPolicy}
+                        onPolicy={changeHandoffPolicy}
+                        preview={previewReading}
+                        onPreview={(value) => {
+                          setPreviewReading(value);
+                          if (value) setFollowAudio(false);
+                        }}
+                        onConfirm={
+                          previewPosition?.source === reader &&
+                          validReaderPosition(
+                            reader,
+                            accountScope.current,
+                            previewPosition.anchor,
+                          )
+                            ? () => {
+                                void saveReadingPosition({
+                                  ...previewPosition.anchor,
+                                  updatedAt: new Date().toISOString(),
+                                })
+                                  .then((saved) => {
+                                    if (saved)
+                                      notify(readAlongText("savedPlace"));
+                                  })
+                                  .catch((error) => notify(String(error)));
+                              }
+                            : undefined
+                        }
+                      />
+                      {alignment?.edition.bookId === reader.book.id &&
+                        alignment.edition.textFileId === reader.file.id &&
+                        matchingAlignedPlayback(
+                          alignment,
+                          controller.getBook(),
+                          library.repo.scope,
+                        ) && (
+                          <>
+                            <label className="read-along-check">
+                              <input
+                                type="checkbox"
+                                checked={followAudio}
+                                onChange={(event) => {
+                                  setFollowAudio(event.target.checked);
+                                  if (event.target.checked)
+                                    setPreviewReading(false);
+                                }}
+                              />
+                              {readAlongText("follow")}
+                            </label>
+                            <button
+                              className="reader-secondary"
+                              onClick={() => void controller.toggle()}
+                            >
+                              {t(
+                                playback.status === "playing"
+                                  ? "common.pause"
+                                  : "common.play",
+                              )}
+                            </button>
+                            <button
+                              className="reader-secondary"
+                              onClick={() =>
+                                void returnToPlayer().catch((error) =>
+                                  notify(String(error)),
+                                )
+                              }
+                            >
+                              {readAlongText("openPlayer")}
+                            </button>
+                          </>
+                        )}
+                      {reader.source && (
+                        <DownloadReadAlongButton
+                          scope={reader.ownerScope}
+                          scopeLabel={
+                            library.client?.session.profile.name ??
+                            "On this device"
+                          }
+                          book={reader.book}
+                          fileId={reader.file.id}
+                          source={reader.source}
+                          client={library.client}
+                          alignment={alignment}
+                          handle={readerAlignment}
+                          onSaved={(pkg) => seedDownloadedProgress(pkg, reader)}
+                        />
+                      )}
+                    </div>
+                  </>
                 ) : undefined
               }
               book={reader.book}
@@ -2294,8 +2973,14 @@ export default function App() {
               )}
               onClose={() => void finishReading()}
               onAnchor={(anchor) => {
-                void library.saveAnchor(anchor);
-                publishNativeRecent(reader.book, reader.file, anchor);
+                if (
+                  currentReader.current === reader &&
+                  validReaderPosition(reader, accountScope.current, anchor)
+                )
+                  setPreviewPosition({ source: reader, anchor });
+                void saveReadingPosition(anchor).catch((error) =>
+                  notify(String(error)),
+                );
               }}
               onAnnotation={(annotation) =>
                 void library
@@ -2320,8 +3005,93 @@ export default function App() {
                   ? () => void readFromAudio()
                   : undefined
               }
+              readAlong={
+                alignment &&
+                matchingAlignedPlayback(
+                  alignment,
+                  controller.getBook(),
+                  library.repo.scope,
+                ) ? (
+                  <ReadAlongPanel
+                    lines={timedText}
+                    seconds={playback.currentTime}
+                    onSeek={(seconds) => {
+                      const source = controller.getBook();
+                      if (
+                        source &&
+                        matchingAlignedPlayback(
+                          alignment,
+                          source,
+                          accountScope.current,
+                        )
+                      ) {
+                        setUndoAudioPosition({
+                          source,
+                          seconds: controller.getSnapshot().currentTime,
+                        });
+                        controller.seek(seconds);
+                      }
+                    }}
+                    onUndo={
+                      undoAudioPosition?.source !== controller.getBook()
+                        ? undefined
+                        : () => {
+                            if (
+                              undoAudioPosition &&
+                              undoAudioPosition.source ===
+                                controller.getBook() &&
+                              matchingAlignedPlayback(
+                                alignment,
+                                controller.getBook(),
+                                accountScope.current,
+                              )
+                            )
+                              controller.seek(undoAudioPosition.seconds);
+                            setUndoAudioPosition(undefined);
+                          }
+                    }
+                  >
+                    <HandoffControls
+                      policy={handoffPolicy}
+                      onPolicy={changeHandoffPolicy}
+                    />
+                  </ReadAlongPanel>
+                ) : undefined
+              }
+              offlineControl={
+                linkedSource?.source &&
+                linkedSource.book.id === playerBook.id &&
+                linkedSource.ownerScope === library.repo.scope ? (
+                  <DownloadReadAlongButton
+                    scope={linkedSource.ownerScope}
+                    scopeLabel={
+                      library.client?.session.profile.name ?? "On this device"
+                    }
+                    book={linkedSource.book}
+                    fileId={linkedSource.file.id}
+                    source={linkedSource.source}
+                    client={library.client}
+                    alignment={alignment}
+                    onSaved={(pkg) => seedDownloadedProgress(pkg, linkedSource)}
+                  />
+                ) : undefined
+              }
             />
           </Modal>
+        )}
+        {showDownloads && (
+          <Suspense
+            fallback={
+              <div className="loading-overlay" role="status">
+                {t("common.openingBook")}
+              </div>
+            }
+          >
+            <OfflineDownloads
+              storage={libraryStorage}
+              onClose={() => setShowDownloads(false)}
+            />
+          </Suspense>
         )}
         {noteEdit && (
           <Modal

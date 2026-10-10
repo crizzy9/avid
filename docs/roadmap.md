@@ -5,8 +5,8 @@ Updated: 2026-10-10. This is the current delivery order, superseding the phase n
 | Phase | Outcome | Current state |
 | --- | --- | --- |
 | 1 | Core online library, readers, listening, sync and native integrations | Working development preview; implementation and acceptance gates remain open. |
-| 2 | Complete online audiobook experience and advanced audio features | Next feature phase; moved ahead of offline support. |
-| 3 | Full offline reading and listening | Former Phase 2; F67–F71 remain unimplemented as a complete offline system. |
+| 2 | Complete online audiobook experience and advanced audio features | In progress: chapter player and verified read-along/handoff slice implemented; broader audio work and qualification remain. |
+| 3 | Full offline reading and listening | Bounded EPUB/read-along downloads implemented; F67–F71 are not complete as an offline system. |
 | 4 | Apple Pencil and reader enhancements | Planned. |
 | 5 | UI enhancements | Planned. |
 | 6 | Remove Apogee references, cleanup, README/docs and launch | Planned. |
@@ -30,6 +30,8 @@ The validated source checkpoint `430b8b6` passed 657 shared tests, TypeScript, t
 
 Finish the online audiobook product before building full offline downloads. Existing streaming playback, chapters, speed, sleep timer, notes and verified EPUB media overlays/alignment are the starting point, not evidence that this phase is complete.
 
+The current [Phase 2/3 slice](phase-2-3-read-along.md) adds chapter-relative seeking and remaining-time displays, source-aligned text with tap-to-seek/undo, visible passage highlighting, manual/latest-confirmed/separate positions and deliberate preview without changing saved progress. These are source implementations with focused regression coverage; final integrated browser and installed-device qualification remain separate. Latest means the most recent confirmed action by timestamp, including backward movement, rather than the furthest percentage reached. Transcription and generated alignment are still future work.
+
 1. **Reliable playback on every supported host.** Qualify declared MP3/M4A/M4B and multi-track combinations, chapter transitions, buffering, expired credentials, interruptions, Bluetooth/remote commands, precise resume and process recovery. Record codec support per platform rather than assuming all encodings work everywhere.
 2. **Complete library and car browsing.** Browse and start eligible server audiobooks from cold native/car sessions without first preparing each book in the foreground. Add a persistent queue, useful history, bookmarks and predictable next-book behavior. Qualify CarPlay and Android Auto on their real hosts.
 3. **Listening controls.** Add configurable smart rewind, per-book playback preferences, speed presets, skip intervals and richer sleep behavior. Preserve source positions, original event times and accurate listening activity through every mode.
@@ -43,6 +45,8 @@ Finish the online audiobook product before building full offline downloads. Exis
 **Exit:** the supported-platform audio capability matrix and representative end-to-end tests pass, including recovery and source-time correctness. Dependent integrations have recorded qualification or an explicit scope decision. **Downloaded audiobooks, an offline audio catalog and offline reconciliation ship in Phase 3**, alongside other offline formats.
 
 ## Phase 3 — full offline reading and listening
+
+The first [offline read-along slice](phase-2-3-read-along.md) stores complete self-contained narrated EPUBs and optionally their verified standalone audiobook assets. It checks source identity, byte sizes and SHA-256 before atomic publication, verifies again when reopening, and uses an original-account/edition progress database with no server sync work. Current limits are 64 MiB per EPUB/audio asset and 256 MiB per package. The production web shell can be cached for later cold opening after initial installation. This foreground, browser-storage path does not finish F67–F71; full multi-gigabyte/native background downloads, reconciliation and installed-device qualification remain pending.
 
 Implement F67–F71 from the baseline under their new phase number:
 

@@ -18,3 +18,5 @@ Media-overlay additions: corrected the upstream visible-section comparison from 
 Lifecycle additions: custom-element registrations are idempotent during development HMR; the paginator tolerates teardown before its first frame and ignores queued layout/style work after disposal. These guards also protect fast close/reopen actions.
 
 Media-overlay passage skips also advance correctly across separate audio resources within one section, preserving paused state. Playback state reports loading separately until an actual audio playing event.
+
+Read-along corrections: media-overlay source intervals are half-open and resolve paused/backward positions as well as forward playback; silent gaps clear the active text. Late audio loads/events after stop cannot create a new owner. Overlay DOM navigation is serialized, superseded highlights are discarded, and the adapter can identify automatic narration navigation to keep it separate from reading checkpoints. The shared reader's external standalone read-along highlighter is implemented outside the vendor code.

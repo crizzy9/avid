@@ -10,6 +10,9 @@ import { registerSpeechProvider } from "../../../packages/playback/src/speechRun
 import { getDesktopSpeech } from "../../desktop/src/bridge";
 import "./styles.css";
 import "./reference-shell.css";
+import { registerOfflineShell } from "./offlineShell";
+
+registerOfflineShell();
 
 const nativeSpeech = getNativeSpeech() ?? getDesktopSpeech();
 if (nativeSpeech) registerSpeechProvider(nativeSpeechProvider(nativeSpeech));

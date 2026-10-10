@@ -5,12 +5,16 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { bindReadingTap, foliatePageInfo } from "./readerChrome";
 import { Reader } from "./Reader";
 import type { Book, EngineProps } from "./contracts";
+import type { ReaderAlignmentHandle } from "./alignedPassage";
 import { setLocale } from "../../i18n/src";
 
 const fixture = vi.hoisted(() => ({
   props: undefined as EngineProps | undefined,
   next: vi.fn(),
   close: vi.fn(),
+  pauseMedia: vi.fn(),
+  playMedia: vi.fn(),
+  stopSpeaking: vi.fn(),
   selection: undefined as { quote: string; locator: string } | undefined,
 }));
 vi.mock("./EbookView", () => ({
@@ -24,6 +28,9 @@ vi.mock("./EbookView", () => ({
           goTo: () => {},
           search: async () => [],
           selection: () => fixture.selection,
+          pauseMedia: fixture.pauseMedia,
+          playMedia: fixture.playMedia,
+          stopSpeaking: fixture.stopSpeaking,
         },
         [],
       );
@@ -286,4 +293,129 @@ it("does not treat byte-derived locations, invalid edges or continuous scroll as
   expect(foliatePageInfo({}, { pageItem: { label: " xvii " } })).toEqual({
     pageLabel: "xvii",
   });
+});
+
+it("keeps preview and automatic audio-follow anchors separate from saved reading checkpoints", async () => {
+  const saved = vi.fn(),
+    preview = vi.fn();
+  const props = {
+    book,
+    annotations: [],
+    onClose: fixture.close,
+    onAnchor: saved,
+    onPreviewAnchor: preview,
+    onAnnotation: () => {},
+  };
+  await act(async () =>
+    root.render(<Reader {...props} persistProgress={false} />),
+  );
+  expect(saved).not.toHaveBeenCalled();
+  expect(preview).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      bookId: book.id,
+      fileId: "text",
+      kind: "epub",
+      locator: "epubcfi(/6/2)",
+      progress: 0.3,
+    }),
+  );
+  await act(async () =>
+    fixture.props!.onLocation("epubcfi(/6/4)", 0.5, "Next chapter"),
+  );
+  expect(saved).not.toHaveBeenCalled();
+  expect(preview.mock.calls.at(-1)?.[0].locator).toBe("epubcfi(/6/4)");
+  await act(async () => root.render(<Reader {...props} persistProgress />));
+  expect(saved).not.toHaveBeenCalled(); // Returning to normal mode does not silently commit a preview.
+  await act(async () =>
+    fixture.props!.onLocation(
+      "epubcfi(/6/6)",
+      0.7,
+      "Followed passage",
+      undefined,
+      { persist: false },
+    ),
+  );
+  expect(saved).not.toHaveBeenCalled();
+  expect(preview.mock.calls.at(-1)?.[0].locator).toBe("epubcfi(/6/6)");
+  await act(async () =>
+    fixture.props!.onLocation(
+      "epubcfi(/6/2)",
+      0.1,
+      "Deliberate earlier position",
+    ),
+  );
+  expect(saved).toHaveBeenLastCalledWith(
+    expect.objectContaining({ locator: "epubcfi(/6/2)", progress: 0.1 }),
+  );
+});
+
+it("pauses internal narration when a standalone audiobook takes over and restores normal controls afterward", async () => {
+  const props = {
+    book,
+    annotations: [],
+    onClose: fixture.close,
+    onAnchor: () => {},
+    onAnnotation: () => {},
+  };
+  await act(async () => root.render(<Reader {...props} />));
+  await act(async () =>
+    fixture.props!.onMediaState({
+      available: true,
+      playing: true,
+      seconds: 12,
+    }),
+  );
+  expect(host.querySelector('[aria-label="Narration speed"]')).not.toBeNull();
+  expect(host.querySelector('[aria-label="Read aloud"]')).not.toBeNull();
+  await act(async () => root.render(<Reader {...props} externalNarration />));
+  expect(fixture.pauseMedia).toHaveBeenCalled();
+  expect(fixture.stopSpeaking).toHaveBeenCalled();
+  expect(host.querySelector('[aria-label="Narration speed"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Read aloud"]')).toBeNull();
+  const count = fixture.pauseMedia.mock.calls.length;
+  await act(async () =>
+    root.render(<Reader {...props} externalNarration={false} />),
+  );
+  expect(host.querySelector('[aria-label="Narration speed"]')).not.toBeNull();
+  expect(host.querySelector('[aria-label="Read aloud"]')).not.toBeNull();
+  expect(fixture.pauseMedia).toHaveBeenCalledTimes(count);
+  expect(fixture.playMedia).not.toHaveBeenCalled(); // Giving ownership back never autoplays.
+});
+
+it("keeps the verified alignment handle available and pauses a late ready engine under external narration", async () => {
+  const ready = vi.fn(),
+    pauseNarration = vi.fn();
+  const handle: ReaderAlignmentHandle = {
+    pauseNarration,
+    verifyAudiobook: vi.fn(),
+    currentPassage: vi.fn(),
+  };
+  await act(async () =>
+    root.render(
+      <Reader
+        book={book}
+        annotations={[]}
+        onClose={fixture.close}
+        onAnchor={() => {}}
+        onAnnotation={() => {}}
+        externalNarration
+        onAlignmentReady={ready}
+      />,
+    ),
+  );
+  expect(fixture.pauseMedia).toHaveBeenCalled();
+  expect(fixture.stopSpeaking).toHaveBeenCalled();
+  await act(async () => fixture.props!.onAlignmentReady?.(handle));
+  expect(pauseNarration).toHaveBeenCalledOnce();
+  expect(ready).toHaveBeenLastCalledWith(handle);
+  await act(async () =>
+    fixture.props!.onMediaState({
+      available: true,
+      playing: false,
+      seconds: 0,
+    }),
+  );
+  expect(host.querySelector('[aria-label="Narration speed"]')).toBeNull();
+  await act(async () => fixture.props!.onAlignmentReady?.(null));
+  expect(ready).toHaveBeenLastCalledWith(null);
 });

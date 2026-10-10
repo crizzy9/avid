@@ -21,6 +21,9 @@ import { BookCollections } from "./BookCollections";
 import { useAppI18n } from "./appMessages";
 import { descriptionToPlainText } from "./descriptionText";
 import "./book-details.css";
+import { playerTimeline } from "./playerTimeline";
+import { playerRemainingLabel } from "./playerMessages";
+import { resolveAudioResume } from "../../../packages/playback/src";
 
 const providerNames: Record<string, string> = {
   goodreads: "Goodreads",
@@ -43,6 +46,7 @@ export function BookDetails({
   onStatus,
   onShowNotes,
   client,
+  audioRemaining,
 }: {
   book: Book;
   collections: Collection[];
@@ -54,6 +58,7 @@ export function BookDetails({
   onStatus: (status: BookOrbitReadStatus) => void;
   onShowNotes: () => void;
   client: BookOrbitClient | null;
+  audioRemaining?: string;
 }) {
   const { t, locale } = useI18n();
   const { t: message } = useAppI18n();
@@ -72,6 +77,50 @@ export function BookDetails({
   const scope = client
     ? JSON.stringify([client.baseUrl, client.session.userId])
     : "local";
+  const [audioTime, setAudioTime] = useState<{
+    client: BookOrbitClient;
+    scope: string;
+    bookId: string;
+    duration: number;
+    currentTime: number;
+  }>();
+  useEffect(() => {
+    let active = true;
+    setAudioTime(undefined);
+    if (
+      !client ||
+      !/^\d+$/.test(book.id) ||
+      !book.files.some((file) => file.format === "AUDIO") ||
+      audioRemaining
+    )
+      return;
+    void (async () => {
+      const source = await client.getPlaybackSource(book);
+      const checkpoint = await client.getProgress({
+        bookId: book.id,
+        fileId: source.fileId,
+        kind: "audio",
+      });
+      const duration = source.tracks.every(
+        (track) => Number.isFinite(track.duration) && track.duration! > 0,
+      )
+        ? source.tracks.reduce((total, track) => total + track.duration!, 0)
+        : 0;
+      const currentTime = checkpoint
+        ? resolveAudioResume(source, checkpoint.locator)
+        : 0;
+      if (
+        active &&
+        JSON.stringify([client.baseUrl, client.session.userId]) === scope
+      )
+        setAudioTime({ client, scope, bookId: book.id, duration, currentTime });
+    })().catch(() => {
+      /* Unknown audio timing stays unknown, never inferred from ebook percentage. */
+    });
+    return () => {
+      active = false;
+    };
+  }, [client, scope, book.id, audioRemaining]);
   useEffect(() => {
     let active = true;
     setMore(false);
@@ -113,7 +162,9 @@ export function BookDetails({
     readableFiles.find(
       (file) => selection?.bookId === book.id && file.id === selection.fileId,
     )?.id ?? readableFiles[0]?.id;
-  const description = descriptionToPlainText(metadata.description || book.description);
+  const description = descriptionToPlainText(
+    metadata.description || book.description,
+  );
   const expandable =
     description.length > 420 || description.split("\n").length > 7;
   const rating = metadata.rating;
@@ -177,6 +228,25 @@ export function BookDetails({
               author: book.authors.join(", ") || t("common.unknownAuthor"),
             })}
           </p>
+          {hasAudio &&
+            (audioRemaining ||
+              (audioTime?.client === client &&
+                audioTime.scope === scope &&
+                audioTime.bookId === book.id &&
+                audioTime.duration > 0)) && (
+              <p className="book-detail-audio-remaining">
+                <Clock3 size={16} />
+                {audioRemaining ??
+                  playerRemainingLabel(
+                    playerTimeline(null, {
+                      duration: audioTime!.duration,
+                      currentTime: audioTime!.currentTime,
+                      rate: 1,
+                    }),
+                    locale,
+                  )}
+              </p>
+            )}
           {book.series && (
             <p className="book-detail-series">
               {book.series}

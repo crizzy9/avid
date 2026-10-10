@@ -1,6 +1,6 @@
 import { useI18n } from "../../../packages/i18n/src";
 import { useAlignmentI18n } from "./alignmentMessages";
-import { useState, useSyncExternalStore } from "react";
+import { useId, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Play,
   Pause,
@@ -11,30 +11,49 @@ import {
   BookmarkPlus,
   Headphones,
   BookOpen,
+  SkipBack,
+  SkipForward,
 } from "lucide-react";
 import type { PlaybackTransport } from "../../mobile/src/native-transport";
 import type { Book } from "../../../packages/core/src/types";
-import { Cover, formatTime } from "./ui";
+import { Cover } from "./ui";
 import {
   remotePolicyKey,
   type RemoteSkipPolicy,
 } from "../../../packages/playback/src/remotePolicy";
 import { useRemoteI18n } from "./remoteMessages";
+import { playerRemainingLabel, usePlayerI18n } from "./playerMessages";
+import {
+  formatPlayerTime as formatTime,
+  playerSeekTime,
+  playerTimeline,
+  type PlayerTimeline,
+} from "./playerTimeline";
+import type { PlaybackBook } from "../../../packages/playback/src";
+import "./player.css";
 
 export function Player({
   controller,
   book,
   onNote,
   onRead,
+  readAlong,
+  offlineControl,
 }: {
   controller: PlaybackTransport;
   book: Book;
   onNote: () => void;
   onRead?: () => void;
+  /** Account-scoped read-along UI supplied by the application. */
+  readAlong?: ReactNode;
+  /** Download/cache actions remain owned by the application's storage flow. */
+  offlineControl?: ReactNode;
 }) {
   const { t, locale } = useI18n();
   const { t: alignmentText } = useAlignmentI18n();
   const remoteText = useRemoteI18n();
+  const playerText = usePlayerI18n();
+  const chapterListId = useId();
   const [remotePolicy, setRemotePolicy] = useState(() =>
     controller.getRemotePolicy(),
   );
@@ -59,11 +78,38 @@ export function Player({
     controller.getSnapshot,
   );
   const [chapters, setChapters] = useState(false);
-  const chapterList = controller.getBook()?.chapters ?? [];
+  // Hold the chapter clock during a pointer gesture. Reaching its final second
+  // must not rebase that same drag onto the next chapter's start.
+  const [scrub, setScrub] = useState<{
+    source: PlaybackBook | null;
+    timeline: PlayerTimeline;
+    elapsed: number;
+  } | null>(null);
+  const source = controller.getBook();
+  const timeline = playerTimeline(source, state);
+  const activeScrub = scrub?.source === source ? scrub : null;
+  const displayed = activeScrub
+    ? {
+        ...activeScrub.timeline,
+        elapsed: activeScrub.elapsed,
+        remaining:
+          activeScrub.timeline.duration === null
+            ? null
+            : activeScrub.timeline.duration - activeScrub.elapsed,
+      }
+    : timeline;
+  const chapterList = timeline.chapters;
   const chapterSkipping =
     remotePolicy.mode === "chapter" && chapterList.length > 0;
+  const chapterTitle =
+    displayed.chapter?.title ||
+    (displayed.chapter
+      ? playerText("chapterNumber", { number: displayed.chapterIndex + 1 })
+      : playerText("wholeBook"));
+  const activePlayback =
+    state.status === "playing" || state.status === "buffering";
   return (
-    <div className="player-view">
+    <div className="player-view chapter-player">
       <div className="player-art">
         <Cover book={book} large />
       </div>
@@ -72,46 +118,117 @@ export function Player({
         {t("player.now")}
       </div>
       <h2>{book.title}</h2>
-      <p>{book.authors.join(", ")}</p>
-      <p className="player-chapter">
-        {chapterList[state.chapterIndex]?.title || t("common.audio")}
-        {book.id.startsWith("demo-") ? ` · ${t("player.sample")}` : ""}
-      </p>
-      <input
-        className="audio-range"
-        aria-label={t("player.position")}
-        type="range"
-        min="0"
-        max={state.duration || 1}
-        step=".1"
-        value={Math.min(state.currentTime, state.duration || 1)}
-        onChange={(e) => controller.seek(Number(e.target.value))}
-      />
-      <div className="timeline-labels">
-        <span>{formatTime(state.currentTime)}</span>
-        <span>−{formatTime(state.duration - state.currentTime)}</span>
-      </div>
+      <p className="player-authors">{book.authors.join(", ")}</p>
+      <section
+        className="player-chapter-timeline"
+        aria-label={
+          displayed.chapter
+            ? playerText("chapterPosition")
+            : t("player.position")
+        }
+      >
+        <div className="player-chapter-heading">
+          {(displayed.chapter || book.id.startsWith("demo-")) && (
+            <span className="player-chapter-count">
+              {displayed.chapter
+                ? playerText("chapterCount", {
+                    current: displayed.chapterIndex + 1,
+                    total: chapterList.length,
+                  })
+                : ""}
+              {book.id.startsWith("demo-")
+                ? `${displayed.chapter ? " · " : ""}${t("player.sample")}`
+                : ""}
+            </span>
+          )}
+          <h3>{chapterTitle}</h3>
+        </div>
+        <input
+          className="audio-range"
+          aria-label={
+            displayed.chapter
+              ? playerText("chapterPosition")
+              : t("player.position")
+          }
+          aria-valuetext={
+            displayed.duration === null
+              ? playerText("durationUnknown")
+              : playerText("positionValue", {
+                  elapsed: formatTime(displayed.elapsed),
+                  duration: formatTime(displayed.duration),
+                })
+          }
+          type="range"
+          min="0"
+          max={displayed.duration || 1}
+          step=".1"
+          disabled={displayed.duration === null}
+          value={Math.min(displayed.elapsed, displayed.duration || 1)}
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            setScrub({ source, timeline, elapsed: timeline.elapsed });
+          }}
+          onPointerUp={() => setScrub(null)}
+          onPointerCancel={() => setScrub(null)}
+          onLostPointerCapture={() => setScrub(null)}
+          onBlur={() => setScrub(null)}
+          onChange={(e) => {
+            const target = playerSeekTime(displayed, Number(e.target.value));
+            if (target !== null) {
+              setScrub((previous) =>
+                previous?.source === source
+                  ? { ...previous, elapsed: target - displayed.start }
+                  : previous,
+              );
+              controller.seek(target);
+            }
+          }}
+        />
+        <div className="timeline-labels">
+          <span
+            aria-label={`${playerText(displayed.chapter ? "chapterElapsed" : "bookElapsed")}: ${formatTime(displayed.elapsed)}`}
+          >
+            {formatTime(displayed.elapsed)}
+          </span>
+          <span
+            aria-label={
+              displayed.remaining === null
+                ? playerText("durationUnknown")
+                : `${playerText(displayed.chapter ? "chapterRemaining" : "bookRemaining")}: ${formatTime(displayed.remaining)}`
+            }
+          >
+            {displayed.remaining === null
+              ? "—"
+              : `−${formatTime(displayed.remaining)}`}
+          </span>
+        </div>
+      </section>
       <div className="player-transport">
         <button
-          className="icon-button skip-button"
-          onClick={() => controller.remoteSkip(-1)}
-          aria-label={
-            chapterSkipping
-              ? remoteText("previous")
-              : remoteText("back", { seconds: remotePolicy.seconds })
+          className="icon-button player-chapter-button"
+          disabled={!timeline.previous}
+          onClick={() =>
+            timeline.previous && controller.goToChapter(timeline.previous.id)
           }
+          aria-label={remoteText("previous")}
+          title={remoteText("previous")}
+        >
+          <SkipBack fill="currentColor" />
+        </button>
+        <button
+          className="icon-button skip-button"
+          onClick={() => controller.skip(-remotePolicy.seconds)}
+          aria-label={remoteText("back", { seconds: remotePolicy.seconds })}
         >
           <RotateCcw />
-          <small>{chapterSkipping ? "|" : remotePolicy.seconds}</small>
+          <small>{remotePolicy.seconds}</small>
         </button>
         <button
           className="play-button"
           onClick={() => void controller.toggle()}
-          aria-label={
-            state.status === "playing" ? t("common.pause") : t("common.play")
-          }
+          aria-label={activePlayback ? t("common.pause") : t("common.play")}
         >
-          {state.status === "playing" ? (
+          {activePlayback ? (
             <Pause fill="currentColor" />
           ) : (
             <Play fill="currentColor" />
@@ -119,16 +236,34 @@ export function Player({
         </button>
         <button
           className="icon-button skip-button"
-          onClick={() => controller.remoteSkip(1)}
-          aria-label={
-            chapterSkipping
-              ? remoteText("next")
-              : remoteText("forward", { seconds: remotePolicy.seconds })
-          }
+          onClick={() => controller.skip(remotePolicy.seconds)}
+          aria-label={remoteText("forward", { seconds: remotePolicy.seconds })}
         >
           <RotateCw />
-          <small>{chapterSkipping ? "|" : remotePolicy.seconds}</small>
+          <small>{remotePolicy.seconds}</small>
         </button>
+        <button
+          className="icon-button player-chapter-button"
+          disabled={!timeline.next}
+          onClick={() =>
+            timeline.next && controller.goToChapter(timeline.next.id)
+          }
+          aria-label={remoteText("next")}
+          title={remoteText("next")}
+        >
+          <SkipForward fill="currentColor" />
+        </button>
+      </div>
+      <div className="player-book-summary">
+        <span>{playerText("wholeBook")}</span>
+        <strong>{playerRemainingLabel(timeline, locale)}</strong>
+        {timeline.bookDuration !== null && (
+          <progress
+            aria-label={playerText("wholeBook")}
+            max={timeline.bookDuration}
+            value={timeline.bookElapsed}
+          />
+        )}
       </div>
       {state.error && (
         <div role="alert" className="error-banner">
@@ -137,7 +272,7 @@ export function Player({
       )}
       <div className="player-options">
         <label>
-          <span>{remoteText("controls")}</span>
+          <span>{playerText("remoteControls")}</span>
           <select
             value={
               remotePolicy.mode === "chapter"
@@ -160,11 +295,34 @@ export function Player({
             value={state.rate}
             onChange={(e) => controller.setRate(Number(e.target.value))}
           >
-            {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3].map((rate) => (
-              <option key={rate} value={rate}>
-                {rate}×
-              </option>
-            ))}
+            {Array.from(
+              new Set([
+                0.5,
+                0.75,
+                0.9,
+                1,
+                1.1,
+                1.2,
+                1.25,
+                1.3,
+                1.4,
+                1.5,
+                1.75,
+                2,
+                2.5,
+                3,
+                state.rate,
+              ]),
+            )
+              .sort((a, b) => a - b)
+              .map((rate) => (
+                <option key={rate} value={rate}>
+                  {new Intl.NumberFormat(locale, {
+                    maximumFractionDigits: 2,
+                  }).format(rate)}
+                  ×
+                </option>
+              ))}
           </select>
         </label>
         <label>
@@ -229,31 +387,51 @@ export function Player({
           {alignmentText("read")}
         </button>
       )}
+      {readAlong && <div className="player-read-along">{readAlong}</div>}
+      {offlineControl && (
+        <div className="player-offline-control">{offlineControl}</div>
+      )}
       <div className="player-bottom">
         <button className="text-button" onClick={onNote}>
           <BookmarkPlus size={18} />
           {t("note.add")}
         </button>
-        <button className="text-button" onClick={() => setChapters(!chapters)}>
+        <button
+          className="text-button"
+          aria-expanded={chapters}
+          aria-controls={chapterListId}
+          onClick={() => setChapters(!chapters)}
+        >
           <List size={18} />{" "}
           {chapters ? t("player.hideChapters") : t("player.chapters")}
         </button>
       </div>
       {chapters && (
-        <div className="chapter-list">
+        <div className="chapter-list" id={chapterListId}>
           {chapterList.length ? (
-            chapterList.map((chapter) => (
+            chapterList.map((chapter, index) => (
               <button
                 key={chapter.id}
                 onClick={() => controller.goToChapter(chapter.id)}
-                className={
-                  chapterList[state.chapterIndex]?.id === chapter.id
-                    ? "active"
-                    : ""
+                aria-current={
+                  timeline.chapter?.id === chapter.id ? "true" : undefined
                 }
+                className={timeline.chapter?.id === chapter.id ? "active" : ""}
               >
-                <span>{chapter.title}</span>
-                <small>{formatTime(chapter.start)}</small>
+                <span className="player-chapter-number" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <span className="player-chapter-name">
+                  {chapter.title ||
+                    playerText("chapterNumber", { number: index + 1 })}
+                </span>
+                <small
+                  aria-label={playerText("duration", {
+                    time: formatTime(chapter.duration),
+                  })}
+                >
+                  {formatTime(chapter.duration)}
+                </small>
               </button>
             ))
           ) : (
