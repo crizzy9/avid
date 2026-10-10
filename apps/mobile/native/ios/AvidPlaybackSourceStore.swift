@@ -121,7 +121,8 @@ enum AvidSessionStore {
         return identity[0] != normalized || record["readOnly"] as? Bool != false
     }
     static func write(expected: String, session: [String: Any], readOnly: Bool) throws -> [String: Any] {
-        guard try read()["generation"] as? String == expected,
+        let previous = try read()
+        guard previous["generation"] as? String == expected,
               let token = session["accessToken"] as? String, !token.isEmpty,
               let user = session["userId"] as? String, !user.isEmpty,
               let profile = session["profile"] as? [String: Any], let raw = profile["url"] as? String,
@@ -129,11 +130,22 @@ enum AvidSessionStore {
               session.keys.allSatisfy({ ["profile", "userId", "accessToken", "refreshToken", "clientKind"].contains($0) }) else { throw AvidSurfaceError.invalidInput }
         let data = try JSONSerialization.data(withJSONObject: session)
         guard data.count <= 262144 else { throw AvidSurfaceError.invalidInput }
-        return try save(["generation": UUID().uuidString, "session": session, "readOnly": readOnly])
+        let next = try save(["generation": UUID().uuidString, "session": session, "readOnly": readOnly])
+        if storageIdentity(previous) != storageIdentity(next) { AvidLibraryStorageEpoch.shared.invalidate() }
+        return next
     }
     static func clear(expected: String?) throws -> [String: Any] {
         if let expected, try read()["generation"] as? String != expected { throw AvidSurfaceError.invalidInput }
-        return try save(["generation": UUID().uuidString])
+        let next = try save(["generation": UUID().uuidString])
+        AvidLibraryStorageEpoch.shared.invalidate()
+        return next
+    }
+    private static func storageIdentity(_ record: [String: Any]) -> [Data]? {
+        guard let session = record["session"] as? [String: Any], let profile = session["profile"] as? [String: Any],
+              let raw = profile["url"] as? String, let user = session["userId"] as? String else { return nil }
+        let trimmed = raw.replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
+        // Repository identities preserve code points; Swift String equality folds NFC/NFD.
+        return [trimmed.hasSuffix("/api/v1") ? String(trimmed.dropLast(7)) : trimmed, user].map { Data($0.utf8) }
     }
     private static func save(_ value: [String: Any]) throws -> [String: Any] {
         let data = try JSONSerialization.data(withJSONObject: value)

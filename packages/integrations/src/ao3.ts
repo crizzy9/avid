@@ -247,37 +247,71 @@ const sessionSchema = z.object({
   username: z.string().min(1),
   sessionId: z.string().min(32),
 });
-/** Only loopback companions are accepted; no AO3/BookOrbit credential is a URL parameter. */
+export function normalizeAo3CompanionAddress(address: string): string {
+  let url: URL;
+  try {
+    url = new URL(address.trim());
+  } catch {
+    throw new Ao3Error(
+      "Use a local HTTP companion or a configured HTTPS companion origin.",
+    );
+  }
+  const local =
+    url.protocol === "http:" &&
+    ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) &&
+    Boolean(url.port);
+  if (
+    (!local && url.protocol !== "https:") ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.port === "0" ||
+    ![url.origin, `${url.origin}/`].includes(address.trim())
+  )
+    throw new Ao3Error(
+      "Use a local HTTP companion or a configured HTTPS companion origin.",
+    );
+  return url.origin;
+}
+function companionFetch(): typeof fetch {
+  // Capacitor's generic HTTP patch does not preserve redirect:'error' or AbortSignal for POST.
+  // HTTPS deployment provides CORS, so the original WebView fetch is the correct credential boundary.
+  const runtime = globalThis as typeof globalThis & {
+    CapacitorWebFetch?: typeof fetch;
+    Capacitor?: { isNativePlatform?: () => boolean };
+  };
+  if (runtime.CapacitorWebFetch)
+    return runtime.CapacitorWebFetch.bind(globalThis);
+  if (runtime.Capacitor?.isNativePlatform?.())
+    throw new Ao3Error(
+      "The native web transport is unavailable. Reopen Avid before connecting.",
+    );
+  return globalThis.fetch.bind(globalThis);
+}
+/** Explicit loopback or HTTPS companion; credentials stay in request bodies/headers, never URLs. */
 export class Ao3Client {
   private base: string;
   private pairing: string;
   private transport: typeof fetch;
+  private timeout: number;
   private session: { username: string; sessionId: string } | null = null;
   constructor(
     address: string,
     pairingCode: string,
-    options: { fetch?: typeof fetch } = {},
+    options: { fetch?: typeof fetch; timeoutMs?: number } = {},
   ) {
-    const url = new URL(address);
-    if (
-      url.protocol !== "http:" ||
-      !["127.0.0.1", "localhost"].includes(url.hostname) ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash ||
-      !["", "/"].includes(url.pathname)
-    )
+    this.base = normalizeAo3CompanionAddress(address);
+    if (!/^[A-Za-z0-9_-]{32,256}$/.test(pairingCode.trim()))
       throw new Ao3Error(
-        "Use the local companion address, such as http://127.0.0.1:43119.",
+        "Enter the pairing code configured for your companion.",
       );
-    if (pairingCode.trim().length < 32)
-      throw new Ao3Error(
-        "Enter the pairing code printed by your local companion.",
-      );
-    this.base = url.origin;
     this.pairing = pairingCode.trim();
-    this.transport = options.fetch ?? fetch;
+    this.transport = options.fetch ?? companionFetch();
+    this.timeout = Math.max(
+      1000,
+      Math.min(120_000, options.timeoutMs ?? 60_000),
+    );
   }
   get accountId() {
     return this.session?.username ?? null;
@@ -287,33 +321,110 @@ export class Ao3Client {
     init: RequestInit = {},
     session = this.session,
   ): Promise<Response> {
-    const response = await this.transport(`${this.base}${path}`, {
-      ...init,
-      credentials: "omit",
-      redirect: "error",
-      headers: {
-        Authorization: `Bearer ${this.pairing}`,
-        ...(session ? { "X-Avid-AO3-Session": session.sessionId } : {}),
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
-      },
+    const abort = new AbortController(),
+      cancel = () => abort.abort(init.signal?.reason);
+    if (init.signal?.aborted) cancel();
+    else init.signal?.addEventListener("abort", cancel, { once: true });
+    const timer = setTimeout(
+      () =>
+        abort.abort(
+          new DOMException("Companion request timed out.", "TimeoutError"),
+        ),
+      this.timeout,
+    );
+    let rejectAbort: (() => void) | undefined,
+      reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    const cancelled = new Promise<never>((_, reject) => {
+      rejectAbort = () => {
+        void reader?.cancel().catch(() => {});
+        reject(
+          abort.signal.reason ??
+            new DOMException("Request cancelled.", "AbortError"),
+        );
+      };
+      if (abort.signal.aborted) rejectAbort();
+      else abort.signal.addEventListener("abort", rejectAbort, { once: true });
     });
-    if (!response.ok) {
-      let message = "The AO3 companion request failed.";
-      try {
-        const data = await response.json();
-        if (typeof data.message === "string") message = data.message;
-      } catch {
-        /* No upstream HTML is rendered as an error. */
+    void cancelled.catch(() => {});
+    try {
+      abort.signal.throwIfAborted();
+      const pending = this.transport(`${this.base}${path}`, {
+        ...init,
+        signal: abort.signal,
+        credentials: "omit",
+        redirect: "error",
+        cache: "no-store",
+        referrerPolicy: "no-referrer",
+        headers: {
+          Authorization: `Bearer ${this.pairing}`,
+          ...(session ? { "X-Avid-AO3-Session": session.sessionId } : {}),
+          ...(init.body ? { "Content-Type": "application/json" } : {}),
+        },
+      });
+      void pending
+        .then((response) => {
+          if (abort.signal.aborted)
+            void response.body?.cancel().catch(() => {});
+        })
+        .catch(() => {});
+      const response = await Promise.race([pending, cancelled]);
+      reader = response.body?.getReader();
+      const maximum = !response.ok
+        ? 64 * 1024
+        : path.startsWith("/v1/epub?")
+          ? 64 * 1024 * 1024
+          : 18 * 1024 * 1024;
+      if (Number(response.headers.get("content-length")) > maximum)
+        throw new Ao3Error(
+          "The companion response exceeds the supported size limit.",
+        );
+      const parts: Uint8Array[] = [];
+      let size = 0;
+      if (reader)
+        while (true) {
+          const result = await Promise.race([reader.read(), cancelled]);
+          abort.signal.throwIfAborted();
+          if (result.done) break;
+          size += result.value.length;
+          if (size > maximum)
+            throw new Ao3Error(
+              "The companion response exceeds the supported size limit.",
+            );
+          parts.push(result.value);
+        }
+      const bytes = new Uint8Array(size);
+      let offset = 0;
+      for (const part of parts) {
+        bytes.set(part, offset);
+        offset += part.length;
       }
-      if (response.status === 401 && session === this.session)
-        this.session = null;
-      throw new Ao3Error(
-        message,
-        response.status,
-        Number(response.headers.get("retry-after")) || undefined,
+      const buffered = new Response(
+        [204, 205, 304].includes(response.status) ? null : bytes,
+        { status: response.status, headers: response.headers },
       );
+      if (!response.ok) {
+        let message = "The AO3 companion request failed.";
+        try {
+          const data = await buffered.json();
+          if (typeof data.message === "string") message = data.message;
+        } catch {
+          /* No upstream HTML is rendered as an error. */
+        }
+        if (response.status === 401 && session === this.session)
+          this.session = null;
+        throw new Ao3Error(
+          message,
+          response.status,
+          Number(response.headers.get("retry-after")) || undefined,
+        );
+      }
+      return buffered;
+    } finally {
+      clearTimeout(timer);
+      init.signal?.removeEventListener("abort", cancel);
+      if (rejectAbort) abort.signal.removeEventListener("abort", rejectAbort);
+      void reader?.cancel().catch(() => {});
     }
-    return response;
   }
   async connect(
     login: string,

@@ -22,7 +22,7 @@ export interface CrossPointReadiness {
   status: 'protocol-observed';
   firmwareQualified: boolean;
   transport: 'browser-fetch' | 'injected-native-fetch';
-  discovery: 'manual-address';
+  discovery: 'manual-address' | 'native-discovery';
   contractRevision: string;
 }
 export interface CrossPointTransferPlan {
@@ -85,7 +85,7 @@ export class CrossPointClient {
   }
 
   /** Try an explicit IP only when the requested host is unreachable. No LAN scan. */
-  async inspect(address: string, options: { directory?: string; ipFallback?: string; signal?: AbortSignal } = {}): Promise<CrossPointReadiness> {
+  async inspect(address: string, options: { directory?: string; ipFallback?: string; signal?: AbortSignal; discovered?: boolean } = {}): Promise<CrossPointReadiness> {
     const primary = normalizeDeviceAddress(address);
     const directory = normalizeDeviceDirectory(options.directory ?? '/');
     let device: CrossPointDevice;
@@ -99,7 +99,7 @@ export class CrossPointClient {
     const files = await this.list(device.address, directory, options.signal);
     return { device, directory, files, status: 'protocol-observed',
       firmwareQualified: CROSSPOINT_CONTRACT.qualifiedFirmwareVersions.includes(device.version),
-      transport: this.transport, discovery: 'manual-address', contractRevision: CROSSPOINT_CONTRACT.revision };
+      transport: this.transport, discovery: options.discovered ? 'native-discovery' : 'manual-address', contractRevision: CROSSPOINT_CONTRACT.revision };
   }
 
   /** Read-only plan; the displayed destination gets an independent random suffix. */

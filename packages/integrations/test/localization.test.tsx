@@ -68,6 +68,21 @@ const plan: CrossPointTransferPlan = {
 };
 
 describe("connector localization", () => {
+  it("requires status inspection after native discovery and clears results across accounts", async () => {
+    const inspect = vi.spyOn(CrossPointClient.prototype, "inspect").mockResolvedValue(device);
+    const discover = vi.fn(async () => [{address: "http://192.168.1.7", hostname: "reader-fixture"}]);
+    await act(async () => root.render(<CrossPointPanel accountScope="one" discoverReaders={discover} />));
+    expect(discover).not.toHaveBeenCalled();
+    await act(async () => button(t("findReaders")).click());
+    expect(inspect).not.toHaveBeenCalled();
+    await act(async () => button("reader-fixture · http://192.168.1.7").click());
+    expect(inspect).not.toHaveBeenCalled();
+    expect(host.querySelector<HTMLInputElement>('input')!.value).toBe("http://192.168.1.7");
+    await act(async () => button(t("checkReader")).click());
+    expect(inspect).toHaveBeenCalledWith("http://192.168.1.7", expect.objectContaining({discovered: true}));
+    await act(async () => root.render(<CrossPointPanel accountScope="two" discoverReaders={discover} />));
+    expect(host.textContent).not.toContain("reader-fixture");
+  });
   it("covers every catalog key and preserves interpolation variables in all seven locales", () => {
     for (const row of Object.values(connectorMessages)) {
       expect(row).toHaveLength(7);

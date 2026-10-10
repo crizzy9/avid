@@ -1,3 +1,4 @@
+import {createReaderDiscovery,type DiscoveredReader,type DiscoverReaders} from '../../../packages/integrations/src/discovery';
 import {invoke,isTauri} from '@tauri-apps/api/core';
 import {createDesktopFetch,type DesktopHttpBridge,type DesktopHttpHead} from './network';
 
@@ -16,13 +17,19 @@ export function createDesktopCrossPointFetch(bridge:DesktopCrossPointBridge=nati
   return createDesktopFetch({
     async open(request,signal){
       const id=crypto.randomUUID();
-      const cancel=()=>{void bridge.close({id}).catch(()=>{});};
+      let rejectAbort:((reason:unknown)=>void)|undefined;
+      const aborted=new Promise<never>((_,reject)=>{rejectAbort=reject;});
+      const close=()=>{void bridge.close({id}).catch(()=>{});};
+      const cancel=()=>{close();rejectAbort?.(signal?.reason??new DOMException('Request aborted.','AbortError'));};
       signal?.throwIfAborted();
       signal?.addEventListener('abort',cancel,{once:true});
       try {
-        const result=await bridge.open({...request,id});
-        if(result.id!==id){await bridge.close({id}).catch(()=>{});throw new Error('The native reader response identity changed.');}
-        return result;
+        const pending=bridge.open({...request,id}).then(async result=>{
+          if(signal?.aborted){close();signal.throwIfAborted();}
+          if(result.id!==id){await bridge.close({id}).catch(()=>{});throw new Error('The native reader response identity changed.');}
+          return result;
+        });
+        return await Promise.race([pending,aborted]);
       }finally{signal?.removeEventListener('abort',cancel);}
     },
     read:request=>bridge.read(request),close:request=>bridge.close(request),
@@ -30,3 +37,9 @@ export function createDesktopCrossPointFetch(bridge:DesktopCrossPointBridge=nati
 }
 const request=createDesktopCrossPointFetch();
 export function getDesktopCrossPointFetch():typeof fetch|null{return isTauri()?request:null;}
+
+const discover=createReaderDiscovery({
+  discover:async request=>({readers:await invoke<DiscoveredReader[]>('desktop_crosspoint_discover',{request})}),
+  close:request=>native.close(request),
+});
+export function getDesktopReaderDiscovery():DiscoverReaders|undefined{return isTauri()?discover:undefined;}

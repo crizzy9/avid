@@ -31,6 +31,13 @@ for (const value of nativeGroup.children) {
   const file = objects.PBXFileReference[reference(value)];
   assert(existsSync(`${root}native/ios/${file.path.replaceAll('"', '')}`), `Missing native source ${file.path}`);
 }
+const appSourcePhases = app.buildPhases.map(reference).map(key => objects.PBXSourcesBuildPhase[key]).filter(Boolean);
+for (const name of ['AvidLibraryStorage.swift', 'AvidLibraryStoragePlugin.swift', 'AvidCrossPointPlugin.swift']) {
+  assert(appSourcePhases.some(phase => phase.files.some(value => {
+    const build = objects.PBXBuildFile[reference(value)];
+    return objects.PBXFileReference[build?.fileRef]?.path?.replaceAll('"', '') === name;
+  })), `Missing repository source ${name} in the app target`);
+}
 const info = plist.parse(readFileSync(`${root}ios/App/App/Info.plist`, 'utf8'));
 assert(info.UIBackgroundModes.includes('audio'));
 assert(info.CFBundleURLTypes.some(value => value.CFBundleURLSchemes.includes('avid')));

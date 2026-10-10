@@ -13,6 +13,8 @@ import {
   type ConnectorNotice,
 } from "./messages";
 
+import type { DiscoverReaders, DiscoveredReader } from "./discovery";
+
 export interface CrossPointFileSource {
   id: string;
   name: string;
@@ -23,12 +25,14 @@ export interface CrossPointPanelProps {
   fileSources?: CrossPointFileSource[];
   /** Only pass a native fetch bridge that has actually been registered and validated. */
   nativeFetch?: typeof fetch;
+  discoverReaders?: DiscoverReaders;
 }
 
 export function CrossPointPanel({
   accountScope = "local",
   fileSources = [],
   nativeFetch,
+  discoverReaders,
 }: CrossPointPanelProps) {
   const { t } = useConnectorI18n();
   const id = useId();
@@ -41,6 +45,8 @@ export function CrossPointPanel({
     [nativeFetch],
   );
   const storageKey = `avid:crosspoint:last-transfer:${encodeURIComponent(accountScope)}`;
+  const [discovered, setDiscovered] = useState(false);
+  const [found, setFound] = useState<DiscoveredReader[] | null>(null);
   const [address, setAddress] = useState("crosspoint.local");
   const [fallback, setFallback] = useState("");
   const [directory, setDirectory] = useState("/");
@@ -58,6 +64,8 @@ export function CrossPointPanel({
   useEffect(() => {
     setPlan(null);
     setDevice(null);
+    setFound(null);
+    setDiscovered(false);
     setAttempted(false);
     setResult(null);
     setError(null);
@@ -106,12 +114,21 @@ export function CrossPointPanel({
     }
   }
 
+  function discover() {
+    if (!discoverReaders) return;
+    setFound(null);
+    void run("findingReaders", async (signal, current) => {
+      const readers = await discoverReaders(signal);
+      if (current()) setFound(readers);
+    });
+  }
   function inspect() {
     void run("checkingReader", async (signal, current) => {
       const readiness = await client.inspect(address, {
         ipFallback: fallback || undefined,
         directory,
         signal,
+        discovered,
       });
       if (current()) {
         setDevice(readiness);
@@ -166,6 +183,13 @@ export function CrossPointPanel({
   return (
     <div className="crosspoint-panel" style={{ display: "grid", gap: 14 }}>
       <p>{t("crossIntro")}</p>
+      {discoverReaders && <button className="secondary-button" disabled={!!busy} onClick={discover}>{t("findReaders")}</button>}
+      {found && <div aria-live="polite">
+        <p>{t(found.length ? "discoveryHint" : "noReaders")}</p>
+        {found.map(reader => <button key={reader.address} style={{overflowWrap: "anywhere", whiteSpace: "normal"}} className="secondary-button" disabled={!!busy} onClick={() => {setAddress(reader.address); setFallback(""); setDiscovered(true); invalidate();}}>
+          {reader.hostname} · {reader.address}
+        </button>)}
+      </div>}
       <label htmlFor={`${id}-address`}>{t("readerAddress")}</label>
       <input
         id={`${id}-address`}
@@ -175,6 +199,7 @@ export function CrossPointPanel({
         spellCheck={false}
         placeholder={t("readerAddressPlaceholder")}
         onChange={(event) => {
+          setDiscovered(false);
           setAddress(event.target.value);
           invalidate();
         }}
@@ -187,6 +212,7 @@ export function CrossPointPanel({
         placeholder={t("ipHint")}
         autoCapitalize="none"
         onChange={(event) => {
+          setDiscovered(false);
           setFallback(event.target.value);
           invalidate();
         }}

@@ -23,6 +23,12 @@ import javax.crypto.spec.GCMParameterSpec
 object AvidSessionStore {
     private const val KEY = "app.avid.reader.session"
     private var cached: JSONObject? = null
+    private var storageEpoch = UUID.randomUUID().toString()
+    /** Atomic file chunks share this monitor with account adoption/logout, not token lifetime. */
+    @Synchronized fun <T> withStorageEpoch(action: (String) -> T): T = action(storageEpoch)
+    private fun scope(record: JSONObject): String? = record.optJSONObject("session")?.let { session ->
+        org.json.JSONArray(listOf(AuthPolicy.server(session.getJSONObject("profile").getString("url")), session.getString("userId"))).toString()
+    }
     @Synchronized fun read(context: Context): JSONObject {
         cached?.let { return it }
         val file = file(context)
@@ -34,13 +40,18 @@ object AvidSessionStore {
         return JSONObject(String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8)).also { cached = it }
     }
     @Synchronized fun write(context: Context, expected: String, session: JSONObject, readOnly: Boolean): JSONObject {
-        require(read(context).getString("generation") == expected) { "The secure session changed. This stale operation was discarded." }
+        val previous = read(context)
+        require(previous.getString("generation") == expected) { "The secure session changed. This stale operation was discarded." }
         validate(session)
-        return save(context, JSONObject().put("generation", UUID.randomUUID().toString()).put("session", session).put("readOnly", readOnly))
+        val proposed = JSONObject().put("generation", UUID.randomUUID().toString()).put("session", session).put("readOnly", readOnly)
+        val changedScope = scope(previous) != scope(proposed)
+        val next = save(context, proposed)
+        if (changedScope) storageEpoch = UUID.randomUUID().toString()
+        return next
     }
     @Synchronized fun clear(context: Context, expected: String?): JSONObject {
         if (expected != null) require(read(context).getString("generation") == expected) { "The secure session changed. This stale operation was discarded." }
-        return save(context, JSONObject().put("generation", UUID.randomUUID().toString()))
+        return save(context, JSONObject().put("generation", UUID.randomUUID().toString())).also { storageEpoch = UUID.randomUUID().toString() }
     }
     @Synchronized fun readOnly(context: Context, scope: String): Boolean = try {
         val record = read(context)

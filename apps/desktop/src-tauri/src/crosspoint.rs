@@ -396,9 +396,96 @@ pub fn desktop_crosspoint_close(
     state.close(&request.id)
 }
 
+/// Pinned firmware UDP discovery: the suffix is a WebSocket port, never the HTTP port.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredReader {
+    address: String,
+    hostname: String,
+}
+fn discovery_reply(bytes: &[u8], peer: SocketAddr) -> Option<DiscoveredReader> {
+    if !peer.is_ipv4() || !lan(peer.ip()) || bytes.len() > 256 { return None; }
+    let value = std::str::from_utf8(bytes).ok()?;
+    let (hostname, port) = value.strip_prefix("crosspoint (on ")?.split_once(");")?;
+    if hostname.is_empty() || hostname.len() > 128
+        || !hostname.bytes().all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c))
+        || port.is_empty() || !port.bytes().all(|c| c.is_ascii_digit())
+        || port.parse::<u16>().ok()? == 0 { return None; }
+    Some(DiscoveredReader { address: format!("http://{}", peer.ip()), hostname: hostname.into() })
+}
+fn discover_udp(target: SocketAddr, duration: Duration, transfer: &Transfer) -> Result<Vec<DiscoveredReader>, String> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|_| "Local-network discovery is unavailable.")?;
+    socket.set_broadcast(true).map_err(|_| "Local-network discovery is unavailable.")?;
+    socket.set_read_timeout(Some(Duration::from_millis(100))).map_err(|_| "Local-network discovery is unavailable.")?;
+    if transfer.cancelled.load(Ordering::Acquire) { return Err("Reader discovery was canceled.".into()); }
+    socket.send_to(b"hello", target).map_err(|_| "Allow local-network access or enter the IP on the reader screen.")?;
+    let started = Instant::now();
+    let mut resent = false;
+    let mut readers = Vec::new();
+    let mut bytes = [0u8; 257];
+    while started.elapsed() < duration && readers.len() < 32 {
+        if transfer.cancelled.load(Ordering::Acquire) { return Err("Reader discovery was canceled.".into()); }
+        if !resent && started.elapsed() > duration / 2 {
+            let _ = socket.send_to(b"hello", target); resent = true;
+        }
+        match socket.recv_from(&mut bytes) {
+            Ok((size, peer)) if peer.port() == target.port() => {
+                if let Some(reader) = discovery_reply(&bytes[..size], peer) {
+                    if !readers.iter().any(|item: &DiscoveredReader| item.address == reader.address) { readers.push(reader); }
+                }
+            },
+            Ok(_) => {},
+            Err(error) if [std::io::ErrorKind::WouldBlock, std::io::ErrorKind::TimedOut].contains(&error.kind()) => {},
+            Err(_) => return Err("Reader discovery was interrupted. Enter the IP on its screen.".into()),
+        }
+    }
+    readers.sort_by(|a,b| a.address.cmp(&b.address));
+    Ok(readers)
+}
+#[tauri::command]
+pub async fn desktop_crosspoint_discover(window: WebviewWindow, state: State<'_, CrossPoint>, request: Handle) -> Result<Vec<DiscoveredReader>, String> {
+    main_window(&window)?;
+    let transfer = state.begin(&request.id)?;
+    let result = tauri::async_runtime::spawn_blocking(move || discover_udp(
+        "255.255.255.255:8134".parse().unwrap(), Duration::from_secs(4), &transfer,
+    )).await.map_err(|_| "Reader discovery could not finish.".to_owned());
+    let _ = state.close(&request.id);
+    result?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn discovery_uses_peer_http_address_not_websocket_port() {
+        let peer = "192.168.1.4:8134".parse().unwrap();
+        let found = discovery_reply(b"crosspoint (on reader-1);81", peer).unwrap();
+        assert_eq!(found.address, "http://192.168.1.4");
+        assert_eq!(found.hostname, "reader-1");
+        for bad in ["crosspoint (on a);0", "crosspoint (on <script>);81", "crosspoint (on a);81\n", "unrelated"] {
+            assert!(discovery_reply(bad.as_bytes(), peer).is_none());
+        }
+        assert!(discovery_reply(b"crosspoint (on a);81", "8.8.8.8:8134".parse().unwrap()).is_none());
+    }
+    #[test]
+    fn loopback_discovery_deduplicates_and_can_be_cancelled() {
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let target = socket.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let mut bytes = [0u8; 16];
+            let (size, peer) = socket.recv_from(&mut bytes).unwrap();
+            assert_eq!(&bytes[..size], b"hello");
+            socket.send_to(b"crosspoint (on fixture);81", peer).unwrap();
+            socket.send_to(b"crosspoint (on fixture);81", peer).unwrap();
+        });
+        let state = CrossPoint::default();
+        let id = uuid::Uuid::new_v4().to_string();
+        let transfer = state.begin(&id).unwrap();
+        assert_eq!(discover_udp(target, Duration::from_millis(160), &transfer).unwrap().len(), 1);
+        server.join().unwrap();
+        state.close(&id).unwrap();
+        assert!(discover_udp(target, Duration::from_millis(160), &transfer).is_err());
+    }
     #[test]
     fn only_exact_crosspoint_routes_and_local_addresses() {
         assert!(route("http://192.168.1.2/api/status?plugin=avid", "GET").is_ok());

@@ -85,6 +85,9 @@
 		C207AFE0E02C48D89D254A9C /* Shared/Locales/zh-Hans.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = E7DE5E4460214C97AC1D4044 /* Shared/Locales/zh-Hans.lproj */; };
 		528BE5C49E024A57B48A6122 /* Shared/Locales/es.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = CD70C44CC0A747C39FA99AFA /* Shared/Locales/es.lproj */; };
 		BEE1EEEFBC94452691A905C7 /* Shared/Locales/es.lproj in PBXResourcesBuildPhase */ = {isa = PBXBuildFile; fileRef = CD70C44CC0A747C39FA99AFA /* Shared/Locales/es.lproj */; };
+		9B24B682E56F4C57922CD48E /* AvidLibraryStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67263783CD8C48A2925FC122 /* AvidLibraryStorage.swift */; };
+		EB00E51C30EA4B51B67D0C50 /* AvidLibraryStoragePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB2A5A744844EBBBA712861 /* AvidLibraryStoragePlugin.swift */; };
+		940A0D8DA53C41D8B3F516FB /* AvidCrossPointPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2BFC9045B0343A6897040BF /* AvidCrossPointPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -126,6 +129,9 @@
 		D6A3EFEF05A242D38A3CB189 /* Shared/Locales/pl.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shared/Locales/pl.lproj"; sourceTree = "<group>"; };
 		E7DE5E4460214C97AC1D4044 /* Shared/Locales/zh-Hans.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shared/Locales/zh-Hans.lproj"; sourceTree = "<group>"; };
 		CD70C44CC0A747C39FA99AFA /* Shared/Locales/es.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Shared/Locales/es.lproj"; sourceTree = "<group>"; };
+		67263783CD8C48A2925FC122 /* AvidLibraryStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AvidLibraryStorage.swift"; sourceTree = "<group>"; };
+		0FB2A5A744844EBBBA712861 /* AvidLibraryStoragePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AvidLibraryStoragePlugin.swift"; sourceTree = "<group>"; };
+		F2BFC9045B0343A6897040BF /* AvidCrossPointPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AvidCrossPointPlugin.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -211,6 +217,9 @@
 				D6A3EFEF05A242D38A3CB189 /* Shared/Locales/pl.lproj */,
 				E7DE5E4460214C97AC1D4044 /* Shared/Locales/zh-Hans.lproj */,
 				CD70C44CC0A747C39FA99AFA /* Shared/Locales/es.lproj */,
+				67263783CD8C48A2925FC122 /* AvidLibraryStorage.swift */,
+				0FB2A5A744844EBBBA712861 /* AvidLibraryStoragePlugin.swift */,
+				F2BFC9045B0343A6897040BF /* AvidCrossPointPlugin.swift */,
 			);
 			name = "Avid native sources";
 			path = "../../native/ios";
@@ -363,6 +372,9 @@
 				61CE9ECF504B4D4098E5371C /* AvidMediaStorePlugin.swift in Sources */,
 				73EE69033D334985976B3069 /* AvidArtwork.swift in Sources */,
 				943DC63DA2A7459CBE9107C7 /* Shared/AvidStrings.swift in PBXSourcesBuildPhase */,
+				9B24B682E56F4C57922CD48E /* AvidLibraryStorage.swift in Sources */,
+				EB00E51C30EA4B51B67D0C50 /* AvidLibraryStoragePlugin.swift in Sources */,
+				940A0D8DA53C41D8B3F516FB /* AvidCrossPointPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

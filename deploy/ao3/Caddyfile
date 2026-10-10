@@ -1,0 +1,23 @@
+{
+	admin off
+	# Suppress request-bearing error logs as well as access logs. The custom session header is private.
+	log {
+		output discard
+	}
+}
+{$AVID_AO3_HOST} {
+	request_body {
+		max_size 8KB
+	}
+	# No access log: AO3 page/download paths and pairing/session headers stay out of logs.
+	reverse_proxy 127.0.0.1:43119 {
+		header_up Host {$AVID_AO3_HOST}
+		header_up X-Forwarded-Host {$AVID_AO3_HOST}
+		header_up X-Forwarded-Proto https
+		header_up -Forwarded
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 60s
+		}
+	}
+}

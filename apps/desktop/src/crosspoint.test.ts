@@ -10,8 +10,9 @@ describe('desktop CrossPoint transport',()=>{
     await vi.waitFor(()=>expect(id).not.toBe(''));
     abort.abort();
     expect(bridge.close).toHaveBeenCalledWith({id});
-    complete({id,status:200,statusText:'OK',headers:[]});
     await expect(pending).rejects.toMatchObject({name:'AbortError'});
+    // A delayed native DNS/permission response cannot keep the canceled UI busy.
+    complete({id,status:200,statusText:'OK',headers:[]});
   });
   it('preserves a multipart EPUB and closes the matching native handle',async()=>{
     let request:Parameters<DesktopCrossPointBridge['open']>[0]|undefined;

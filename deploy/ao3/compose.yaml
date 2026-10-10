@@ -1,0 +1,42 @@
+services:
+  companion:
+    build:
+      context: ../..
+      dockerfile: deploy/ao3/Dockerfile
+    user: "${AVID_AO3_UID:-1000}:${AVID_AO3_GID:-1000}"
+    environment:
+      AVID_AO3_PUBLIC_ORIGIN: https://${AVID_AO3_HOST:?Set the public companion hostname}
+      AVID_AO3_TRUSTED_PROXY: 127.0.0.1
+      AVID_AO3_ORIGINS: ${AVID_AO3_ORIGINS:?Set explicit Avid origins}
+      AVID_AO3_PAIRING_FILE: /run/secrets/ao3_pairing
+    secrets:
+      - ao3_pairing
+    ports:
+      - "443:443"
+      - "80:80"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+  proxy:
+    image: caddy:2-alpine
+    # Share loopback with Node. Port43119 is never published on the host/network.
+    network_mode: service:companion
+    depends_on: [companion]
+    environment:
+      AVID_AO3_HOST: ${AVID_AO3_HOST:?Set the public companion hostname}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+secrets:
+  ao3_pairing:
+    file: ./.pairing-token
+volumes:
+  caddy_data:
+  caddy_config:

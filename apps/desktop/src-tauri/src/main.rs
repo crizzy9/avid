@@ -42,6 +42,7 @@ fn main() {
             library_storage::library_storage_blob_read,
             library_storage::library_storage_blob_cancel,
             crosspoint::desktop_crosspoint_open,
+            crosspoint::desktop_crosspoint_discover,
             crosspoint::desktop_crosspoint_read,
             crosspoint::desktop_crosspoint_close,
             desktop_oidc::desktop_oidc_capabilities,

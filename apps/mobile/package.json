@@ -11,7 +11,7 @@
     "open:android": "cap open android",
     "build:android": "cd android && ./gradlew :app:assembleDebug",
     "verify:ios": "node scripts/verify-ios.mjs",
-    "configure:ios": "node scripts/configure-ios.mjs && node scripts/configure-carplay.mjs && node scripts/configure-locales.mjs",
+    "configure:ios": "node scripts/configure-ios.mjs && node scripts/configure-carplay.mjs && node scripts/configure-locales.mjs && node scripts/configure-storage.mjs && node scripts/configure-crosspoint.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:android:auto": "cd android && ./gradlew :app:assembleDebug :app:testDebugUnitTest -PavidCarEnabled=true"
   },

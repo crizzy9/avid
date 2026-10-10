@@ -18,4 +18,5 @@ apps/mobile/ios/Pods/
 *.jks
 *.p12
 *.mobileprovision
+/deploy/ao3/.pairing-token
 apps/mobile/android/.kotlin/

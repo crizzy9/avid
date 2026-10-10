@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { webcrypto } from "node:crypto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   Ao3Client,
   Ao3FollowStore,
+  normalizeAo3CompanionAddress,
   parseAo3ChapterIndex,
   parseAo3Edition,
   parseAo3Subscriptions,
@@ -14,6 +15,10 @@ Object.defineProperty(globalThis, "crypto", {
   configurable: true,
 });
 beforeEach(() => localStorage.clear());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 const edition = (ids = ["11", "12"], changed = false) =>
   parseAo3Edition(
     workPage(ids, changed),
@@ -140,7 +145,122 @@ describe("AO3 followed-work editions", () => {
     await client.disconnect();
     expect(client.accountId).toBeNull();
     expect(
-      () => new Ao3Client("https://remote.example", "pairing".repeat(8)),
-    ).toThrow("local companion");
+      () => new Ao3Client("http://remote.example", "pairing".repeat(8)),
+    ).toThrow("local HTTP companion");
+  });
+});
+
+describe("AO3 HTTPS and native web transport", () => {
+  it("accepts canonical HTTPS companions and rejects insecure remote or ambiguous addresses", () => {
+    expect(normalizeAo3CompanionAddress("https://companion.example")).toBe(
+      "https://companion.example",
+    );
+    expect(
+      normalizeAo3CompanionAddress("https://companion.example:8443/"),
+    ).toBe("https://companion.example:8443");
+    expect(normalizeAo3CompanionAddress("http://127.0.0.1:43119")).toBe(
+      "http://127.0.0.1:43119",
+    );
+    for (const address of [
+      "http://remote.example",
+      "http://127.0.0.1",
+      "https://name:secret@companion.example",
+      "https://companion.example/path",
+      "https://companion.example/../",
+      "https://companion.example:0",
+      "https://companion.example:443",
+      "https://companion.example?token=x",
+      "https://companion.example#x",
+    ])
+      expect(() => normalizeAo3CompanionAddress(address)).toThrow();
+  });
+  it("uses the original native WebView fetch with no redirects, credentials, cache or URL secrets", async () => {
+    const patched = vi.fn<typeof fetch>(),
+      original = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ username: "reader", sessionId: "s".repeat(48) }),
+          ),
+        );
+    vi.stubGlobal("Capacitor", { isNativePlatform: () => true });
+    vi.stubGlobal("CapacitorWebFetch", original);
+    vi.stubGlobal("fetch", patched);
+    const client = new Ao3Client("https://companion.example", "p".repeat(48));
+    await expect(client.connect("reader", "private-password")).resolves.toBe(
+      "reader",
+    );
+    expect(patched).not.toHaveBeenCalled();
+    const [url, options] = original.mock.calls[0];
+    expect(url).toBe("https://companion.example/v1/session");
+    expect(options).toMatchObject({
+      redirect: "error",
+      credentials: "omit",
+      cache: "no-store",
+      referrerPolicy: "no-referrer",
+    });
+    expect(options?.signal).toBeInstanceOf(AbortSignal);
+    expect(new Headers(options?.headers).get("Authorization")).toBe(
+      `Bearer ${"p".repeat(48)}`,
+    );
+    vi.stubGlobal("CapacitorWebFetch", undefined);
+    expect(
+      () => new Ao3Client("https://companion.example", "p".repeat(48)),
+    ).toThrow("native web transport");
+  });
+  it("applies timeout to stalled response bodies and cancels the reader without adopting a session", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn(),
+      transport = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode('{"username":"reader",'),
+              );
+            },
+            cancel,
+          }),
+        ),
+      );
+    const client = new Ao3Client("https://companion.example", "p".repeat(48), {
+      fetch: transport,
+      timeoutMs: 1000,
+    });
+    const result = client.connect("reader", "fixture");
+    const rejected = expect(result).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
+    await vi.advanceTimersByTimeAsync(1001);
+    await rejected;
+    expect(cancel).toHaveBeenCalled();
+    expect(client.accountId).toBeNull();
+    expect(transport.mock.calls[0][1]?.signal?.aborted).toBe(true);
+  });
+  it("cancels even a transport stalled before headers and bounds declared response size", async () => {
+    const abort = new AbortController(),
+      transport = vi
+        .fn<typeof fetch>()
+        .mockImplementation(() => new Promise(() => {}));
+    const client = new Ao3Client("https://companion.example", "p".repeat(48), {
+      fetch: transport,
+    });
+    const pending = client.connect("reader", "fixture", abort.signal);
+    const rejected = expect(pending).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    abort.abort();
+    await rejected;
+    const cancel = vi.fn();
+    transport.mockResolvedValueOnce(
+      new Response(new ReadableStream({ cancel }), {
+        headers: { "Content-Length": String(19 * 1024 * 1024) },
+      }),
+    );
+    await expect(client.connect("reader", "fixture")).rejects.toThrow(
+      "size limit",
+    );
+    expect(cancel).toHaveBeenCalled();
+    expect(client.accountId).toBeNull();
   });
 });

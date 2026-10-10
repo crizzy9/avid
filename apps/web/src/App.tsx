@@ -62,8 +62,8 @@ import {
 } from "../../../packages/playback/src";
 import { demoBooks } from "./fixtures";
 import { useLibrary } from "./useLibrary";
-import { createDesktopLibraryStorage } from "../../desktop/src/storage";
-import { getDesktopCrossPointFetch } from "../../desktop/src/crosspoint";
+import { createPlatformLibraryStorage } from "../../mobile/src/native-storage";
+import { getCrossPointFetch, getReaderDiscovery } from "../../mobile/src/native-crosspoint";
 import { useLocalState } from "./useLocalState";
 import { inReadingQueue, serverShelfFilter } from "./queueFilter";
 import { BookCard, Cover, EmptyState, Modal, Shelf, formatTime } from "./ui";
@@ -170,7 +170,7 @@ export default function App() {
   const [providerCallbackAtLaunch] = useState(
     () => location.pathname === "/oauth2-callback",
   );
-  const [libraryStorage] = useState(createDesktopLibraryStorage);
+  const [libraryStorage] = useState(createPlatformLibraryStorage);
   const library = useLibrary({
     storage: libraryStorage,
     refreshSession: nativeAuth ? refreshNativeSession : undefined,
@@ -2586,7 +2586,8 @@ export default function App() {
                 <h3>{appT("crossPointDelivery")}</h3>
                 <CrossPointPanel
                   accountScope={library.repo.scope}
-                  nativeFetch={getDesktopCrossPointFetch() ?? undefined}
+                  nativeFetch={getCrossPointFetch() ?? undefined}
+                  discoverReaders={getReaderDiscovery()}
                 />
               </section>
               <section>

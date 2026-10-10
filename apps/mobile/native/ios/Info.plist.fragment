@@ -2,4 +2,7 @@
 <key>UIBackgroundModes</key>
 <array><string>audio</string></array>
 <key>NSLocalNetworkUsageDescription</key>
-<string>Avid connects to the BookOrbit library server you choose on your local network.</string>
+<string>Avid connects to your local book server and CrossPoint reader.</string>
+
+<key>NSAppTransportSecurity</key>
+<dict><key>NSAllowsLocalNetworking</key><true/></dict>

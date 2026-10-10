@@ -1,0 +1,12 @@
+**
+!scripts/
+!scripts/ao3-companion.mjs
+!packages/
+!packages/integrations/
+!packages/integrations/companion/
+!packages/integrations/companion/**
+!deploy/
+!deploy/ao3/
+!deploy/ao3/Dockerfile
+!deploy/ao3/Dockerfile.dockerignore
+!deploy/ao3/package.json

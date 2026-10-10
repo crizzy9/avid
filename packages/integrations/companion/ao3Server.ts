@@ -4,6 +4,10 @@ import {
   type ServerResponse,
 } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createAo3AccessPolicy,
+  type Ao3ProxyDeployment,
+} from "./deployment.ts";
 
 const AO3 = "https://archiveofourown.org";
 const MAX_HTML = 8 * 1024 * 1024;
@@ -121,11 +125,13 @@ async function boundedBody(
   response: Response,
   maximum: number,
 ): Promise<Uint8Array> {
-  if (Number(response.headers.get("content-length")) > maximum)
+  if (Number(response.headers.get("content-length")) > maximum) {
+    await response.body?.cancel().catch(() => {});
     throw new ConnectorError(
       "AO3 response exceeds this connector’s size limit.",
       413,
     );
+  }
   const reader = response.body?.getReader();
   if (!reader) return new Uint8Array();
   const chunks: Uint8Array[] = [];
@@ -432,50 +438,49 @@ async function bodyJson(
     chunks.push(chunk);
   }
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const value: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("Expected object.");
+    return value as Record<string, unknown>;
   } catch {
     throw new ConnectorError("Invalid JSON.", 400);
   }
 }
-/** Loopback, origin and per-run pairing checks happen before any upstream request. */
+/** Loopback/proxy, explicit origin and pairing checks happen before any upstream request. */
 export function createAo3Companion(options: {
   pairingToken: string;
   origins: string[];
   service?: Ao3SessionService;
+  proxy?: Ao3ProxyDeployment;
 }) {
-  if (options.pairingToken.length < 32)
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(options.pairingToken))
     throw new Error(
       "Use a random pairing credential of at least 32 characters.",
     );
   const service = options.service ?? new Ao3SessionService();
-  const origins = new Set(options.origins);
-  return createServer(
+  const access = createAo3AccessPolicy(options.origins, options.proxy);
+  const server = createServer(
     async (request: IncomingMessage, response: ServerResponse) => {
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("X-Content-Type-Options", "nosniff");
       const send = (status: number, value: unknown) => {
+        if (response.destroyed || response.writableEnded) return;
         response.statusCode = status;
         response.setHeader("Content-Type", "application/json");
         response.end(JSON.stringify(value));
       };
       try {
-        const host = request.headers.host ?? "";
-        if (
-          !/^(127\.0\.0\.1|localhost):\d+$/.test(host) ||
-          !["127.0.0.1", "::ffff:127.0.0.1", "::1"].includes(
-            request.socket.remoteAddress ?? "",
-          )
-        )
+        let origin: string;
+        try {
+          origin = access(request);
+        } catch (error) {
           throw new ConnectorError(
-            "Only loopback connections are accepted.",
+            error instanceof Error
+              ? error.message
+              : "Companion access was rejected.",
             403,
           );
-        const origin = request.headers.origin;
-        if (!origin || !origins.has(origin))
-          throw new ConnectorError(
-            "This Avid origin is not allowed by the companion.",
-            403,
-          );
+        }
         response.setHeader("Access-Control-Allow-Origin", origin);
         response.setHeader("Vary", "Origin");
         if (request.method === "OPTIONS") {
@@ -502,10 +507,12 @@ export function createAo3Companion(options: {
           !timingSafeEqual(supplied, expected)
         )
           throw new ConnectorError(
-            "Enter the pairing code shown by your local AO3 companion.",
+            "Enter the pairing code configured for your AO3 companion.",
             401,
           );
-        const url = new URL(request.url ?? "/", "http://127.0.0.1");
+        if (!request.url?.startsWith("/") || request.url.startsWith("//"))
+          throw new ConnectorError("Invalid companion request target.", 400);
+        const url = new URL(request.url, "http://127.0.0.1");
         const sessionId = String(request.headers["x-avid-ao3-session"] ?? "");
         if (url.pathname === "/v1/session" && request.method === "POST") {
           const body = await bodyJson(request);
@@ -537,6 +544,10 @@ export function createAo3Companion(options: {
           response.end(bytes);
         } else throw new ConnectorError("Unknown companion route.", 404);
       } catch (error) {
+        if (response.destroyed || response.headersSent) {
+          if (!response.destroyed) response.destroy();
+          return;
+        }
         const known = error instanceof ConnectorError;
         if (known && error.retryAfter)
           response.setHeader("Retry-After", String(error.retryAfter));
@@ -548,4 +559,8 @@ export function createAo3Companion(options: {
       }
     },
   );
+  server.requestTimeout = 15_000;
+  server.headersTimeout = 10_000;
+  server.keepAliveTimeout = 5_000;
+  return server;
 }

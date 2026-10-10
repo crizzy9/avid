@@ -66,6 +66,11 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Avid connects to your local book server and CrossPoint reader.</string>
 	<key>CFBundleURLTypes</key>

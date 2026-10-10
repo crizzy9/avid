@@ -30,6 +30,8 @@ jobs:
       - run: pnpm build
       - run: pnpm --filter @avid/mobile exec cap sync ios
       - run: pnpm --filter @avid/mobile verify:ios
+      - name: Test actual iOS SQLite repository semantics
+        run: swiftc apps/mobile/native/ios/AvidLibraryStorage.swift apps/mobile/native/ios/tests/LibraryStorageTests.swift -o /tmp/avid-library-tests && /tmp/avid-library-tests
       - name: Compile app and widget without signing
         run: >-
           xcodebuild -project apps/mobile/ios/App/App.xcodeproj -scheme App
