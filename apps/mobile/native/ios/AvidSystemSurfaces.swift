@@ -6,9 +6,11 @@ import WidgetKit
 
 @MainActor
 enum AvidSystemSurfaces {
+    static let catalogNotification = Notification.Name("app.avid.native-catalog")
     static let navigationNotification = Notification.Name("app.avid.native-navigation")
 
     static func refresh() {
+        NotificationCenter.default.post(name: catalogNotification, object: nil)
         let books = AvidSharedStore.shared.recentBooks()
         UIApplication.shared.shortcutItems = Array(books.prefix(4)).map { book in
             UIApplicationShortcutItem(type: "app.avid.resume-book", localizedTitle: "Continue \(book.title)",

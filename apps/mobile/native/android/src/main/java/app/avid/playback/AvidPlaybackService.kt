@@ -10,6 +10,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -29,17 +30,18 @@ class AvidPlaybackService : MediaLibraryService() {
     private var sleepDeadline: Long? = null
     private var chapterEndMs: Long? = null
     private var lastCheckpoint = 0L
+    private var stopCatalogObserver: (() -> Unit)? = null
 
     private val ticker = object : Runnable {
         override fun run() {
             val now = System.currentTimeMillis()
             if ((sleepDeadline != null && now >= sleepDeadline!!) ||
-                (chapterEndMs != null && player.currentPosition >= chapterEndMs!!)) {
+                (chapterEndMs != null && AvidQueue.position(player) * 1000 >= chapterEndMs!!)) {
                 val stopAt = chapterEndMs
                 sleepDeadline = null
                 chapterEndMs = null
                 player.pause()
-                if (stopAt != null) player.seekTo(stopAt)
+                if (stopAt != null) AvidQueue.seek(player, stopAt / 1000.0)
                 checkpoint()
             }
             if (now - lastCheckpoint >= 5_000) checkpoint()
@@ -49,9 +51,11 @@ class AvidPlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        AvidAudioCatalog.initialize(this)
+        val cookieManager = CookieManager.getInstance()
         val authenticatedData = ResolvingDataSource.Factory(DefaultDataSource.Factory(this)) { spec ->
             // Resolve cookies for this precise URL on every connection; never place credentials in metadata/preferences.
-            val cookie = if (spec.uri.scheme in listOf("https", "http")) CookieManager.getInstance().getCookie(spec.uri.toString()) else null
+            val cookie = if (spec.uri.scheme in listOf("https", "http")) cookieManager.getCookie(spec.uri.toString()) else null
             if (cookie.isNullOrBlank()) spec else spec.withAdditionalHeaders(mapOf("Cookie" to cookie))
         }
         player = ExoPlayer.Builder(this)
@@ -67,28 +71,27 @@ class AvidPlaybackService : MediaLibraryService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) { checkpoint() }
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) { checkpoint() }
         })
-        session = MediaLibrarySession.Builder(this, player, object : MediaLibrarySession.Callback {
-            override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
-                val base = super.onConnect(session, controller)
-                val commands = base.availableSessionCommands.buildUpon()
-                if (controller.packageName == packageName) commands.add(SessionCommand(SLEEP_COMMAND, Bundle.EMPTY))
-                return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                    .setAvailableSessionCommands(commands.build()).build()
-            }
-
-            override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo, command: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
-                if (controller.packageName != packageName || command.customAction != SLEEP_COMMAND) {
-                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
-                }
-                sleepDeadline = if (args.containsKey("deadline")) args.getLong("deadline") else null
-                chapterEndMs = if (args.containsKey("chapterEndMs")) args.getLong("chapterEndMs") else null
-                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-            }
+        // Media3's default seekBack/seekForward clamps at the current file boundary.
+        // Keep the playlist's native timeline for scrubbers, but make audiobook skip cross tracks.
+        val sessionPlayer = object : ForwardingPlayer(player) {
+            override fun seekBack() { AvidQueue.seek(player, AvidQueue.position(player) - 30) }
+            override fun seekForward() { AvidQueue.seek(player, AvidQueue.position(player) + 30) }
+        }
+        session = MediaLibrarySession.Builder(this, sessionPlayer, AvidLibraryCallback({ AvidControllerPolicy.allows(this, it) }) { args ->
+            sleepDeadline = if (args.containsKey("deadline")) args.getLong("deadline") else null
+            chapterEndMs = if (args.containsKey("chapterEndMs")) args.getLong("chapterEndMs") else null
         }).build()
+        stopCatalogObserver = AvidAudioCatalog.observe { changedAccount ->
+            if (changedAccount) { player.pause(); player.clearMediaItems(); sleepDeadline = null; chapterEndMs = null }
+            session?.notifyChildrenChanged(AvidLibraryCallback.ROOT, 2, null)
+            session?.notifyChildrenChanged(AvidLibraryCallback.RECENT, AvidAudioCatalog.playable(recent = true).size, null)
+            session?.notifyChildrenChanged(AvidLibraryCallback.LIBRARY, AvidAudioCatalog.playable().size, null)
+        }
         handler.post(ticker)
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
+        if (AvidControllerPolicy.allows(this, controllerInfo)) session else null
 
     private fun checkpoint() {
         val item = player.currentMediaItem ?: return
@@ -96,19 +99,24 @@ class AvidPlaybackService : MediaLibraryService() {
         val scope = extras.getString("accountScope") ?: return
         val value = JSONObject()
             .put("accountScope", scope).put("bookId", extras.getString("bookId"))
-            .put("fileId", item.mediaId).put("position", player.currentPosition / 1000.0)
-            .put("duration", if (player.duration == C.TIME_UNSET) 0 else player.duration / 1000.0)
+            .put("fileId", extras.getString("fileId") ?: item.mediaId).put("position", AvidQueue.position(player))
+            .put("trackId", extras.getString("trackId")).put("trackTime", player.currentPosition / 1000.0)
+            .put("manifestRevision", extras.getString("manifestRevision"))
+            .put("duration", AvidQueue.duration(player))
             .put("rate", player.playbackParameters.speed).put("playing", player.isPlaying)
             .put("updatedAt", playbackTimestamp())
         val hash = MessageDigest.getInstance("SHA-256").digest(scope.toByteArray()).joinToString("") { "%02x".format(it) }
         // Independent native recovery record. No media URLs or credentials are persisted.
         getSharedPreferences("avid-playback", MODE_PRIVATE).edit().putString(hash, value.toString()).apply()
+        AvidAudioCatalog.checkpoint(scope, extras.getString("bookId") ?: "", extras.getString("fileId") ?: item.mediaId,
+            AvidQueue.position(player), player.playbackParameters.speed.toDouble())
         lastCheckpoint = System.currentTimeMillis()
     }
 
     override fun onDestroy() {
         checkpoint()
         handler.removeCallbacks(ticker)
+        stopCatalogObserver?.invoke()
         session?.release()
         session = null
         player.release()

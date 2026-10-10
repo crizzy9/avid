@@ -28,6 +28,7 @@ class AvidPlaybackPlugin : Plugin() {
     }
 
     override fun load() {
+        AvidAudioCatalog.initialize(context)
         val token = SessionToken(context, ComponentName(context, AvidPlaybackService::class.java))
         val pending = MediaController.Builder(context, token).buildAsync()
         future = pending
@@ -66,15 +67,23 @@ class AvidPlaybackPlugin : Plugin() {
             Uri.parse(url).scheme !in listOf("https", "http", "file", "content")) {
             call.reject("A valid audio URL and stable account, book, and file identities are required."); return
         }
+        val generation = AvidAudioCatalog.accountGeneration
         command(call) { player ->
+            require(generation == AvidAudioCatalog.accountGeneration || AvidAudioCatalog.scope == scope) {
+                "The account changed while the native playback service was connecting."
+            }
             player.pause()
             player.sendCustomCommand(SessionCommand(AvidPlaybackService.SLEEP_COMMAND, Bundle.EMPTY), Bundle.EMPTY)
-            val extras = Bundle().apply { putString("accountScope", scope); putString("bookId", bookId) }
-            val metadata = MediaMetadata.Builder().setTitle(call.getString("title") ?: "")
-                .setArtist(call.getString("author") ?: "").setExtras(extras).build()
-            player.setMediaItem(MediaItem.Builder().setMediaId(fileId).setUri(url).setMediaMetadata(metadata).build())
+            val tracks = call.getArray("tracks")
+            val source = org.json.JSONObject().put("bookId", bookId).put("fileId", fileId).put("url", url).put("tracks", tracks)
+                .put("manifestRevision", call.getString("manifestRevision"))
+            AvidQueue.tracks(source)
+            AvidAudioCatalog.prepare(scope, bookId, fileId, url, call.getString("title") ?: "", call.getString("author") ?: "",
+                (call.getDouble("position") ?: 0.0).coerceAtLeast(0.0), (call.getDouble("rate") ?: 1.0).coerceIn(0.5, 3.0), tracks, call.getString("manifestRevision"))
+            val prepared = AvidAudioCatalog.get(AvidAudioCatalog.id(scope, bookId, fileId))!!
+            player.setMediaItems(AvidQueue.items(prepared))
             player.prepare()
-            player.seekTo(((call.getDouble("position") ?: 0.0).coerceAtLeast(0.0) * 1000).toLong())
+            AvidQueue.seek(player, call.getDouble("position") ?: 0.0)
             player.setPlaybackSpeed((call.getDouble("rate") ?: 1.0).coerceIn(0.5, 3.0).toFloat())
         }
     }
@@ -84,7 +93,7 @@ class AvidPlaybackPlugin : Plugin() {
     @PluginMethod fun seek(call: PluginCall) {
         val position = call.getDouble("position")
         if (position == null || !position.isFinite()) { call.reject("A finite position is required."); return }
-        command(call) { it.seekTo((position.coerceAtLeast(0.0) * 1000).toLong()) }
+        command(call) { AvidQueue.seek(it, position) }
     }
     @PluginMethod fun setRate(call: PluginCall) {
         val rate = call.getDouble("rate")
@@ -118,9 +127,13 @@ class AvidPlaybackPlugin : Plugin() {
         return JSObject().apply {
             put("accountScope", item?.mediaMetadata?.extras?.getString("accountScope") ?: "")
             put("bookId", item?.mediaMetadata?.extras?.getString("bookId") ?: "")
-            put("fileId", item?.mediaId ?: "")
-            put("position", player.currentPosition / 1000.0)
-            put("duration", if (player.duration == C.TIME_UNSET) 0 else player.duration / 1000.0)
+            put("fileId", item?.mediaMetadata?.extras?.getString("fileId") ?: item?.mediaId ?: "")
+            put("position", AvidQueue.position(player))
+            put("trackTime", player.currentPosition / 1000.0)
+            put("trackId", item?.mediaMetadata?.extras?.getString("trackId"))
+            put("trackIndex", item?.mediaMetadata?.extras?.getInt("trackIndex") ?: 0)
+            item?.mediaMetadata?.extras?.getString("manifestRevision")?.let { put("manifestRevision", it) }
+            put("duration", AvidQueue.duration(player))
             put("rate", player.playbackParameters.speed); put("playing", player.isPlaying)
             put("status", when {
                 player.playerError != null -> "failed"

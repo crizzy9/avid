@@ -1,11 +1,19 @@
 import Foundation
 import Security
 
+struct AvidAudioTrack: Codable {
+    let id: String
+    let url: URL
+    let duration: Double?
+}
+
 struct AvidStoredAudioSource: Codable {
     let accountScope: String
     let bookId: String
     let fileId: String
     let url: URL
+    let tracks: [AvidAudioTrack]?
+    let manifestRevision: String?
     let title: String
     let author: String
     let rate: Float

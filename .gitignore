@@ -18,3 +18,4 @@ apps/mobile/ios/Pods/
 *.jks
 *.p12
 *.mobileprovision
+apps/mobile/android/.kotlin/

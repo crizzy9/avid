@@ -11,8 +11,9 @@
     "open:android": "cap open android",
     "build:android": "cd android && ./gradlew :app:assembleDebug",
     "verify:ios": "node scripts/verify-ios.mjs",
-    "configure:ios": "node scripts/configure-ios.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "configure:ios": "node scripts/configure-ios.mjs && node scripts/configure-carplay.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:android:auto": "cd android && ./gradlew :app:assembleDebug :app:testDebugUnitTest -PavidCarEnabled=true"
   },
   "dependencies": {
     "@capacitor/core": "^8.0.0",

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <!-- Opt in with -PavidCarEnabled=true only for Android Auto qualification/distribution. -->
+    <queries><package android:name="com.google.android.projection.gearhead" /></queries>
+    <application>
+        <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
+        <service android:name="app.avid.playback.AvidPlaybackService" android:exported="true" tools:replace="android:exported">
+            <intent-filter><action android:name="android.media.browse.MediaBrowserService" /></intent-filter>
+        </service>
+    </application>
+</manifest>

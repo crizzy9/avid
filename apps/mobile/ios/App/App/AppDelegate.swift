@@ -1,4 +1,5 @@
 import UIKit
+import CarPlay
 import Capacitor
 
 @UIApplicationMain
@@ -36,6 +37,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      configurationForConnecting connectingSceneSession: UISceneSession,
                      options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        #if AVID_CARPLAY
+        if connectingSceneSession.role == .carTemplateApplication {
+            let car = UISceneConfiguration(name: "Avid CarPlay", sessionRole: connectingSceneSession.role)
+            car.sceneClass = CPTemplateApplicationScene.self
+            car.delegateClass = AvidCarPlaySceneDelegate.self
+            return car
+        }
+        #endif
         let config = UISceneConfiguration(name: "Default Configuration",
                                           sessionRole: connectingSceneSession.role)
         config.delegateClass = SceneDelegate.self

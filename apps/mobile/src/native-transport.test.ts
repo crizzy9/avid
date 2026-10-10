@@ -61,9 +61,24 @@ describe('native authoritative playback transport', () => {
   });
   it('rejects unsupported sources without loading either native or browser audio', () => {
     const { transport, plugin } = setup(); transports.push(transport);
-    expect(() => transport.load({ ...book, tracks: [...book.tracks, { id: 'two', url: 'https://books.test/two' }] })).toThrow('Multi-file');
+    expect(() => transport.load({ ...book, tracks: [{ id: 'one', url: 'https://books.test/one' }, { id: 'two', url: 'https://books.test/two' }] })).toThrow('Track durations');
     expect(() => transport.load({ ...book, tracks: [{ id: 'blob', url: 'blob:https://books.test/id' }] })).toThrow('blob URLs');
     expect(plugin.load).not.toHaveBeenCalled();
+  });
+  it('hands the complete queue to native and preserves boundary source identity, revision, seek and rate', async () => {
+    const { transport, plugin, emit } = setup(); transports.push(transport);
+    const queue = { ...book, manifestRevision: 'edition-2', tracks: [{ id: 'one', url: 'https://books.test/one', duration: 60 }, { id: 'two', url: 'https://books.test/two', duration: 60 }] };
+    transport.load(queue, 58); await transport.play();
+    expect(plugin.load).toHaveBeenCalledWith(expect.objectContaining({ tracks: queue.tracks, manifestRevision: 'edition-2', fileId: 'f', position: 58 }));
+    emit({ position: 62, trackId: 'two', trackIndex: 1, trackTime: 2, manifestRevision: 'edition-2', updatedAt: new Date(5000).toISOString() });
+    expect(transport.getSnapshot()).toMatchObject({ currentTime: 62, trackIndex: 1, chapterIndex: 1 });
+    expect(JSON.parse(transport.checkpoint()!.locator)).toEqual({ version: 1, trackId: 'two', trackTime: 2, time: 62, manifestRevision: 'edition-2' });
+    emit({ position: 90, manifestRevision: 'old-edition', updatedAt: new Date(6000).toISOString() });
+    expect(transport.getSnapshot().currentTime).toBe(62);
+    transport.seek(30); transport.setRate(1.7); transport.setSleepTimer({ endOfChapter: true }); await drain();
+    expect(plugin.seek).toHaveBeenCalledWith({ position: 30 });
+    expect(plugin.setRate).toHaveBeenCalledWith({ rate: 1.7 });
+    expect(plugin.setSleepTimer).toHaveBeenCalledWith({ deadline: undefined, chapterEnd: 120 });
   });
   it('exposes command errors and clears its native source on teardown', async () => {
     const { transport, plugin, remove } = setup(); transports.push(transport);

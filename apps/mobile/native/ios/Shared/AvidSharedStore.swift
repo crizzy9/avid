@@ -52,6 +52,7 @@ final class AvidSharedStore {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.groupID) != nil
     }
     private var defaults: UserDefaults? { isAvailable ? UserDefaults(suiteName: Self.groupID) : nil }
+    private(set) var accountGeneration = 0
     var activeScopeHash: String? { defaults?.string(forKey: "activeScope") }
 
     static func scopeHash(_ accountScope: String) -> String {
@@ -64,7 +65,7 @@ final class AvidSharedStore {
         guard let defaults else { throw AvidSurfaceError.appGroupUnavailable }
         let old = activeScopeHash
         defaults.set(Self.scopeHash(accountScope), forKey: "activeScope")
-        if old != activeScopeHash { defaults.removeObject(forKey: "pendingNavigation") }
+        if old != activeScopeHash { accountGeneration += 1; defaults.removeObject(forKey: "pendingNavigation") }
         return old
     }
 
@@ -95,7 +96,25 @@ final class AvidSharedStore {
     func saveIndexedBook(_ book: AvidRecentBook) throws {
         guard let defaults else { throw AvidSurfaceError.appGroupUnavailable }
         guard book.scopeHash == activeScopeHash else { throw AvidSurfaceError.unavailableBook }
-        defaults.set(try JSONEncoder().encode(book), forKey: "book.\(book.scopeHash).\(book.id)")
+        let key = "book.\(book.scopeHash).\(book.id)"
+        var value = book
+        if book.audioPosition == nil, let data = defaults.data(forKey: key),
+           let previous = try? JSONDecoder().decode(AvidRecentBook.self, from: data) {
+            value.audioPosition = previous.audioPosition
+            value.audioDuration = previous.audioDuration
+            value.progress = previous.progress
+        }
+        defaults.set(try JSONEncoder().encode(value), forKey: key)
+    }
+
+    func catalogBooks() -> [AvidRecentBook] {
+        guard let defaults, let scope = activeScopeHash else { return [] }
+        var values: [String: AvidRecentBook] = [:]
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("book.\(scope).") {
+            if let data = defaults.data(forKey: key), let book = try? JSONDecoder().decode(AvidRecentBook.self, from: data), book.scopeHash == scope { values[book.id] = book }
+        }
+        recentBooks().forEach { values[$0.id] = $0 }
+        return Array(values.values)
     }
 
     func enqueueNavigation(id: String) throws {
@@ -115,6 +134,7 @@ final class AvidSharedStore {
         if let id = defaults.string(forKey: "pendingNavigation"), removed.contains(id) { defaults.removeObject(forKey: "pendingNavigation") }
     }
     func clearActiveAccount() {
+        accountGeneration += 1
         if let scope = activeScopeHash {
             defaults?.removeObject(forKey: "recent.\(scope)")
             defaults?.dictionaryRepresentation().keys.filter { $0.hasPrefix("book.\(scope).") }.forEach { defaults?.removeObject(forKey: $0) }

@@ -36,4 +36,16 @@ assert(info.UIBackgroundModes.includes('audio'));
 assert(info.CFBundleURLTypes.some(value => value.CFBundleURLSchemes.includes('avid')));
 const entitlement = plist.parse(readFileSync(`${root}native/ios/Avid.entitlements`, 'utf8'));
 assert(entitlement['com.apple.security.application-groups'].includes('group.app.avid.reader'));
+const configurations = app.buildConfigurationList;
+const appConfigurations = objects.XCConfigurationList[configurations].buildConfigurations.map(value => objects.XCBuildConfiguration[reference(value)]);
+const standard = appConfigurations.find(value => value.name === 'Debug');
+assert(!standard.buildSettings.CODE_SIGN_ENTITLEMENTS.includes('CarPlay'));
+const car = appConfigurations.find(value => value.name === 'DebugCarPlay');
+if (car) {
+  assert(car.buildSettings.CODE_SIGN_ENTITLEMENTS.includes('CarPlay'));
+  assert(car.buildSettings.SWIFT_ACTIVE_COMPILATION_CONDITIONS.includes('AVID_CARPLAY'));
+  const carInfo = plist.parse(readFileSync(`${root}native/ios/CarPlay/Info.plist`, 'utf8'));
+  assert(carInfo.UIApplicationSceneManifest.UISceneConfigurations.CPTemplateApplicationSceneSessionRoleApplication.length === 1);
+  assert(!info.UIApplicationSceneManifest.UISceneConfigurations.CPTemplateApplicationSceneSessionRoleApplication);
+}
 console.log('iOS host graph, source paths, widget embedding, background audio, deep links, and App Group declarations pass structural checks. This is not Swift compilation or device validation.');

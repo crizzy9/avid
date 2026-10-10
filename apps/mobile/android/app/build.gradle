@@ -1,6 +1,8 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+def avidCarEnabled = providers.gradleProperty('avidCarEnabled').orElse('false').get().toBoolean()
+
 android {
     namespace = "app.avid.reader"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -25,6 +27,10 @@ android {
     }
     sourceSets {
         main.java.srcDirs += '../../native/android/src/main/java'
+        if (avidCarEnabled) {
+            debug.manifest.srcFile 'src/car/AndroidManifest.xml'
+            release.manifest.srcFile 'src/car/AndroidManifest.xml'
+        }
     }
     kotlinOptions {
         jvmTarget = '21'

@@ -6,6 +6,8 @@ export interface NativePlaybackLoad {
   bookId: string;
   fileId: string;
   url: string;
+  tracks?: { id: string; url: string; duration?: number }[];
+  manifestRevision?: string;
   title: string;
   author: string;
   position?: number;
@@ -19,6 +21,10 @@ export interface NativePlaybackSnapshot {
   bookId: string;
   fileId: string;
   position: number;
+  trackId?: string;
+  trackIndex?: number;
+  trackTime?: number;
+  manifestRevision?: string;
   duration: number;
   rate: number;
   playing: boolean;
