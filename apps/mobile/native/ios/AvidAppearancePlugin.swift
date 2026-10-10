@@ -25,7 +25,7 @@ enum AvidAppearance {
 public class AvidAppearancePlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "AvidAppearancePlugin"
     public let jsName = "AvidAppearance"
-    public let pluginMethods = [CAPPluginMethod(name: "setTheme", returnType: CAPPluginReturnPromise)]
+    public let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "setTheme", returnType: CAPPluginReturnPromise)]
     @objc func setTheme(_ call: CAPPluginCall) {
         guard let theme = call.getString("theme"), ["light", "dark", "system"].contains(theme) else { call.reject("Choose light, dark, or system appearance."); return }
         DispatchQueue.main.async {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOrbitClient,
   type BookQuery,
+  type ClientOptions,
 } from "../../../packages/core/src/bookorbit";
 import {
   AvidDatabase,
@@ -41,9 +42,22 @@ const message = (error: unknown, fallback: string) =>
 const serverResource = (id: string) =>
   /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id) > 0;
 
-export function useLibrary(options: { onSessionChange?: (session: Session, readOnly: boolean, isActive: () => boolean) => void | Promise<void> } = {}) {
+export function useLibrary(
+  options: {
+    refreshSession?: ClientOptions["refreshSession"];
+    onSessionChange?: (
+      session: Session,
+      readOnly: boolean,
+      isActive: () => boolean,
+    ) => void | Promise<void>;
+  } = {},
+) {
   const [nativeJournal] = useState(getNativeJournal);
-  const recoveryFlight = useRef<{repo: LibraryRepository; client: BookOrbitClient; promise: Promise<void>} | null>(null);
+  const recoveryFlight = useRef<{
+    repo: LibraryRepository;
+    client: BookOrbitClient;
+    promise: Promise<void>;
+  } | null>(null);
   const callbacks = useRef(options);
   callbacks.current = options;
   const [client, setClient] = useState<BookOrbitClient | null>(null);
@@ -162,20 +176,29 @@ export function useLibrary(options: { onSessionChange?: (session: Session, readO
   }, []);
 
   const connect = useCallback(
-    async (session: Session, readOnly: boolean, isActive: () => boolean = () => true) => {
+    async (
+      session: Session,
+      readOnly: boolean,
+      isActive: () => boolean = () => true,
+    ) => {
       if (!isActive()) return;
       const attempt = ++connectionAttempt.current;
-      const active = () => mounted.current && attempt === connectionAttempt.current && isActive();
+      const active = () =>
+        mounted.current && attempt === connectionAttempt.current && isActive();
       const nextRepo = new LibraryRepository(db, session);
       const nextClient: BookOrbitClient = new BookOrbitClient(session, {
         readOnly,
         fetch: bookOrbitFetch,
         transportBaseUrl: proxyBaseFor(session.profile.url),
-        onSessionChange: (updated) => {
+        refreshSession: callbacks.current.refreshSession,
+        onSessionChange: async (updated) => {
           const current = () => isCurrent(nextRepo, nextClient);
-          if (current()) void Promise.resolve(callbacks.current.onSessionChange?.(updated, readOnly, current)).catch(cause => {
-            if (current()) setError(message(cause, "The renewed session could not be saved securely."));
-          });
+          if (current())
+            await callbacks.current.onSessionChange?.(
+              updated,
+              readOnly,
+              current,
+            );
         },
       });
       const [page, shelves, notes, activity] = await Promise.all([
@@ -203,7 +226,11 @@ export function useLibrary(options: { onSessionChange?: (session: Session, readO
       if (!active()) return;
       // Native surfaces validate their account against the secure vault. Persist
       // before publishing a new account, and never let a stale attempt activate.
-      await callbacks.current.onSessionChange?.(nextClient.session, readOnly, active);
+      await callbacks.current.onSessionChange?.(
+        nextClient.session,
+        readOnly,
+        active,
+      );
       if (!active()) return;
       queryAttempt.current++;
       queryAbort.current?.abort();
@@ -364,46 +391,87 @@ export function useLibrary(options: { onSessionChange?: (session: Session, readO
     };
   }, [client, flush]);
   const recoverNative = useCallback((): Promise<void> => {
-    if (!nativeJournal || !client || !isCurrent(repo, client)) return Promise.resolve();
-    if (recoveryFlight.current?.repo === repo && recoveryFlight.current.client === client) return recoveryFlight.current.promise;
+    if (!nativeJournal || !client || !isCurrent(repo, client))
+      return Promise.resolve();
+    if (
+      recoveryFlight.current?.repo === repo &&
+      recoveryFlight.current.client === client
+    )
+      return recoveryFlight.current.promise;
     const active = () => isCurrent(repo, client);
     const promise = (async () => {
       let recovered = 0;
       for (let page = 0; page < 10 && active(); page++) {
-        const count = await replayNativeJournal(nativeJournal, repo, client.readOnly, active);
+        const count = await replayNativeJournal(
+          nativeJournal,
+          repo,
+          client.readOnly,
+          active,
+        );
         recovered += count;
         if (count < 200) break;
       }
       if (!recovered || !active()) return;
       const sessionsRead = ++activityRead.current;
-      const [anchors, activity] = await Promise.all([repo.getAnchors(), repo.getSessions()]);
+      const [anchors, activity] = await Promise.all([
+        repo.getAnchors(),
+        repo.getSessions(),
+      ]);
       if (!active()) return;
       for (const anchor of anchors) {
         const previous = localProgress.current.get(anchor.bookId);
-        if (!previous || Date.parse(anchor.updatedAt) > Date.parse(previous.updatedAt)) localProgress.current.set(anchor.bookId, anchor);
+        if (
+          !previous ||
+          Date.parse(anchor.updatedAt) > Date.parse(previous.updatedAt)
+        )
+          localProgress.current.set(anchor.bookId, anchor);
       }
-      setBooks(previous => previous.map(book => {
-        const anchor = localProgress.current.get(book.id);
-        return anchor ? {...book, progress: anchor.progress, status: anchor.progress >= .995 ? "finished" : "reading"} : book;
-      }));
+      setBooks((previous) =>
+        previous.map((book) => {
+          const anchor = localProgress.current.get(book.id);
+          return anchor
+            ? {
+                ...book,
+                progress: anchor.progress,
+                status: anchor.progress >= 0.995 ? "finished" : "reading",
+              }
+            : book;
+        }),
+      );
       if (sessionsRead === activityRead.current) setSessions(activity);
       await flush();
     })();
-    recoveryFlight.current = {repo, client, promise};
-    void promise.finally(() => { if (recoveryFlight.current?.promise === promise) recoveryFlight.current = null; }).catch(() => {});
+    recoveryFlight.current = { repo, client, promise };
+    void promise
+      .finally(() => {
+        if (recoveryFlight.current?.promise === promise)
+          recoveryFlight.current = null;
+      })
+      .catch(() => {});
     return promise;
   }, [nativeJournal, repo, client, isCurrent, flush]);
   useEffect(() => {
     if (!nativeJournal || !client) return;
-    const recover = () => { void recoverNative().catch(() => {
-      if (isCurrent(repo, client)) setError("Native reading history is still stored safely, but could not be recovered yet.");
-    }); };
-    const visible = () => { if (!document.hidden) recover(); };
+    const recover = () => {
+      void recoverNative().catch(() => {
+        if (isCurrent(repo, client))
+          setError(
+            "Native reading history is still stored safely, but could not be recovered yet.",
+          );
+      });
+    };
+    const visible = () => {
+      if (!document.hidden) recover();
+    };
     recover();
     const timer = setInterval(recover, 15_000);
     window.addEventListener("online", recover);
     document.addEventListener("visibilitychange", visible);
-    return () => { clearInterval(timer); window.removeEventListener("online", recover); document.removeEventListener("visibilitychange", visible); };
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("online", recover);
+      document.removeEventListener("visibilitychange", visible);
+    };
   }, [nativeJournal, client, repo, recoverNative, isCurrent]);
   const localOnly = useCallback(
     (bookId: string, fileId: string) =>
@@ -417,20 +485,50 @@ export function useLibrary(options: { onSessionChange?: (session: Session, readO
     async (anchor: ReadingAnchor) => {
       try {
         let nativeRecord: { id: string; readOnly: boolean } | undefined;
-        if (nativeJournal && client && anchor.kind !== "audio" && isCurrent(repo, client)) {
+        if (
+          nativeJournal &&
+          client &&
+          anchor.kind !== "audio" &&
+          isCurrent(repo, client)
+        ) {
           try {
-            nativeRecord = await nativeJournal.recordProgress({accountScope: repo.scope, anchor, readOnly: localOnly(anchor.bookId, anchor.fileId)});
+            nativeRecord = await nativeJournal.recordProgress({
+              accountScope: repo.scope,
+              anchor,
+              readOnly: localOnly(anchor.bookId, anchor.fileId),
+            });
           } catch {
-            if (isCurrent(repo, client)) setError("This position is saved in the interface, but native recovery storage is unavailable.");
+            if (isCurrent(repo, client))
+              setError(
+                "This position is saved in the interface, but native recovery storage is unavailable.",
+              );
           }
         }
         if (nativeRecord) {
-          await commitNativeEvents(repo, [{id:nativeRecord.id, accountScope:repo.scope, bookId:anchor.bookId, fileId:anchor.fileId,
-            type:"progress", createdAt:anchor.updatedAt, readOnly:nativeRecord.readOnly, payload:anchor}], localOnly(anchor.bookId, anchor.fileId));
+          await commitNativeEvents(
+            repo,
+            [
+              {
+                id: nativeRecord.id,
+                accountScope: repo.scope,
+                bookId: anchor.bookId,
+                fileId: anchor.fileId,
+                type: "progress",
+                createdAt: anchor.updatedAt,
+                readOnly: nativeRecord.readOnly,
+                payload: anchor,
+              },
+            ],
+            localOnly(anchor.bookId, anchor.fileId),
+          );
           // A lost acknowledgement remains safe: the atomic receipt prevents another outbox write.
-          await nativeJournal!.ack({accountScope:repo.scope, ids:[nativeRecord.id]}).catch(() => {});
+          await nativeJournal!
+            .ack({ accountScope: repo.scope, ids: [nativeRecord.id] })
+            .catch(() => {});
         } else {
-          await repo.checkpoint(anchor, { readOnly: localOnly(anchor.bookId, anchor.fileId) });
+          await repo.checkpoint(anchor, {
+            readOnly: localOnly(anchor.bookId, anchor.fileId),
+          });
         }
         const stored = await repo.getAnchor(anchor);
         if (!stored || !isCurrent(repo, client)) return;
@@ -484,7 +582,8 @@ export function useLibrary(options: { onSessionChange?: (session: Session, readO
       options?: { endedAt: string; readOnly?: boolean },
     ) => {
       await repo.recordSession(activity, fileId, {
-        readOnly: localOnly(activity.bookId, fileId) || options?.readOnly === true,
+        readOnly:
+          localOnly(activity.bookId, fileId) || options?.readOnly === true,
         endedAt: options?.endedAt,
       });
       if (!isCurrent(repo, client)) return;

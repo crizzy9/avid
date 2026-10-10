@@ -155,14 +155,17 @@ class AvidPlaybackPlugin : Plugin() {
             item?.mediaMetadata?.extras?.getString("manifestRevision")?.let { put("manifestRevision", it) }
             put("duration", AvidQueue.duration(player))
             put("rate", player.playbackParameters.speed); put("playing", player.isPlaying)
+            val authError = session?.getString("authError") ?: ""
+            put("authError", authError)
             put("status", when {
                 player.playerError != null -> "failed"
+                authError.isNotBlank() && !player.isPlaying -> "failed"
                 player.playbackState == Player.STATE_BUFFERING -> "buffering"
                 player.isPlaying -> "playing"
                 player.playbackState == Player.STATE_IDLE -> "stopped"
                 else -> "paused"
             })
-            put("error", player.playerError?.message ?: "")
+            put("error", player.playerError?.message ?: authError)
             put("recoveryError", AvidPlaybackJournal.recoveryError ?: "")
             put("ended", player.playbackState == Player.STATE_ENDED)
             put("updatedAt", playbackTimestamp())

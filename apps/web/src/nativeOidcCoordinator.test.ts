@@ -162,6 +162,24 @@ const exchanges = (f: ReturnType<typeof fixture>) =>
   );
 
 describe("native provider sign-in coordinator", () => {
+  it("binds a recovered code exchange to the generation saved with the native attempt", async () => {
+    const f = fixture();
+    const clientOptions = vi.fn((_url: string, _generation?: string) => ({
+      fetch: f.transport,
+    }));
+    const first = new NativeOidcCoordinator({ ...f.options, clientOptions });
+    await first.begin(f.profile, "personal", true);
+    expect(clientOptions).toHaveBeenLastCalledWith(
+      "https://books.test",
+      undefined,
+    );
+    f.callback();
+    await new NativeOidcCoordinator({ ...f.options, clientOptions }).resume();
+    expect(clientOptions).toHaveBeenLastCalledWith(
+      "https://books.test",
+      "vault-a",
+    );
+  });
   it("pins server, provider, and exact private callback before making a request", async () => {
     const f = fixture();
     expect(() =>

@@ -10,13 +10,21 @@ import {
 import { BookOrbitClient } from "../../../packages/core/src/bookorbit";
 import type { Session } from "../../../packages/core/src/types";
 import { ProviderSignIn } from "./ProviderSignIn";
+import { createNativeAuthFetch } from "../../mobile/src/native-auth";
+
+export interface ConnectionAttemptBinding {
+  nativeGeneration?: string;
+}
 
 export function Connect({
   onConnect,
   onAttempt,
 }: {
   onConnect: (session: Session, readOnly: boolean) => Promise<void>;
-  onAttempt?: (method?: 'password' | 'provider') => void | Promise<void>;
+  onAttempt?: (
+    method?: "password" | "provider",
+  ) =>
+    void | ConnectionAttemptBinding | Promise<void | ConnectionAttemptBinding>;
 }) {
   const { t, locale, setLocale } = useI18n();
 
@@ -43,7 +51,7 @@ export function Connect({
     setBusy(true);
     setError("");
     try {
-      await onAttempt?.('password');
+      const binding = await onAttempt?.("password");
       if (!active()) return;
       const serverUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
       const profile = {
@@ -54,7 +62,9 @@ export function Connect({
       };
       const session = await BookOrbitClient.login(profile, password, {
         readOnly,
-        fetch: bookOrbitFetch,
+        fetch: binding?.nativeGeneration
+          ? createNativeAuthFetch(binding.nativeGeneration, bookOrbitFetch)
+          : bookOrbitFetch,
         transportBaseUrl: proxyBaseFor(serverUrl),
       });
       if (!active()) return;
@@ -150,7 +160,7 @@ export function Connect({
         serverUrl={url}
         readOnly={readOnly}
         disabled={busy}
-        onAttempt={() => onAttempt?.('provider')}
+        onAttempt={() => onAttempt?.("provider")}
         onBusyChange={setProviderBusy}
       />
       <p className="privacy-note">

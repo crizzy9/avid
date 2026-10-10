@@ -33,6 +33,16 @@ final class AvidPlaybackOwner: NSObject {
     private var author = ""
     private var resumeAfterInterruption = false
     private var lastCheckpoint = Date.distantPast
+    private var sourceGeneration = UUID()
+    private var authenticationTask: Task<Void, Never>?
+    private var authenticationError: String?
+    private var authenticationTimer: Timer?
+    private var lastAuthenticationAttempt = Date.distantPast
+    private var credentialGeneration: String?
+    private var credentialObserver: NSObjectProtocol?
+    private var itemErrorObserver: NSObjectProtocol?
+    private var authenticationRecoveryNeeded = false
+    private var retriedUnauthorized = false
     var onCheckpoint: (([String: Any]) -> Void)?
 
     override private init() {
@@ -40,6 +50,7 @@ final class AvidPlaybackOwner: NSObject {
         player.automaticallyWaitsToMinimizeStalling = true
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main) { [weak self] _ in
             guard let self else { return }
+            if self.player.timeControlStatus == .playing { self.retriedUnauthorized = false }
             try? AvidPlaybackJournal.shared.sample(self.snapshot())
             self.enforceSleep()
             self.publishNowPlaying()
@@ -56,6 +67,47 @@ final class AvidPlaybackOwner: NSObject {
             }
         }
         configureRemoteCommands()
+        let renewal = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+            guard let self, self.desiredPlaying else { return }
+            do { _ = try self.renewCredentialsIfNeeded() }
+            catch { self.authenticationError = error.localizedDescription; self.checkpoint() }
+        }
+        RunLoop.main.add(renewal, forMode: .common)
+        authenticationTimer = renewal
+        credentialObserver = NotificationCenter.default.addObserver(forName: AvidAuthCoordinator.changed, object: nil, queue: .main) { [weak self] notification in
+            let account = notification.userInfo?["accountScope"] as? String
+            let generation = notification.userInfo?["generation"] as? String
+            Task { @MainActor in
+                guard let self, let generation, account == self.scope, generation != self.credentialGeneration,
+                      let current = try? AvidAuthCoordinator.shared.bound(self.scope),
+                      self.tracks.contains(where: { AvidAuthCoordinator.protects(scope: self.scope, url: $0.url) }) else { return }
+                self.credentialGeneration = current.generation
+                // A refresh initiated here will rebuild once its shared task returns.
+                if self.authenticationTask != nil { return }
+                self.authenticationError = nil; self.authenticationRecoveryNeeded = false; self.assetCookies = []
+                self.seek(self.globalPosition, forceRebuild: true)
+                self.checkpoint()
+            }
+        }
+        itemErrorObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: nil, queue: .main) { [weak self] notification in
+            guard let item = notification.object as? AVPlayerItem else { return }
+            Task { @MainActor in
+                guard let self, item === self.player.currentItem,
+                      self.tracks.contains(where: { AvidAuthCoordinator.protects(scope: self.scope, url: $0.url) }),
+                      item.errorLog()?.events.last?.errorStatusCode == 401 else { return }
+                self.authenticationRecoveryNeeded = true
+                guard self.desiredPlaying else { return }
+                guard !self.retriedUnauthorized else {
+                    self.authenticationError = AvidAuthCoordinator.Failure.unauthorized.localizedDescription
+                    self.lastAuthenticationAttempt = Date()
+                    self.desiredPlaying = false; self.player.pause(); self.checkpoint()
+                    return
+                }
+                self.retriedUnauthorized = true
+                do { _ = try self.renewCredentialsIfNeeded() }
+                catch { self.authenticationError = error.localizedDescription; self.checkpoint() }
+            }
+        }
     }
 
     func load(scope: String, bookId: String, fileId: String, url: URL, title: String, author: String, position: Double, rate: Float, expiresAt: Date? = nil, cookies: [HTTPCookie] = [], tracks requestedTracks: [AvidAudioTrack]? = nil, manifestRevision: String? = nil, readOnly: Bool = true) throws {
@@ -73,6 +125,10 @@ final class AvidPlaybackOwner: NSObject {
         try AvidPlaybackSourceStore.save(source)
         checkpoint()
         pause()
+        authenticationTask?.cancel(); authenticationTask = nil
+        sourceGeneration = UUID(); authenticationError = nil
+        authenticationRecoveryNeeded = false; retriedUnauthorized = false
+        credentialGeneration = try? AvidSessionStore.read()["generation"] as? String
         if AvidSharedStore.shared.isAvailable {
             if let old = AvidSharedStore.shared.activeScopeHash, old != AvidSharedStore.scopeHash(scope) {
                 AvidPlaybackSourceStore.removeAccount(scopeHash: old)
@@ -105,7 +161,10 @@ final class AvidPlaybackOwner: NSObject {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .spokenAudio)
         try session.setActive(true)
+        if !desiredPlaying { retriedUnauthorized = false }
         desiredPlaying = true
+        do { if try renewCredentialsIfNeeded() { checkpoint(); return } }
+        catch { desiredPlaying = false; authenticationError = error.localizedDescription; checkpoint(); throw error }
         player.playImmediately(atRate: preferredRate)
         checkpoint()
         publishNowPlaying()
@@ -122,8 +181,13 @@ final class AvidPlaybackOwner: NSObject {
 
     func resume(_ book: AvidRecentBook) async throws {
         guard book.scopeHash == AvidSharedStore.shared.activeScopeHash, book.kind == "audio" else { throw AvidSurfaceError.unavailableBook }
+        let prepared = try AvidPlaybackSourceStore.source(for: book)
+        if AvidAuthCoordinator.protects(scope: prepared.accountScope, url: prepared.url) {
+            _ = try await AvidAuthCoordinator.shared.refresh(scope: prepared.accountScope)
+            guard AvidSharedStore.shared.activeScopeHash == prepared.scopeHash else { throw AvidSurfaceError.unavailableBook }
+        }
         if AvidSharedStore.scopeHash(scope) != book.scopeHash || bookId != book.bookId || fileId != book.fileId || player.currentItem == nil {
-            let source = try AvidPlaybackSourceStore.source(for: book)
+            let source = prepared
             let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
             guard AvidSharedStore.shared.activeScopeHash == source.scopeHash else { throw AvidSurfaceError.unavailableBook }
             try load(scope: source.accountScope, bookId: source.bookId, fileId: source.fileId, url: source.url,
@@ -182,7 +246,7 @@ final class AvidPlaybackOwner: NSObject {
             player.insert(item, after: nil)
         }
     }
-    func seek(_ seconds: Double) {
+    func seek(_ seconds: Double, forceRebuild: Bool = false) {
         guard seconds.isFinite, !tracks.isEmpty else { return }
         try? AvidPlaybackJournal.shared.flush()
         seekGeneration &+= 1
@@ -193,7 +257,7 @@ final class AvidPlaybackOwner: NSObject {
             remaining -= duration; index += 1
         }
         let target = min(remaining, tracks[index].duration ?? .infinity)
-        let needsQueue = index != currentTrackIndex || player.currentItem == nil
+        let needsQueue = forceRebuild || index != currentTrackIndex || player.currentItem == nil
         pendingSeek = (generation, index, trackStart(index) + target)
         finalPosition = nil
         if needsQueue { rebuildQueue(from: index) }
@@ -205,10 +269,45 @@ final class AvidPlaybackOwner: NSObject {
                     self.checkpoint(); self.publishNowPlaying(); return
                 }
                 self.pendingSeek = nil
-                if self.desiredPlaying { self.player.playImmediately(atRate: self.preferredRate) }
+                if self.desiredPlaying && self.authenticationTask == nil { self.player.playImmediately(atRate: self.preferredRate) }
                 self.enforceSleep(); self.checkpoint(); self.publishNowPlaying()
             }
         }
+    }
+
+    /// Foreground and background owners share the same generation-checked refresh transaction.
+    /// Cookies captured by queued AVURLAssets are rebuilt only after native credential commit.
+    private func renewCredentialsIfNeeded() throws -> Bool {
+        guard tracks.contains(where: { AvidAuthCoordinator.protects(scope: scope, url: $0.url) }) else { return false }
+        if authenticationTask != nil { return true }
+        if !authenticationRecoveryNeeded {
+            guard try AvidAuthCoordinator.shared.needsRefresh(scope: scope) else { return false }
+        }
+        // Failed background requests are bounded; an explicit play can still report the last failure.
+        if Date().timeIntervalSince(lastAuthenticationAttempt) < 20, let authenticationError {
+            throw NSError(domain: "app.avid.authentication", code: 1, userInfo: [NSLocalizedDescriptionKey: authenticationError])
+        }
+        lastAuthenticationAttempt = Date()
+        let generation = sourceGeneration, expectedScope = scope, force = authenticationRecoveryNeeded
+        authenticationTask = Task { @MainActor [weak self] in
+            do {
+                let record = try await AvidAuthCoordinator.shared.refresh(scope: expectedScope, force: force)
+                guard let self, !Task.isCancelled, self.sourceGeneration == generation, self.scope == expectedScope else { return }
+                self.authenticationTask = nil; self.authenticationError = nil
+                self.authenticationRecoveryNeeded = false
+                self.credentialGeneration = record["generation"] as? String
+                let position = self.globalPosition
+                self.assetCookies = []
+                self.seek(position, forceRebuild: true)
+                self.checkpoint()
+            } catch {
+                guard let self, !Task.isCancelled, self.sourceGeneration == generation else { return }
+                self.authenticationTask = nil; self.authenticationError = error.localizedDescription
+                if self.player.timeControlStatus != .playing { self.desiredPlaying = false; self.player.pause() }
+                self.checkpoint()
+            }
+        }
+        return true
     }
 
     func setRate(_ rate: Float) {
@@ -238,8 +337,8 @@ final class AvidPlaybackOwner: NSObject {
                 "position": position.isFinite ? max(0, position) : 0,
                 "duration": duration.isFinite ? max(0, duration) : 0,
                 "rate": preferredRate, "playing": pendingSeek == nil && player.timeControlStatus == .playing,
-                "status": player.currentItem?.status == .failed ? "failed" : pendingSeek != nil ? "loading" : player.timeControlStatus == .waitingToPlayAtSpecifiedRate ? "buffering" : player.timeControlStatus == .playing ? "playing" : player.currentItem == nil ? "stopped" : "paused",
-                "error": player.currentItem?.error?.localizedDescription ?? "",
+                "status": player.currentItem?.status == .failed ? "failed" : pendingSeek != nil ? "loading" : player.timeControlStatus == .waitingToPlayAtSpecifiedRate ? "buffering" : player.timeControlStatus == .playing ? "playing" : authenticationTask != nil ? "loading" : player.currentItem == nil ? "stopped" : "paused",
+                "error": player.currentItem?.error?.localizedDescription ?? authenticationError ?? "",
                 "recoveryError": AvidPlaybackJournal.shared.recoveryError ?? "",
                 "ended": duration.isFinite && duration > 0 && position >= duration,
                 "updatedAt": formatter.string(from: Date())]
@@ -257,6 +356,10 @@ final class AvidPlaybackOwner: NSObject {
     }
 
     func clear() {
+        authenticationTask?.cancel(); authenticationTask = nil
+        sourceGeneration = UUID(); authenticationError = nil
+        authenticationRecoveryNeeded = false; retriedUnauthorized = false
+        credentialGeneration = nil
         seekGeneration &+= 1
         pendingSeek = nil
         pause()

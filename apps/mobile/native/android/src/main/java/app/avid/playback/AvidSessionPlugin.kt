@@ -66,8 +66,9 @@ object AvidSessionStore {
         val file = file(context); val stream = file.startWrite()
         try { stream.write(bytes); file.finishWrite(stream) } catch (error: Exception) { file.failWrite(stream); throw error }
         cached = value
-        // Redact the launcher immediately when the vault changes, even if JS never reaches clearAccount.
-        runCatching { AvidContinueWidget.refresh(context) }
+        // Do not enter the catalog lock while holding the vault lock: widget lookups acquire them in
+        // the opposite order. Native mutation barriers also refresh synchronously after this returns.
+        android.os.Handler(android.os.Looper.getMainLooper()).post { runCatching { AvidContinueWidget.refresh(context) } }
         return value
     }
     private fun key(): SecretKey {
@@ -87,9 +88,15 @@ class AvidSessionPlugin : Plugin() {
         catch (_: Exception) { call.reject("Secure session access failed or its generation changed. Sign in again if the device key is unavailable.") }
     }
     @PluginMethod fun read(call: PluginCall) = run(call) { AvidSessionStore.read(context) }
-    @PluginMethod fun write(call: PluginCall) = run(call) {
-        AvidSessionStore.write(context, call.getString("expectedGeneration") ?: error("Missing session generation"),
-            call.getObject("session") ?: error("Missing session"), call.getBoolean("readOnly") ?: true)
+    private fun resolve(call: PluginCall, future: java.util.concurrent.CompletableFuture<JSONObject>) {
+        future.whenComplete { record, error ->
+            if (error == null) call.resolve(JSObject(record.toString()))
+            else call.reject("Secure session access failed or its generation changed. Sign in again if the device key is unavailable.")
+        }
     }
-    @PluginMethod fun clear(call: PluginCall) = run(call) { AvidSessionStore.clear(context, call.getString("expectedGeneration")) }
+    @PluginMethod fun write(call: PluginCall) {
+        val session = call.getObject("session") ?: run { call.reject("A session is required."); return }
+        resolve(call, AvidAuth.write(context, call.getString("expectedGeneration") ?: "", session, call.getBoolean("readOnly") ?: true))
+    }
+    @PluginMethod fun clear(call: PluginCall) = resolve(call, AvidAuth.clear(context, call.getString("expectedGeneration")))
 }

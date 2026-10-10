@@ -20,7 +20,7 @@ final class AvidCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDel
             Task { @MainActor in self?.refresh() }
         }
     }
-    func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnect interfaceController: CPInterfaceController) {
+    func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnectInterfaceController interfaceController: CPInterfaceController) {
         if let observer { NotificationCenter.default.removeObserver(observer) }
         observer = nil
         library = nil

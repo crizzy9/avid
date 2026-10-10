@@ -1,4 +1,5 @@
 import { useI18n, LOCALES, type Locale } from "../../../packages/i18n/src";
+import { useAppI18n, appMessageKeysByEnglish } from "./appMessages";
 import {
   lazy,
   Suspense,
@@ -53,27 +54,36 @@ import type {
   BookFile,
   ReadingAnchor,
   BookOrbitReadStatus,
+  Session,
 } from "../../../packages/core/src/types";
-import {
-  resolveAudioResume,
-} from "../../../packages/playback/src";
+import { resolveAudioResume } from "../../../packages/playback/src";
 import { demoBooks } from "./fixtures";
 import { useLibrary } from "./useLibrary";
 import { useLocalState } from "./useLocalState";
+import { inReadingQueue, serverShelfFilter } from "./queueFilter";
 import { BookCard, Cover, EmptyState, Modal, Shelf, formatTime } from "./ui";
 import { Connect, bookOrbitFetch, proxyBaseFor } from "./Connect";
 import { getNativeSessionVault } from "../../mobile/src/native-session";
 import { getNativeJournal } from "../../mobile/src/native-journal";
+import {
+  createNativeSessionRefresh,
+  getNativeAuth,
+  nativeAuthScope,
+} from "../../mobile/src/native-auth";
 import { SessionPersistence } from "./sessionPersistence";
 import { restoreNativeSession } from "./restoreNativeSession";
 import { Player } from "./Player";
 import { BookDetails } from "./BookDetails";
 import { Activity } from "./Activity";
 import { CrossPointPanel, AO3Panel } from "../../../packages/integrations/src";
-import { ProviderCallback, getNativeProviderCoordinator } from "./ProviderSignIn";
+import {
+  ProviderCallback,
+  getNativeProviderCoordinator,
+} from "./ProviderSignIn";
 import { startNativeAuthentication } from "./nativeAuthentication";
 import { setNativeAppearance } from "../../mobile/src/native-appearance";
 import { useImportedBooks } from "./useImportedBooks";
+import { useHomeShelves, uniqueBooks } from "./useHomeShelves";
 import { importAo3Edition, type ImportedAo3Edition } from "./localEditions";
 import { usePlaybackActivity } from "./usePlaybackActivity";
 import { createPlaybackTransport } from "../../mobile/src/native-transport";
@@ -92,7 +102,12 @@ import {
 import { newestAnchor } from "./resume";
 import { AlignmentControls } from "./AlignmentControls";
 import type { ReaderAlignmentHandle } from "../../../packages/readers/src/alignedPassage";
-import { alignedAudioAnchor, alignmentSha256, handoffToText, type VerifiedAudioAlignment } from "../../../packages/playback/src/standalone-alignment";
+import {
+  alignedAudioAnchor,
+  alignmentSha256,
+  handoffToText,
+  type VerifiedAudioAlignment,
+} from "../../../packages/playback/src/standalone-alignment";
 
 type View = "home" | "library" | "browse" | "search" | "notebook" | "activity";
 const Reader = lazy(() =>
@@ -118,6 +133,7 @@ type ReaderState = {
 
 export default function App() {
   const { t, locale, setLocale } = useI18n();
+  const { t: appT } = useAppI18n();
   const platformCapabilities = usePlatformCapabilities();
   const navigation = [
     { id: "home", label: t("nav.home"), icon: Home },
@@ -127,52 +143,117 @@ export default function App() {
     { id: "search", label: t("nav.search"), icon: Search },
   ] as const;
 
-  const [sessionPersistence] = useState(() => new SessionPersistence(getNativeSessionVault()));
+  const [sessionPersistence] = useState(
+    () => new SessionPersistence(getNativeSessionVault()),
+  );
+  const [nativeAuth] = useState(getNativeAuth);
   const [nativeProvider] = useState(getNativeProviderCoordinator);
   const nativeProviderAttempt = useRef<number | null>(null);
-  const [providerCallbackAtLaunch] = useState(() => location.pathname === "/oauth2-callback");
+  const [providerCallbackAtLaunch] = useState(
+    () => location.pathname === "/oauth2-callback",
+  );
   const library = useLibrary({
+    refreshSession: nativeAuth ? refreshNativeSession : undefined,
     onSessionChange: (session, readOnly, active) => {
-      return sessionPersistence.persist(session, readOnly, active).catch(error => {
-        if (active()) setToast("Secure session storage is unavailable. You may need to sign in again after closing Avid.");
-        throw error;
-      });
+      return sessionPersistence
+        .persist(session, readOnly, active)
+        .catch((error) => {
+          if (active()) setToast(appT("secureStorage"));
+          throw error;
+        });
     },
   });
   const importedBooks = useImportedBooks(library.repo);
-  const catalogBooks = useMemo(
-    () => [
-      ...importedBooks,
-      ...library.books.filter(
-        (book) => !importedBooks.some((local) => local.id === book.id),
-      ),
-    ],
-    [importedBooks, library.books],
-  );
+  const syncMessage = appMessageKeysByEnglish[library.syncStatus];
   const [view, setView] = useState<View>(() => {
     const v = new URLSearchParams(location.search).get("view");
     return navigation.some((n) => n.id === v) ? (v as View) : "home";
   });
   const [dialog, setDialog] = useState<Dialog>(null);
   const connectionGeneration = useRef(0);
+  async function refreshNativeSession(session: Session): Promise<Session> {
+    if (!nativeAuth) throw new Error(appT("nativeRenewalUnavailable"));
+    const attempt = connectionGeneration.current;
+    const active = () => connectionGeneration.current === attempt;
+    const latest = await getNativeSessionVault()!.read();
+    if (!active())
+      throw new DOMException(appT("connectionChanged"), "AbortError");
+    // A background owner may have renewed this token before JS saw its event.
+    if (
+      latest.session &&
+      nativeAuthScope(latest.session) === nativeAuthScope(session) &&
+      latest.session.profile.id === session.profile.id &&
+      latest.session.accessToken !== session.accessToken
+    ) {
+      await sessionPersistence.adoptNativeRecord(latest, active);
+      return latest.session;
+    }
+    return createNativeSessionRefresh({
+      plugin: nativeAuth,
+      onRecord: (record) =>
+        sessionPersistence.adoptNativeRecord(record, active),
+    })(session);
+  }
   const dialogRef = useRef(dialog);
   dialogRef.current = dialog;
   function openConnection() {
     connectionGeneration.current++;
     nativeProviderAttempt.current = null;
-    void nativeProvider?.cancel().catch(() => setToast("The previous provider sign-in could not be cleared. Try again."));
+    void nativeProvider
+      ?.cancel()
+      .catch(() => setToast(appT("previousProviderClear")));
     setDialog("connect");
   }
   function closeConnection() {
     connectionGeneration.current++;
     nativeProviderAttempt.current = null;
-    void nativeProvider?.cancel().catch(() => setToast("The provider sign-in could not be cleared. Try again."));
+    void nativeProvider
+      ?.cancel()
+      .catch(() => setToast(appT("providerClearRetry")));
     setDialog(null);
   }
   const [selected, setSelected] = useState<Book | null>(null);
   const [reader, setReader] = useState<ReaderState | null>(null);
-  const [readerAlignment, setReaderAlignment] = useState<ReaderAlignmentHandle | null>(null);
-  const [alignment, setAlignment] = useState<VerifiedAudioAlignment | null>(null);
+  const [homeRevision, setHomeRevision] = useState(0);
+  const home = useHomeShelves(
+    library.client,
+    library.repo,
+    view === "home" && !reader,
+    homeRevision,
+  );
+  const catalogBooks = useMemo(
+    () =>
+      uniqueBooks([
+        ...library.books,
+        ...(view === "home"
+          ? [...home.continuing, ...home.queue, ...home.recent]
+          : []),
+        ...importedBooks,
+      ]),
+    [
+      library.books,
+      home.continuing,
+      home.queue,
+      home.recent,
+      importedBooks,
+      view,
+    ],
+  );
+  useEffect(() => {
+    library.coverCache?.register([
+      ...home.continuing,
+      ...home.queue,
+      ...home.recent,
+    ]);
+  }, [library.coverCache, home.continuing, home.queue, home.recent]);
+  useEffect(() => {
+    if (home.error) library.setError(home.error);
+  }, [home.error, library.setError]);
+  const [readerAlignment, setReaderAlignment] =
+    useState<ReaderAlignmentHandle | null>(null);
+  const [alignment, setAlignment] = useState<VerifiedAudioAlignment | null>(
+    null,
+  );
   const [readingBusy, setReadingBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [search, setSearch] = useState("");
@@ -201,7 +282,10 @@ export default function App() {
   const readOnlyConnection = useRef(true);
   readOnlyConnection.current = library.client?.readOnly !== false;
   const [controller] = useState(() =>
-    createPlaybackTransport({ accountScope: () => accountScope.current, readOnly: () => readOnlyConnection.current }),
+    createPlaybackTransport({
+      accountScope: () => accountScope.current,
+      readOnly: () => readOnlyConnection.current,
+    }),
   );
   const playback = useSyncExternalStore(
     controller.subscribe,
@@ -234,8 +318,12 @@ export default function App() {
       provider: nativeProvider,
       canRestore: () => connectionGeneration.current === 0,
       attempt: () => nativeProviderAttempt.current,
-      claimStartup: () => { nativeProviderAttempt.current = 0; },
-      active: attempt => nativeProviderAttempt.current === attempt && connectionGeneration.current === attempt,
+      claimStartup: () => {
+        nativeProviderAttempt.current = 0;
+      },
+      active: (attempt) =>
+        nativeProviderAttempt.current === attempt &&
+        connectionGeneration.current === attempt,
       connect: library.connect,
       connected: () => {
         nativeProviderAttempt.current = null;
@@ -244,15 +332,63 @@ export default function App() {
         setPlayerBook(null);
         setDialog(null);
         setView("home");
-        setToast("Connected to your library.");
+        setToast(appT("connected"));
       },
-      restore: active => restoreNativeSession(sessionPersistence,
-        url => ({fetch: bookOrbitFetch, transportBaseUrl: proxyBaseFor(url)}),
-        library.connect, active, abort.signal),
-      error: error => setToast(error instanceof Error ? error.message : "Your saved connection could not be restored. Check your connection or sign in again."),
+      restore: (active) =>
+        restoreNativeSession(
+          sessionPersistence,
+          (url) => ({
+            fetch: bookOrbitFetch,
+            transportBaseUrl: proxyBaseFor(url),
+            refreshSession: nativeAuth ? refreshNativeSession : undefined,
+          }),
+          library.connect,
+          active,
+          abort.signal,
+        ),
+      error: (error) =>
+        setToast(
+          error instanceof Error ? error.message : appT("restoreFailed"),
+        ),
     });
-    return () => { stop(); abort.abort(); };
-  }, [sessionPersistence, nativeProvider, library.connect, providerCallbackAtLaunch, controller]);
+    return () => {
+      stop();
+      abort.abort();
+    };
+  }, [
+    sessionPersistence,
+    nativeProvider,
+    nativeAuth,
+    library.connect,
+    providerCallbackAtLaunch,
+    controller,
+  ]);
+
+  useEffect(() => {
+    if (!nativeAuth) return;
+    let mounted = true;
+    const listener = nativeAuth.addListener("sessionChanged", (event) => {
+      const attempt = connectionGeneration.current;
+      const active = () =>
+        mounted &&
+        attempt === connectionGeneration.current &&
+        event.accountScope === accountScope.current;
+      if (!active()) return;
+      void getNativeSessionVault()!
+        .read()
+        .then(async (record) => {
+          if (active() && record.generation === event.generation)
+            await sessionPersistence.adoptNativeRecord(record, active);
+        })
+        .catch(() => {
+          if (active()) setToast(appT("renewedRestoreFailed"));
+        });
+    });
+    return () => {
+      mounted = false;
+      void listener.then((handle) => handle.remove()).catch(() => {});
+    };
+  }, [nativeAuth, sessionPersistence]);
 
   const publishNativeRecent = useNativeSurfaces(
     library.repo.scope,
@@ -266,7 +402,11 @@ export default function App() {
   const changeReadingActivity = useReadingActivity(
     reader,
     library.recordSession,
-    { accountScope: library.repo.scope, readOnly: library.client?.readOnly !== false, onError: notify },
+    {
+      accountScope: library.repo.scope,
+      readOnly: library.client?.readOnly !== false,
+      onError: notify,
+    },
   );
   usePlaybackActivity(controller, library.recordSession, {
     enabled: !getNativeJournal(),
@@ -301,20 +441,34 @@ export default function App() {
     let canceled = false;
     const scope = library.repo.scope;
     const opening = openRequest.current;
-    const active = () => !canceled && accountScope.current === scope && openRequest.current === opening;
+    const active = () =>
+      !canceled &&
+      accountScope.current === scope &&
+      openRequest.current === opening;
     void (async () => {
       const owner = await readOwnerSnapshot();
       if (!owner || owner.accountScope !== scope || !active()) return;
-      const book = await library.repo.getBook(owner.bookId) ?? await client.getBook(owner.bookId);
-      if (!active() || !book.files.some(file => file.id === owner.fileId && file.format === "AUDIO")) return;
+      const book =
+        (await library.repo.getBook(owner.bookId)) ??
+        (await client.getBook(owner.bookId));
+      if (
+        !active() ||
+        !book.files.some(
+          (file) => file.id === owner.fileId && file.format === "AUDIO",
+        )
+      )
+        return;
       const source = await client.getPlaybackSource(book);
       if (!active()) return;
       playbackScope.current = scope;
-      if (await controller.adoptNative!(source) && active()) setPlayerBook(book);
+      if ((await controller.adoptNative!(source)) && active())
+        setPlayerBook(book);
     })().catch(() => {
-      if (active()) setToast("The existing audio session could not be restored. Open its audiobook from your library.");
+      if (active()) setToast(appT("audioRestoreFailed"));
     });
-    return () => { canceled = true; };
+    return () => {
+      canceled = true;
+    };
   }, [library.client, library.repo, controller]);
   useEffect(() => {
     if (toast) {
@@ -327,7 +481,9 @@ export default function App() {
     const update = () => {
       document.documentElement.dataset.theme =
         theme === "system" ? (mq.matches ? "dark" : "light") : theme;
-      void setNativeAppearance(theme === "dark" || theme === "light" ? theme : "system").catch(() => setToast("System appearance could not be updated."));
+      void setNativeAppearance(
+        theme === "dark" || theme === "light" ? theme : "system",
+      ).catch(() => setToast(appT("appearanceFailed")));
     };
     update();
     mq.addEventListener("change", update);
@@ -362,7 +518,7 @@ export default function App() {
               query: search,
               sort: sort as "title" | "addedAt",
               direction: sort === "title" ? "asc" : "desc",
-              collectionId: activeCollection ?? undefined,
+              ...serverShelfFilter(activeCollection),
               media: (view === "library" || view === "search"
                 ? format
                 : "all") as "all" | "audio" | "books" | "comics",
@@ -415,11 +571,20 @@ export default function App() {
     if (dialog === "upload" && client)
       client
         .listLibraries()
-        .then(rows => {
-          if (active && attempt === uploadAttempt.current && accountScope.current === scope) setServerLibraries(rows);
+        .then((rows) => {
+          if (
+            active &&
+            attempt === uploadAttempt.current &&
+            accountScope.current === scope
+          )
+            setServerLibraries(rows);
         })
-        .catch((e) => { if (active && attempt === uploadAttempt.current) notify(e.message); });
-    return () => { active = false; };
+        .catch((e) => {
+          if (active && attempt === uploadAttempt.current) notify(e.message);
+        });
+    return () => {
+      active = false;
+    };
   }, [dialog, library.client, library.repo.scope]);
 
   function finishReading() {
@@ -449,7 +614,9 @@ export default function App() {
       items = items.filter(
         (book) =>
           !book.id.startsWith("local-") ||
-          (!activeCollection &&
+          ((!activeCollection ||
+            (activeCollection === "queue" &&
+              book.serverStatus === "want_to_read")) &&
             (!search ||
               `${book.title} ${book.authors.join(" ")} ${book.genres.join(" ")}`
                 .toLocaleLowerCase()
@@ -486,6 +653,7 @@ export default function App() {
     activeCollection,
   ]);
   const currentBook =
+    home.continuing[0] ??
     catalogBooks.find((b) => b.progress > 0 && b.progress < 1) ??
     catalogBooks[0];
   const selectedBook = selected
@@ -496,11 +664,24 @@ export default function App() {
       (noteBook === "all" || n.bookId === noteBook) &&
       `${n.quote} ${n.text}`.toLowerCase().includes(noteQuery.toLowerCase()),
   );
-  const queue = catalogBooks.filter((b) =>
-    library.collections.find((c) => c.id === "queue")?.bookIds.includes(b.id),
-  );
+  const continuing = uniqueBooks([
+    ...home.continuing,
+    ...catalogBooks.filter(
+      (book) => book.progress > 0 && book.progress < 0.995,
+    ),
+  ]).slice(0, 12);
+  const queue = uniqueBooks([
+    ...home.queue,
+    ...catalogBooks.filter((book) =>
+      inReadingQueue(book, library.collections, !!library.client),
+    ),
+  ]).slice(0, 12);
 
-  async function openReader(book: Book, requestedAnchor?: ReadingAnchor, expectedTextHash?: string): Promise<boolean> {
+  async function openReader(
+    book: Book,
+    requestedAnchor?: ReadingAnchor,
+    expectedTextHash?: string,
+  ): Promise<boolean> {
     controller.pause();
     const scope = accountScope.current;
     openRequest.current?.abort();
@@ -510,9 +691,7 @@ export default function App() {
     try {
       file = chooseBookFile(book, requestedAnchor);
     } catch (e) {
-      notify(
-        e instanceof Error ? e.message : "This saved position is unavailable.",
-      );
+      notify(e instanceof Error ? e.message : appT("positionUnavailable"));
       return false;
     }
     if (!file) {
@@ -520,8 +699,11 @@ export default function App() {
     }
     setReadingBusy(true);
     try {
-      await library.recoverNative().catch(() => notify("Some native reading history could not be recovered yet."));
-      if (scope !== accountScope.current || request.signal.aborted) return false;
+      await library
+        .recoverNative()
+        .catch(() => notify(appT("historyRecoveryFailed")));
+      if (scope !== accountScope.current || request.signal.aborted)
+        return false;
       let anchor =
         requestedAnchor ??
         (await library.repo.getAnchor({
@@ -563,14 +745,19 @@ export default function App() {
           ? await library.client.getFileBlob(file.id, request.signal)
           : undefined);
       if (book.id.startsWith("local-") && !source)
-        throw new Error(
-          "This local edition is unavailable. Import its original file again.",
-        );
-      if (scope !== accountScope.current || request.signal.aborted) return false;
-      if (expectedTextHash && (!source || await alignmentSha256(await source.arrayBuffer()) !== expectedTextHash)) {
-        if (scope !== accountScope.current || request.signal.aborted) return false;
+        throw new Error(appT("editionUnavailable"));
+      if (scope !== accountScope.current || request.signal.aborted)
+        return false;
+      if (
+        expectedTextHash &&
+        (!source ||
+          (await alignmentSha256(await source.arrayBuffer())) !==
+            expectedTextHash)
+      ) {
+        if (scope !== accountScope.current || request.signal.aborted)
+          return false;
         setAlignment(null);
-        throw new Error("The EPUB edition changed. Open it and verify the audiobook link again.");
+        throw new Error(appT("epubChanged"));
       }
       if (library.client && !book.id.startsWith("local-")) {
         try {
@@ -584,7 +771,8 @@ export default function App() {
           /* Reading remains available when the server cannot provide annotations for this format. */
         }
       }
-      if (scope !== accountScope.current || request.signal.aborted) return false;
+      if (scope !== accountScope.current || request.signal.aborted)
+        return false;
       setReaderAlignment(null);
       setReader({ book, file, source, anchor, ownerScope: scope });
       publishNativeRecent(book, file, anchor);
@@ -592,9 +780,7 @@ export default function App() {
       return true;
     } catch (e) {
       if (scope === accountScope.current && !request.signal.aborted)
-        notify(
-          e instanceof Error ? e.message : "This book could not be opened.",
-        );
+        notify(e instanceof Error ? e.message : appT("bookOpenFailed"));
       return false;
     } finally {
       if (scope === accountScope.current && openRequest.current === request)
@@ -615,15 +801,11 @@ export default function App() {
     try {
       file = chooseBookFile(book, requestedAnchor, "audio");
     } catch (e) {
-      notify(
-        e instanceof Error ? e.message : "This saved position is unavailable.",
-      );
+      notify(e instanceof Error ? e.message : appT("positionUnavailable"));
       return false;
     }
     if (!file) {
-      notify(
-        "No audiobook file is attached to this title. Use Speak inside the reader for text-to-speech.",
-      );
+      notify(appT("noAudiobook"));
       return false;
     }
     setReadingBusy(true);
@@ -637,12 +819,9 @@ export default function App() {
         playbackSource &&
         playbackSource.fileId !== requestedAnchor.fileId
       )
-        throw new Error(
-          "This audio note belongs to a different source file. Its position has been preserved.",
-        );
+        throw new Error(appT("audioNoteSource"));
       let url = file.url;
-      if (!playbackSource && !url)
-        throw new Error("This audiobook has no playable source.");
+      if (!playbackSource && !url) throw new Error(appT("noAudioSource"));
       let saved =
         requestedAnchor ??
         (await library.repo.getAnchor({
@@ -698,7 +877,7 @@ export default function App() {
       return scope === accountScope.current && !request.signal.aborted;
     } catch (e) {
       if (scope === accountScope.current && !request.signal.aborted)
-        notify(e instanceof Error ? e.message : "Audio could not be loaded.");
+        notify(e instanceof Error ? e.message : appT("audioLoadFailed"));
       return false;
     } finally {
       if (scope === accountScope.current && openRequest.current === request)
@@ -706,36 +885,57 @@ export default function App() {
     }
   }
 
-  async function listenFromText(map: VerifiedAudioAlignment, handle: ReaderAlignmentHandle) {
+  async function listenFromText(
+    map: VerifiedAudioAlignment,
+    handle: ReaderAlignmentHandle,
+  ) {
     const activeReader = reader;
-    if (!activeReader || map.edition.accountScope !== accountScope.current || activeReader.book.id !== map.edition.bookId) return;
+    if (
+      !activeReader ||
+      map.edition.accountScope !== accountScope.current ||
+      activeReader.book.id !== map.edition.bookId
+    )
+      return;
     try {
       const passage = await handle.currentPassage(map, map.edition);
-      if (!passage) throw new Error("This passage has no exact audiobook position.");
+      if (!passage) throw new Error(appT("noAudioPosition"));
       const anchor = alignedAudioAnchor(map, map.edition, passage.textLocator);
       if (!anchor || map.edition.accountScope !== accountScope.current) return;
       handle.pauseNarration();
       const opened = await listen(activeReader.book, anchor);
       if (opened) setReader(null);
-      else throw new Error("The linked audiobook could not be opened. Your reading position is preserved.");
+      else throw new Error(appT("linkedAudioFailed"));
     } catch (error) {
       if (map.edition.accountScope === accountScope.current) throw error;
     }
   }
   async function readFromAudio() {
     const map = alignment;
-    if (!map || !playerBook || map.edition.accountScope !== accountScope.current) return;
+    if (
+      !map ||
+      !playerBook ||
+      map.edition.accountScope !== accountScope.current
+    )
+      return;
     try {
       const target = handoffToText(map, map.edition, controller);
-      if (!target) throw new Error("This audio passage has no exact text position.");
-      const opened = await openReader(playerBook, {
-        bookId: target.bookId, fileId: target.fileId, kind: "epub", locator: target.locator,
-        progress: playerBook.progress, updatedAt: new Date().toISOString(),
-      }, map.edition.textSha256);
+      if (!target) throw new Error(appT("noTextPosition"));
+      const opened = await openReader(
+        playerBook,
+        {
+          bookId: target.bookId,
+          fileId: target.fileId,
+          kind: "epub",
+          locator: target.locator,
+          progress: playerBook.progress,
+          updatedAt: new Date().toISOString(),
+        },
+        map.edition.textSha256,
+      );
       if (opened) setShowPlayer(false);
     } catch (error) {
       if (map.edition.accountScope === accountScope.current)
-        notify(error instanceof Error ? error.message : "This passage could not be linked.");
+        notify(error instanceof Error ? error.message : appT("linkFailed"));
     }
   }
 
@@ -749,7 +949,7 @@ export default function App() {
       bookId: playerBook.id,
       fileId: playback.fileId,
       kind: "audio",
-      quote: `At ${formatTime(playback.currentTime)}`,
+      quote: appT("audioNoteAt", { time: formatTime(playback.currentTime) }),
       text: "",
       color: "sand",
       locator: checkpoint.locator,
@@ -768,16 +968,12 @@ export default function App() {
       if (scope !== accountScope.current) return;
       const file = book?.files.find((item) => item.id === request.fileId);
       if (!book || !file || readerKindForFile(file) !== request.kind)
-        throw new Error(
-          "This shortcut’s source file is no longer in the connected library.",
-        );
+        throw new Error(appT("shortcutSourceMissing"));
       if (
         request.kind === "audio" &&
         book.files.find((item) => item.format === "AUDIO")?.id !== file.id
       )
-        throw new Error(
-          "This audio shortcut belongs to a different source. Open the audiobook from your library.",
-        );
+        throw new Error(appT("shortcutAudioSource"));
       const selectedFileBook = {
         ...book,
         format: file.format,
@@ -787,11 +983,7 @@ export default function App() {
       else await openReader(selectedFileBook);
     } catch (error) {
       if (scope === accountScope.current)
-        notify(
-          error instanceof Error
-            ? error.message
-            : "This book shortcut could not be opened.",
-        );
+        notify(error instanceof Error ? error.message : appT("shortcutFailed"));
     }
   }
   async function jumpToNote(note: Annotation) {
@@ -804,14 +996,11 @@ export default function App() {
     if (!book)
       return notify(
         note.bookId.startsWith("local-")
-          ? "Reopen the original local file to read it again. Local files are not retained after closing Avid."
-          : "This book is no longer in the current library.",
+          ? appT("reopenLocal")
+          : appT("bookMissing"),
       );
     const file = book.files.find((f) => f.id === note.fileId);
-    if (!file)
-      return notify(
-        "The file associated with this note is no longer available.",
-      );
+    if (!file) return notify(appT("noteFileMissing"));
     const anchor: ReadingAnchor = {
       bookId: note.bookId,
       fileId: note.fileId,
@@ -834,7 +1023,7 @@ export default function App() {
     }
     const existing = library.collections.find((c) => c.id === "queue") ?? {
       id: "queue",
-      name: "Reading queue",
+      name: appT("queue"),
       bookIds: [],
     };
     const contains = existing.bookIds.includes(book.id);
@@ -848,9 +1037,7 @@ export default function App() {
       ...library.collections.filter((c) => c.id !== "queue"),
       next,
     ]);
-    notify(
-      contains ? "Removed from your queue" : "Added to your reading queue",
-    );
+    notify(contains ? appT("queueRemoved") : appT("queueAdded"));
   }
   async function changeStatus(book: Book, serverStatus: BookOrbitReadStatus) {
     const scope = accountScope.current;
@@ -871,20 +1058,21 @@ export default function App() {
           previous.map((b) => (b.id === book.id ? updated : b)),
         );
       } else await library.updateDemoBook(updated);
-      if (scope === accountScope.current) notify("Reading status updated");
+      if (scope === accountScope.current) {
+        setHomeRevision((revision) => revision + 1);
+        notify(appT("statusUpdated"));
+      }
     } catch (e) {
       if (scope === accountScope.current)
-        notify(
-          e instanceof Error ? e.message : "Could not update reading status.",
-        );
+        notify(e instanceof Error ? e.message : appT("statusFailed"));
     }
   }
   async function importFollowedWork(edition: ImportedAo3Edition) {
     const repo = library.repo;
     const book = await importAo3Edition(repo, edition);
     if (accountScope.current !== repo.scope)
-      throw new Error("Your account changed before this import completed.");
-    notify("Edition imported. Earlier positions and notes are preserved.");
+      throw new Error(appT("importAccountChanged"));
+    notify(appT("editionImported"));
   }
   async function importLocal(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -903,16 +1091,15 @@ export default function App() {
         mapped ?? "",
       )
     )
-      return notify("Choose an EPUB, MOBI, PDF, comic archive, or audio file.");
+      return notify(appT("chooseFile"));
     const id = `local-${crypto.randomUUID()}`;
     const url = URL.createObjectURL(file);
     playerUrls.current.push(url);
     const book: Book = {
       id,
       title: file.name.replace(/\.[^.]+$/, ""),
-      authors: ["Local file"],
-      description:
-        "Opened from this device. This file is not uploaded to your server or retained as an offline download.",
+      authors: [appT("localFile")],
+      description: appT("localFileDescription"),
       format: mapped as Book["format"],
       color: "#476a67",
       progress: 0,
@@ -1018,9 +1205,9 @@ export default function App() {
             <div className="account-menu">
               <p>
                 {library.client?.session.profile.username ||
-                  "Your personal library"}
+                  appT("personalLibrary")}
                 <small>
-                  {library.client?.session.profile.name || "Exploring Avid"}
+                  {library.client?.session.profile.name || appT("exploring")}
                 </small>
               </p>
               <button
@@ -1043,7 +1230,7 @@ export default function App() {
                 }}
               >
                 <Layers size={17} />
-                Integrations
+                {appT("integrations")}
               </button>
               <button
                 onClick={() => {
@@ -1052,7 +1239,7 @@ export default function App() {
                 }}
               >
                 <CircleHelp size={17} />
-                Avid guide
+                {appT("guide")}
               </button>
               {library.client && (
                 <button
@@ -1061,13 +1248,15 @@ export default function App() {
                     setPlayerBook(null);
                     connectionGeneration.current++;
                     nativeProviderAttempt.current = null;
-                    void nativeProvider?.cancel().catch(() => notify("Provider sign-in could not be cleared."));
-                    void sessionPersistence.clear().catch(() => notify("Secure sign-out could not be completed. Close Avid and clear its app data before sharing this device."));
+                    void nativeProvider
+                      ?.cancel()
+                      .catch(() => notify(appT("providerClearFailed")));
+                    void sessionPersistence
+                      .clear()
+                      .catch(() => notify(appT("signOutFailed")));
                     library.disconnect();
                     setMenu(false);
-                    notify(
-                      "Disconnected. Your local notes are kept for this account.",
-                    );
+                    notify(appT("disconnected"));
                   }}
                 >
                   <LogOut size={17} />
@@ -1095,14 +1284,14 @@ export default function App() {
                 className={`status-dot ${library.client ? "connected" : ""}`}
               />
               {library.client
-                ? `${library.client.session.profile.name} · ${library.syncStatus}`
-                : "A little library to make yourself at home"}
+                ? `${library.client.session.profile.name} · ${syncMessage ? appT(syncMessage) : library.syncStatus}`
+                : appT("homeLibraryHint")}
             </span>
             <button
               className="text-button"
               onClick={() => setDialog(library.client ? "settings" : "connect")}
             >
-              {library.client ? "Connection settings" : t("connect.title")}
+              {library.client ? appT("connectionSettings") : t("connect.title")}
               <ArrowUpRight size={14} />
             </button>
           </div>
@@ -1167,15 +1356,18 @@ export default function App() {
                         onClick={() => void openReader(currentBook)}
                       >
                         <Play size={15} fill="currentColor" />
-                        {t("common.resume")}{" "}
-                        {currentBook.format === "AUDIO"
-                          ? "listening"
-                          : "reading"}
+                        {appT(
+                          currentBook.format === "AUDIO"
+                            ? "resumeListening"
+                            : "resumeReading",
+                        )}
                       </button>
                       <button
                         className="hero-detail-button"
                         onClick={() => setSelected(currentBook)}
-                        aria-label={`Details for ${currentBook.title}`}
+                        aria-label={appT("detailsFor", {
+                          title: currentBook.title,
+                        })}
                       >
                         <MoreHorizontal size={22} />
                       </button>
@@ -1195,9 +1387,7 @@ export default function App() {
               <Shelf
                 title={t("home.continue")}
                 subtitle={t("home.continueHint")}
-                books={catalogBooks.filter(
-                  (b) => b.progress > 0 && b.progress < 1,
-                )}
+                books={continuing}
                 onSelect={setSelected}
                 onSeeAll={() => navigate("library")}
               />
@@ -1228,10 +1418,7 @@ export default function App() {
                     <h3>{t("home.connectHeading")}</h3>
                     <p>{t("home.connectHint")}</p>
                   </div>
-                  <button
-                    className="secondary-button"
-                    onClick={openConnection}
-                  >
+                  <button className="secondary-button" onClick={openConnection}>
                     {t("connect.server")}
                     <ArrowUpRight size={16} />
                   </button>
@@ -1246,23 +1433,26 @@ export default function App() {
                 <div>
                   <span className="eyebrow">
                     {view === "search"
-                      ? "SOMETHING ON YOUR MIND?"
-                      : "A PLACE FOR EVERY STORY"}
+                      ? appT("searchEyebrow")
+                      : appT("libraryEyebrow")}
                   </span>
                   <h1>
                     {view === "search"
-                      ? "Find your next chapter."
-                      : activeCollection
-                        ? library.collections.find(
-                            (c) => c.id === activeCollection,
-                          )?.name
-                        : t("library.title")}
+                      ? appT("nextChapter")
+                      : activeCollection === "queue"
+                        ? t("home.queue")
+                        : activeCollection
+                          ? library.collections.find(
+                              (c) => c.id === activeCollection,
+                            )?.name
+                          : t("library.title")}
                   </h1>
                   <p>
-                    {t("library.count", {
-                      count: library.client ? library.total : books.length,
-                    })}
-                    {library.client?.readOnly ? " · Read-only connection" : ""}
+                    {library.client?.readOnly
+                      ? appT("libraryCountReadOnly", { count: library.total })
+                      : t("library.count", {
+                          count: library.client ? library.total : books.length,
+                        })}
                   </p>
                 </div>
                 {view === "library" && (
@@ -1391,15 +1581,11 @@ export default function App() {
                 !library.loading && (
                   <EmptyState
                     icon={<Search size={32} />}
-                    heading={
-                      search
-                        ? "No matching stories"
-                        : "A shelf waiting to be filled"
-                    }
+                    heading={search ? appT("noMatches") : appT("emptyShelf")}
                     description={
                       search
-                        ? "Try a different title or author, or choose another format."
-                        : "Choose another format, connect your server, or open a book from this device."
+                        ? appT("searchEmptyHint")
+                        : appT("libraryEmptyHint")
                     }
                   />
                 )
@@ -1415,7 +1601,7 @@ export default function App() {
                         page: page + 1,
                         query: search,
                         sort: sort as "title" | "addedAt",
-                        collectionId: activeCollection ?? undefined,
+                        ...serverShelfFilter(activeCollection),
                         media: format as "all" | "audio" | "books" | "comics",
                         direction: sort === "title" ? "asc" : "desc",
                       });
@@ -1481,7 +1667,7 @@ export default function App() {
                         <h3>{collection.name}</h3>
                         <span>
                           {library.client
-                            ? "Open collection"
+                            ? appT("openCollection")
                             : t("library.count", {
                                 count: collection.bookIds.length,
                               })}
@@ -1842,14 +2028,23 @@ export default function App() {
             <Reader
               key={`${reader.ownerScope}:${reader.book.id}:${reader.file.id}`}
               onAlignmentReady={setReaderAlignment}
-              modeControls={library.client && reader.file.format === "EPUB" && reader.book.files.some(file => file.format === "AUDIO") && !reader.book.id.startsWith("local-") ? (
-                <AlignmentControls
-                  key={`${reader.ownerScope}:${reader.book.id}:${reader.file.id}`}
-                  client={library.client} book={reader.book} fileId={reader.file.id}
-                  handle={readerAlignment} alignment={alignment}
-                  onVerified={setAlignment} onListen={listenFromText}
-                />
-              ) : undefined}
+              modeControls={
+                library.client &&
+                reader.file.format === "EPUB" &&
+                reader.book.files.some((file) => file.format === "AUDIO") &&
+                !reader.book.id.startsWith("local-") ? (
+                  <AlignmentControls
+                    key={`${reader.ownerScope}:${reader.book.id}:${reader.file.id}`}
+                    client={library.client}
+                    book={reader.book}
+                    fileId={reader.file.id}
+                    handle={readerAlignment}
+                    alignment={alignment}
+                    onVerified={setAlignment}
+                    onListen={listenFromText}
+                  />
+                ) : undefined
+              }
               book={reader.book}
               file={reader.file}
               source={reader.source}
@@ -1878,7 +2073,14 @@ export default function App() {
               controller={controller}
               book={playerBook}
               onNote={audioNote}
-              onRead={alignment && alignment.edition.accountScope === library.repo.scope && alignment.edition.bookId === playerBook.id && alignment.edition.audioFileId === playback.fileId ? () => void readFromAudio() : undefined}
+              onRead={
+                alignment &&
+                alignment.edition.accountScope === library.repo.scope &&
+                alignment.edition.bookId === playerBook.id &&
+                alignment.edition.audioFileId === playback.fileId
+                  ? () => void readFromAudio()
+                  : undefined
+              }
             />
           </Modal>
         )}
@@ -1926,18 +2128,35 @@ export default function App() {
         {dialog === "connect" && (
           <Modal title={t("connect.title")} onClose={closeConnection}>
             <Connect
-              onAttempt={async method => {
-                connectionGeneration.current++;
-                nativeProviderAttempt.current = method === 'provider' && nativeProvider ? connectionGeneration.current : null;
+              onAttempt={async (method) => {
+                if (getNativeSessionVault() && !nativeAuth)
+                  throw new Error(appT("nativeSignInUnavailable"));
+                const attempt = ++connectionGeneration.current;
+                nativeProviderAttempt.current =
+                  method === "provider" && nativeProvider
+                    ? connectionGeneration.current
+                    : null;
                 controller.pause();
-                if (method !== 'provider') await nativeProvider?.cancel();
+                library.disconnect();
+                if (method !== "provider") await nativeProvider?.cancel();
                 // Invalidate the old native credential owner before a login can
                 // write cookies, including while an old refresh is in flight.
                 await sessionPersistence.clear();
+                if (attempt !== connectionGeneration.current)
+                  throw new DOMException(appT("signInCancelled"), "AbortError");
+                const record = await sessionPersistence.read();
+                if (attempt !== connectionGeneration.current)
+                  throw new DOMException(appT("signInCancelled"), "AbortError");
+                return {
+                  nativeGeneration:
+                    nativeAuth && record ? record.generation : undefined,
+                };
               }}
               onConnect={async (session, readOnly) => {
                 const attempt = connectionGeneration.current;
-                const active = () => attempt === connectionGeneration.current && dialogRef.current === "connect";
+                const active = () =>
+                  attempt === connectionGeneration.current &&
+                  dialogRef.current === "connect";
                 if (!active()) return;
                 await library.connect(session, readOnly, active);
                 if (!active()) return;
@@ -2027,10 +2246,7 @@ export default function App() {
                     </small>
                   </div>
                 </div>
-                <button
-                  className="secondary-button"
-                  onClick={openConnection}
-                >
+                <button className="secondary-button" onClick={openConnection}>
                   {library.client ? t("connect.another") : t("connect.short")}
                   <ArrowUpRight size={15} />
                 </button>
@@ -2060,7 +2276,13 @@ export default function App() {
               </section>
               <section>
                 <h3>{t("settings.privacy")}</h3>
-                <p>{t(getNativeSessionVault() ? "settings.nativePrivacyHint" : "settings.privacyHint")}</p>
+                <p>
+                  {t(
+                    getNativeSessionVault()
+                      ? "settings.nativePrivacyHint"
+                      : "settings.privacyHint",
+                  )}
+                </p>
                 <button
                   className="text-button"
                   onClick={() => {
@@ -2098,38 +2320,14 @@ export default function App() {
           <Modal title={t("footer.help")} onClose={() => setDialog(null)}>
             <div className="help-panel">
               {[
-                [
-                  "Bring your library",
-                  "Open Connect your library and enter your BookOrbit server address and login. The server needs to permit this app’s origin, or be served through a same-origin reverse proxy. Read-only mode saves progress and notes only on this device.",
-                ],
-                [
-                  "Settle into a book",
-                  "Open a cover, then Start reading. The reader has contents, search, appearance, text selection, and notes. You can also open a file from your device using the + button.",
-                ],
-                [
-                  "Make the page your own",
-                  "Use the reader’s appearance panel to change fonts, text size, spacing, margins, theme, page flow, and animation. Position is saved using the book’s own locator.",
-                ],
-                [
-                  "Listen at your pace",
-                  "Open an audiobook to play, pause, skip, choose a chapter, or adjust speed. The sleep timer can stop after a duration or at a chapter boundary. Browser background playback depends on the browser and operating system.",
-                ],
-                [
-                  "Keep a thought",
-                  "Select text inside a book to save a highlight or note. Audio notes remember the playback position. Find everything in Notebook and choose Open passage to return.",
-                ],
-                [
-                  "Formats and imported files",
-                  "EPUB, DRM-free MOBI, PDF, CBZ, CBR, and CB7 have separate reader adapters. Encrypted books and unsupported codecs report an error. Files opened locally are temporary; complete offline downloads belong to Phase 2.",
-                ],
-                [
-                  "When something goes wrong",
-                  "A network failure should not erase your notes. Reconnect to the same server and account to return to its local data. Sync conflicts are preserved for review. Read-only connections never write library changes to the server.",
-                ],
-                [
-                  "About this preview",
-                  "The shared web app is under active development. Native background playback, system widgets, CarPlay, AO3 updates, CrossPoint delivery, and full localization have not passed the Phase 1 release gates. The repository checklist records their status.",
-                ],
+                [appT("guideLibraryTitle"), appT("guideLibraryBody")],
+                [appT("guideReadingTitle"), appT("guideReadingBody")],
+                [appT("guideAppearanceTitle"), appT("guideAppearanceBody")],
+                [appT("guideListeningTitle"), appT("guideListeningBody")],
+                [appT("guideNotesTitle"), appT("guideNotesBody")],
+                [appT("guideFormatsTitle"), appT("guideFormatsBody")],
+                [appT("guideRecoveryTitle"), appT("guideRecoveryBody")],
+                [appT("guidePreviewTitle"), appT("guidePreviewBody")],
               ].map(([title, text], i) => (
                 <details key={title} open={i === 0}>
                   <summary>
@@ -2139,10 +2337,7 @@ export default function App() {
                   <p>{text}</p>
                 </details>
               ))}
-              <p className="field-hint">
-                Keyboard shortcut: Ctrl/⌘ K opens library search. Escape closes
-                a dialog.
-              </p>
+              <p className="field-hint">{appT("keyboardHint")}</p>
             </div>
           </Modal>
         )}
@@ -2171,22 +2366,36 @@ export default function App() {
                   className="form-panel"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (uploadBusy || !uploadFile || !uploadLibrary || !library.client || library.client.readOnly || !serverLibraries.some(row => row.id === uploadLibrary))
+                    if (
+                      uploadBusy ||
+                      !uploadFile ||
+                      !uploadLibrary ||
+                      !library.client ||
+                      library.client.readOnly ||
+                      !serverLibraries.some((row) => row.id === uploadLibrary)
+                    )
                       return;
                     const scope = library.repo.scope;
                     const attempt = ++uploadAttempt.current;
-                    const active = () => accountScope.current === scope && uploadAttempt.current === attempt && dialogRef.current === "upload";
+                    const active = () =>
+                      accountScope.current === scope &&
+                      uploadAttempt.current === attempt &&
+                      dialogRef.current === "upload";
                     setUploadBusy(true);
                     void library.client
                       .uploadBook(uploadLibrary, uploadFile)
                       .then(() => {
                         if (!active()) return;
-                        notify("Book uploaded. Refreshing your library.");
+                        notify(appT("uploaded"));
                         setDialog(null);
                         void library.query({});
                       })
-                      .catch((err) => { if (active()) notify(err.message); })
-                      .finally(() => { if (active()) setUploadBusy(false); });
+                      .catch((err) => {
+                        if (active()) notify(err.message);
+                      })
+                      .finally(() => {
+                        if (active()) setUploadBusy(false);
+                      });
                   }}
                 >
                   <label>
@@ -2223,24 +2432,21 @@ export default function App() {
           </Modal>
         )}
         {dialog === "integrations" && (
-          <Modal title="Beyond your bookshelf" onClose={() => setDialog(null)}>
+          <Modal
+            title={appT("beyondBookshelf")}
+            onClose={() => setDialog(null)}
+          >
             <div className="settings-panel">
               <section>
                 <h3>BookOrbit</h3>
-                <p>
-                  Your library’s source of truth. Books, collections, notes, and
-                  progress use a versioned API adapter.
-                </p>
-                <button
-                  className="secondary-button"
-                  onClick={openConnection}
-                >
-                  Manage connection
+                <p>{appT("bookOrbitDescription")}</p>
+                <button className="secondary-button" onClick={openConnection}>
+                  {appT("manageConnection")}
                   <ArrowUpRight size={15} />
                 </button>
               </section>
               <section>
-                <h3>CrossPoint e-ink delivery</h3>
+                <h3>{appT("crossPointDelivery")}</h3>
                 <CrossPointPanel accountScope={library.repo.scope} />
               </section>
               <section>
@@ -2252,13 +2458,8 @@ export default function App() {
                 />
               </section>
               <section>
-                <h3>Read and Listen</h3>
-                <p>
-                  Linked reading requires a verified text-to-audio alignment
-                  map. A matching title alone cannot synchronize the two
-                  editions. Existing media-overlay integration is tracked in the
-                  Phase 1 checklist.
-                </p>
+                <h3>{appT("readAndListen")}</h3>
+                <p>{appT("alignmentDescription")}</p>
               </section>
             </div>
           </Modal>

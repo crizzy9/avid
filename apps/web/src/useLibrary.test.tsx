@@ -92,7 +92,9 @@ const defaultTransport = async (
 let root: Root;
 let container: HTMLDivElement;
 let api: ReturnType<typeof useLibrary>;
-let sessionSaved: NonNullable<Parameters<typeof useLibrary>[0]>['onSessionChange'];
+let sessionSaved: NonNullable<
+  Parameters<typeof useLibrary>[0]
+>["onSessionChange"];
 const database = new AvidDatabase();
 const waitForStatus = async (status: string) => {
   const deadline = Date.now() + 2500;
@@ -133,67 +135,112 @@ afterEach(async () => {
 });
 
 describe("account-scoped library integration", () => {
-  it.each([false, true])('waits for the secure vault before publishing account surfaces (cancel=%s)', async canceled => {
-    const saved = deferred<void>();
-    let active = true;
-    sessionSaved = vi.fn(() => saved.promise);
-    let connecting!: Promise<void>;
-    await act(async () => { connecting = api.connect(session(), true, () => active); });
-    await act(async () => { await vi.waitFor(() => expect(sessionSaved).toHaveBeenCalledOnce()); });
-    expect(api.client).toBeNull();
-    if (canceled) active = false;
-    await act(async () => { saved.resolve(); await connecting; });
-    expect(api.client?.session.userId ?? null).toBe(canceled ? null : '7');
-  });
+  it.each([false, true])(
+    "waits for the secure vault before publishing account surfaces (cancel=%s)",
+    async (canceled) => {
+      const saved = deferred<void>();
+      let active = true;
+      sessionSaved = vi.fn(() => saved.promise);
+      let connecting!: Promise<void>;
+      await act(async () => {
+        connecting = api.connect(session(), true, () => active);
+      });
+      await act(async () => {
+        await vi.waitFor(() => expect(sessionSaved).toHaveBeenCalledOnce());
+      });
+      expect(api.client).toBeNull();
+      if (canceled) active = false;
+      await act(async () => {
+        saved.resolve();
+        await connecting;
+      });
+      expect(api.client?.session.userId ?? null).toBe(canceled ? null : "7");
+    },
+  );
 
   it("does not replace newer activity with delayed initial hydration", async () => {
     const waiting = deferred<Book[]>();
-    const getBooks = vi.spyOn(LibraryRepository.prototype, "getBooks").mockImplementationOnce(() => waiting.promise);
-    await act(async () => { await api.connect(session(), true); });
+    const getBooks = vi
+      .spyOn(LibraryRepository.prototype, "getBooks")
+      .mockImplementationOnce(() => waiting.promise);
     await act(async () => {
-      await api.recordSession({ id: "new-reading", bookId: "12", kind: "reading", startedAt: "2026-10-01T01:00:00Z", duration: 5 }, "31", { endedAt: "2026-10-01T01:00:05Z" });
+      await api.connect(session(), true);
     });
-    expect(api.sessions.map(row => row.id)).toContain("new-reading");
-    await act(async () => { waiting.resolve([]); await waiting.promise; });
-    expect(api.sessions.map(row => row.id)).toContain("new-reading");
+    await act(async () => {
+      await api.recordSession(
+        {
+          id: "new-reading",
+          bookId: "12",
+          kind: "reading",
+          startedAt: "2026-10-01T01:00:00Z",
+          duration: 5,
+        },
+        "31",
+        { endedAt: "2026-10-01T01:00:05Z" },
+      );
+    });
+    expect(api.sessions.map((row) => row.id)).toContain("new-reading");
+    await act(async () => {
+      waiting.resolve([]);
+      await waiting.promise;
+    });
+    expect(api.sessions.map((row) => row.id)).toContain("new-reading");
     getBooks.mockRestore();
   });
 
-  it.each(["catalog", "discovery", "cache"])("does not activate a closed connection during %s", async (stage) => {
-    let active = true;
-    const wait = deferred<Response>();
-    const cacheWait = deferred<void>();
-    let reached = false;
-    const originalPut = LibraryRepository.prototype.putBooks;
-    if (stage === "cache") vi.spyOn(LibraryRepository.prototype, "putBooks").mockImplementation(async function (this: LibraryRepository, books) {
-      reached = true;
-      await cacheWait.promise;
-      return originalPut.call(this, books);
-    });
-    transport.mockImplementation((input, init) => {
-      if ((stage === "catalog" && String(input).endsWith("/books/query")) ||
-          (stage === "discovery" && String(input).endsWith("/app-info"))) {
-        reached = true;
-        return wait.promise;
-      }
-      return defaultTransport(input, init);
-    });
-    let connecting!: Promise<void>;
-    await act(async () => { connecting = api.connect(session(), true, () => active); });
-    await act(async () => { await vi.waitFor(() => expect(reached).toBe(true)); });
-    active = false;
-    await act(async () => {
-      wait.resolve(stage === "catalog" ? reply(page("Canceled")) : reply({version:"3.3.0",features:[]}));
-      cacheWait.resolve();
-      await connecting;
-    });
-    expect(api.client).toBeNull();
-    expect(api.repo.scope).toContain("demo");
-    expect(api.books.some(book => book.id === "12")).toBe(false);
-  });
+  it.each(["catalog", "discovery", "cache"])(
+    "does not activate a closed connection during %s",
+    async (stage) => {
+      let active = true;
+      const wait = deferred<Response>();
+      const cacheWait = deferred<void>();
+      let reached = false;
+      const originalPut = LibraryRepository.prototype.putBooks;
+      if (stage === "cache")
+        vi.spyOn(LibraryRepository.prototype, "putBooks").mockImplementation(
+          async function (this: LibraryRepository, books) {
+            reached = true;
+            await cacheWait.promise;
+            return originalPut.call(this, books);
+          },
+        );
+      transport.mockImplementation((input, init) => {
+        if (
+          (stage === "catalog" && String(input).endsWith("/books/query")) ||
+          (stage === "discovery" && String(input).endsWith("/app-info"))
+        ) {
+          reached = true;
+          return wait.promise;
+        }
+        return defaultTransport(input, init);
+      });
+      let connecting!: Promise<void>;
+      await act(async () => {
+        connecting = api.connect(session(), true, () => active);
+      });
+      await act(async () => {
+        await vi.waitFor(() => expect(reached).toBe(true));
+      });
+      active = false;
+      await act(async () => {
+        wait.resolve(
+          stage === "catalog"
+            ? reply(page("Canceled"))
+            : reply({ version: "3.3.0", features: [] }),
+        );
+        cacheWait.resolve();
+        await connecting;
+      });
+      expect(api.client).toBeNull();
+      expect(api.repo.scope).toContain("demo");
+      expect(api.books.some((book) => book.id === "12")).toBe(false);
+    },
+  );
   it("does not start requests for an already superseded sign-in", async () => {
     transport.mockClear();
-    await act(async () => { await api.connect(session(), true, () => false); });
+    await act(async () => {
+      await api.connect(session(), true, () => false);
+    });
     expect(transport).not.toHaveBeenCalled();
     expect(api.client).toBeNull();
   });

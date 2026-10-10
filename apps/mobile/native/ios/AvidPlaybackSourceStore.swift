@@ -146,10 +146,17 @@ public class AvidSessionPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     @objc func read(_ call: CAPPluginCall) { run(call) { try AvidSessionStore.read() } }
     @objc func write(_ call: CAPPluginCall) {
-        run(call) {
-            guard let expected = call.getString("expectedGeneration"), let session = call.getObject("session") else { throw AvidSurfaceError.invalidInput }
-            return try AvidSessionStore.write(expected: expected, session: session, readOnly: call.getBool("readOnly") ?? true)
+        Task { @MainActor in
+            do {
+                guard let expected = call.getString("expectedGeneration"), let session = call.getObject("session") else { throw AvidSurfaceError.invalidInput }
+                call.resolve(try await AvidAuthCoordinator.shared.writeSession(expected: expected, session: session, readOnly: call.getBool("readOnly") ?? true))
+            } catch { call.reject("The secure session changed or could not be stored.") }
         }
     }
-    @objc func clear(_ call: CAPPluginCall) { run(call) { try AvidSessionStore.clear(expected: call.getString("expectedGeneration")) } }
+    @objc func clear(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            do { call.resolve(try await AvidAuthCoordinator.shared.clearSession(expected: call.getString("expectedGeneration"))) }
+            catch { call.reject("The secure session could not be cleared.") }
+        }
+    }
 }

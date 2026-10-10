@@ -9,6 +9,7 @@ import app.avid.playback.AvidSessionPlugin;
 import app.avid.playback.AvidJournalPlugin;
 import app.avid.playback.AvidOidcPlugin;
 import app.avid.playback.AvidAppearancePlugin;
+import app.avid.playback.AvidAuthPlugin;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -21,6 +22,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AvidJournalPlugin.class);
         registerPlugin(AvidOidcPlugin.class);
         registerPlugin(AvidAppearancePlugin.class);
+        registerPlugin(AvidAuthPlugin.class);
         super.onCreate(savedInstanceState);
     }
 

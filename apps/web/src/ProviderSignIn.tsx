@@ -12,10 +12,20 @@ import {
 } from "./webOidc";
 import { bookOrbitFetch, proxyBaseFor } from "./Connect";
 import { getNativeOidc } from "../../mobile/src/native-oidc";
-import { configuredNativeOidc, getConfiguredNativeOidcCoordinator, nativeOidcRedirect } from "./nativeOidcCoordinator";
+import { createNativeAuthFetch } from "../../mobile/src/native-auth";
+import {
+  configuredNativeOidc,
+  getConfiguredNativeOidcCoordinator,
+  nativeOidcRedirect,
+} from "./nativeOidcCoordinator";
 
 export function getNativeProviderCoordinator() {
-  return getConfiguredNativeOidcCoordinator(url => ({ fetch: bookOrbitFetch, transportBaseUrl: proxyBaseFor(url) }));
+  return getConfiguredNativeOidcCoordinator((url, generation) => ({
+    fetch: generation
+      ? createNativeAuthFetch(generation, bookOrbitFetch)
+      : bookOrbitFetch,
+    transportBaseUrl: proxyBaseFor(url),
+  }));
 }
 
 let coordinator: WebOidcCoordinator | undefined;
@@ -48,7 +58,7 @@ export function ProviderSignIn({
 }: {
   serverUrl: string;
   readOnly: boolean;
-  onAttempt?: () => void | Promise<void>;
+  onAttempt?: () => unknown | Promise<unknown>;
   onBusyChange?: (busy: boolean) => void;
   disabled?: boolean;
 }) {
@@ -74,7 +84,10 @@ export function ProviderSignIn({
     setError("");
     setBusy(false);
   }, [serverUrl, readOnly, disabled]);
-  useEffect(() => { onBusyChange?.(busy); return () => onBusyChange?.(false); }, [busy, onBusyChange]);
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
   if (native ? !configuredNativeOidc() : !configuredWebOidc()) return null;
   async function discover() {
     const current = ++generation.current;
@@ -96,10 +109,14 @@ export function ProviderSignIn({
         transportBaseUrl: proxyBaseFor(url),
       });
       if (!active()) return;
-      const enabled = result.oidcProviders.filter(provider => provider.enabled && (!native || configuredNativeOidc()!.providers.includes(provider.slug)));
+      const enabled = result.oidcProviders.filter(
+        (provider) =>
+          provider.enabled &&
+          (!native ||
+            configuredNativeOidc()!.providers.includes(provider.slug)),
+      );
       setProviders(enabled);
-      if (!enabled.length)
-        setError(t("oidc.none"));
+      if (!enabled.length) setError(t("oidc.none"));
     } catch (err) {
       if (active())
         setError(err instanceof Error ? err.message : t("connect.failed"));
