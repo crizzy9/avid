@@ -6,6 +6,7 @@ import SQLite3
 @MainActor
 final class AvidPlaybackJournal {
     static let shared = AvidPlaybackJournal()
+    private(set) var recoveryError: String?
     private var database: OpaquePointer?
     private var previous: Sample?
     private var activity: Activity?
@@ -79,11 +80,17 @@ final class AvidPlaybackJournal {
         return try body(prepared)
     }
     private func insert(scope: String, bookId: String, fileId: String, type: String, createdAt: String, payload: [String: Any], readOnly: Bool, id: String = UUID().uuidString.lowercased()) throws {
+        do {
         let bytes = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         guard let text = String(data: bytes, encoding: .utf8) else { throw JournalError.storage }
         try statement("INSERT INTO events(id, account_scope, book_id, file_id, event_type, created_at, payload, read_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             strings: [id, scope, bookId, fileId, type, createdAt, text, readOnly ? "1" : "0"]) { value in
             guard sqlite3_step(value) == SQLITE_DONE else { throw JournalError.storage }
+        }
+        recoveryError = nil
+        } catch {
+            recoveryError = "Playback continues, but progress and listening time could not be saved on this device. Keep Avid open until storage recovers."
+            throw error
         }
     }
     private func readSample(_ value: [String: Any]) -> Sample? {
@@ -226,7 +233,7 @@ public class AvidJournalPlugin: CAPPlugin, CAPBridgedPlugin {
                 guard identity == [url, user] else { throw AvidPlaybackJournal.JournalError.wrongAccount }
                 let readOnly = call.getBool("readOnly") != false || (saved["readOnly"] as? Bool) != false
                 let id = try AvidPlaybackJournal.shared.recordAnchor(accountScope: scope, anchor: anchor, readOnly: readOnly)
-                call.resolve(["id": id])
+                call.resolve(["id": id, "readOnly": readOnly])
             } catch { call.reject(error.localizedDescription) }
         }
     }

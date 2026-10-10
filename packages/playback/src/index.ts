@@ -3,6 +3,7 @@ export * from './controller';
 export * from './timeline';
 export * from './speech';
 export * from './alignment';
+export * from './standalone-alignment';
 export * from './capabilities';
 export * from './codecs';
 export * from './activity';

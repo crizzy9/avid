@@ -1,5 +1,7 @@
 import Capacitor
 import Foundation
+import CarPlay
+import UIKit
 import WebKit
 
 @objc(AvidPlaybackPlugin)
@@ -7,6 +9,7 @@ public class AvidPlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "AvidPlaybackPlugin"
     public let jsName = "AvidPlayback"
     public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "capabilities", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "load", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "play", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pause", returnType: CAPPluginReturnPromise),
@@ -20,6 +23,18 @@ public class AvidPlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
     public override func load() {
         DispatchQueue.main.async {
             AvidPlaybackOwner.shared.onCheckpoint = { [weak self] value in self?.notifyListeners("checkpoint", data: value) }
+        }
+    }
+
+    @objc func capabilities(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            _ = AvidPlaybackOwner.shared // Registers the process-owned remote command handlers.
+            let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+            // iOS has no public general-purpose runtime entitlement query. An actual system-created
+            // CarPlay scene proves entitlement and host support; an opt-in source flag does not.
+            let car = UIApplication.shared.connectedScenes.contains { $0 is CPTemplateApplicationScene }
+            call.resolve(["backgroundAudioAvailable": modes.contains("audio"),
+                "systemMediaControlsAvailable": true, "carIntegrationAvailable": car])
         }
     }
 

@@ -19,8 +19,9 @@ class AvidJournalPlugin : Plugin() {
                 val identity = org.json.JSONArray(scope)
                 require(identity.length() == 2 && identity.getString(0) == url && identity.getString(1) == session.getString("userId")) { "The checkpoint belongs to a different account." }
                 val anchor = call.getObject("anchor") ?: error("A reading checkpoint is required.")
-                val id = AvidPlaybackJournal.recordAnchor(scope, anchor, call.getBoolean("readOnly") != false || saved.optBoolean("readOnly", true))
-                call.resolve(JSObject().put("id", id))
+                val readOnly = call.getBoolean("readOnly") != false || saved.optBoolean("readOnly", true)
+                val id = AvidPlaybackJournal.recordAnchor(scope, anchor, readOnly)
+                call.resolve(JSObject().put("id", id).put("readOnly", readOnly))
             } catch (error: Exception) { call.reject("The reading checkpoint could not be journaled.", error) }
         }
     }

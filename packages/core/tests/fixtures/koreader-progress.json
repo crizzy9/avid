@@ -1,0 +1,11 @@
+{
+  "source": "Independent fixtures matching BookOrbit v3.3.0 file progress and KOReader dashboard contracts. CFI/XPointer point shape verified against its koreader-progress-position.e2e-spec.ts; no real account data.",
+  "epub": {
+    "file": { "bookFileId": 31, "userId": 7, "percentage": 55, "cfi": "epubcfi(/6/2!/4/2/1:3)", "pageNumber": null, "koreaderProgress": "/body/DocFragment[1]/body/p/text().3", "textUpdatedAt": "2026-10-01T10:00:00Z", "updatedAt": "2026-10-01T10:00:00Z" },
+    "sync": { "bookId": 12, "bookFileId": 31, "canonicalPercentage": 55, "canonicalSource": "koreader", "canonicalUpdatedAt": "2026-10-09T10:00:00Z", "fileModifiedSinceLastSync": false }
+  },
+  "comic": {
+    "file": { "bookFileId": 32, "userId": 7, "percentage": 40, "cfi": null, "pageNumber": 117, "koreaderProgress": "117", "updatedAt": "2026-10-01T10:00:00Z" },
+    "sync": { "bookId": 12, "bookFileId": 32, "canonicalPercentage": 40, "canonicalSource": "koreader", "canonicalUpdatedAt": "2026-10-09T10:00:00Z", "fileModifiedSinceLastSync": false }
+  }
+}

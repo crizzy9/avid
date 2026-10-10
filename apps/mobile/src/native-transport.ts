@@ -158,7 +158,7 @@ export class NativePlaybackTransport implements PlaybackTransport {
     const currentTime = Math.max(0, value.position);
     const duration = Math.max(0, value.duration || this.state.duration);
     this.update({ currentTime, duration, trackIndex, rate: value.rate, chapterIndex: chapterAtTime(this.book.chapters ?? [], currentTime),
-      status: value.status ?? (value.playing ? 'playing' : 'paused'), error: value.error || null,
+      status: value.status ?? (value.playing ? 'playing' : 'paused'), error: value.error || value.recoveryError || null,
       sleepUntil: value.sleepUntil ?? null, sleepAtChapterEnd: value.sleepAtChapterEnd ?? null });
     this.checkpoint();
   }

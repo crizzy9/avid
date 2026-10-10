@@ -232,14 +232,17 @@ final class AvidPlaybackOwner: NSObject {
     func snapshot() -> [String: Any] {
         let position = globalPosition
         let duration = totalDuration
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         var value: [String: Any] = ["accountScope": scope, "bookId": bookId, "fileId": fileId,
                 "position": position.isFinite ? max(0, position) : 0,
                 "duration": duration.isFinite ? max(0, duration) : 0,
                 "rate": preferredRate, "playing": pendingSeek == nil && player.timeControlStatus == .playing,
                 "status": player.currentItem?.status == .failed ? "failed" : pendingSeek != nil ? "loading" : player.timeControlStatus == .waitingToPlayAtSpecifiedRate ? "buffering" : player.timeControlStatus == .playing ? "playing" : player.currentItem == nil ? "stopped" : "paused",
                 "error": player.currentItem?.error?.localizedDescription ?? "",
+                "recoveryError": AvidPlaybackJournal.shared.recoveryError ?? "",
                 "ended": duration.isFinite && duration > 0 && position >= duration,
-                "updatedAt": ISO8601DateFormatter().string(from: Date())]
+                "updatedAt": formatter.string(from: Date())]
         if tracks.indices.contains(currentTrackIndex) {
             value["trackId"] = tracks[currentTrackIndex].id
             value["trackIndex"] = currentTrackIndex
@@ -284,7 +287,8 @@ final class AvidPlaybackOwner: NSObject {
             try? AvidSharedStore.shared.save(book)
             AvidSystemSurfaces.refresh()
         }
-        onCheckpoint?(value)
+        // The insertion above can change durable health; notify with the resulting state.
+        onCheckpoint?(snapshot())
     }
 
     private func enforceSleep() {

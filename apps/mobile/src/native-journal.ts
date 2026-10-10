@@ -16,7 +16,7 @@ export type NativeJournalEvent = NativeJournalEnvelope & (
 );
 export interface NativeJournalPlugin {
   /** Persist first. Acknowledge this ID only after the same event is committed to the scoped JS repository. */
-  recordProgress(options: { accountScope: string; anchor: ReadingAnchor; readOnly?: boolean }): Promise<{ id: string }>;
+  recordProgress(options: { accountScope: string; anchor: ReadingAnchor; readOnly?: boolean }): Promise<{ id: string; readOnly: boolean }>;
   drain(options: { accountScope: string; limit?: number }): Promise<{ events: NativeJournalEvent[] }>;
   ack(options: { accountScope: string; ids: string[] }): Promise<void>;
 }

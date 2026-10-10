@@ -26,7 +26,7 @@ pnpm preview
 
 The adapter's reference contract is BookOrbit **v3.3.0**, pinned to commit `e767358443419253eeed782518d6fc4f675d69fd`. API routes, unsupported cases, and synchronization behavior are documented in [the contract notes](docs/bookorbit-contract.md).
 
-The connection screen defaults to **read-only**: authentication and catalog queries are permitted, while progress, annotation, upload, membership, and other library mutations are rejected. Local checkpoints and notes remain scoped to the server/account. Credentials are held in memory; passwords and tokens are never written into the repository or book documents.
+The connection screen defaults to **read-only**: authentication and catalog queries are permitted, while progress, annotation, upload, membership, and other library mutations are rejected. Local checkpoints and notes remain scoped to the server/account. Browser sessions remain in memory. Native sign-in tokens use Keychain or Keystore-protected storage, with account verification on restore; passwords are not saved. Passwords and tokens are never written into the repository or book documents. Native positions and listening intervals are journaled in SQLite before replay into the account-scoped sync outbox; read-only provenance survives reconnects.
 
 For a development server without CORS, copy `.env.example` to `.env.local`, set `VITE_BOOKORBIT_PROXY_ORIGIN` to its origin, and restart Vite. The proxy also defaults to read-only and blocks mutations before forwarding. Changing `AVID_PROXY_READ_ONLY` to `false` is an explicit development configuration choice; do not do this against a read-only test server. The Vite proxy is not a production server. Production deployments need a same-origin reverse proxy or explicit BookOrbit CORS configuration.
 
@@ -42,7 +42,9 @@ For a development server without CORS, copy `.env.example` to `.env.local`, set 
 
 ## Boundaries
 
-Full offline downloads are Phase 2. Locally opening a file or caching a checkpoint does not make a book an offline download. Browser audio and speech depend on browser lifecycle and available codecs/voices. Native shell scaffolding is not a substitute for qualified background playback, widgets, intents, CarPlay, or Android Auto. Read and Listen requires real EPUB media overlays or a verified alignment map.
+Full offline downloads are Phase 2. Locally opening a file or caching a checkpoint does not make a book an offline download. Browser audio and speech depend on browser lifecycle and available codecs/voices. Unsigned iOS app/widget/CarPlay, Android debug/Auto, and linked macOS/Windows/Linux hosts compile in CI. Signing, installation, physical background playback, widgets, intents and car acceptance remain release gates. Read and Listen requires real EPUB media overlays or a verified alignment map. Explicit standalone linking verifies complete matching audio bytes and the exact EPUB/manifest edition; it does not generate alignment.
+
+The optional AO3 companion runs locally with `node scripts/ao3-companion.mjs`. Enable it explicitly in Integrations, pair it using the printed code, and select followed-work editions to import. Imported editions remain on this device and preserve earlier files, notes and positions. See [connector setup](docs/integrations.md).
 
 No analytics, advertising, purchase SDKs, or external font services are included. Diagnostic export is explicit and contains capability information only. Do not commit server credentials, private publications, or personal library fixtures.
 

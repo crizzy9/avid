@@ -16,6 +16,7 @@ import type {
 import { Cover } from "./ui";
 import { BookOrbitClient } from "../../../packages/core/src/bookorbit";
 import { BookCollections } from "./BookCollections";
+import { useState } from "react";
 
 export function BookDetails({
   book,
@@ -33,7 +34,7 @@ export function BookDetails({
   collections: Collection[];
   annotations: Annotation[];
   readOnly: boolean;
-  onRead: () => void;
+  onRead: (fileId?: string) => void;
   onListen: () => void;
   onQueue: () => void;
   onStatus: (status: BookOrbitReadStatus) => void;
@@ -46,6 +47,8 @@ export function BookDetails({
     book.serverStatus === "want_to_read" ||
     collections.find((c) => c.id === "queue")?.bookIds.includes(book.id);
   const hasAudio = book.files.some((f) => f.format === "AUDIO");
+  const readableFiles = book.files.filter((file) => file.format !== "AUDIO");
+  const [selectedFile, setSelectedFile] = useState(readableFiles[0]?.id);
   return (
     <div className="book-details">
       <div
@@ -75,7 +78,10 @@ export function BookDetails({
           )}
           <div className="detail-actions">
             {book.files.some((f) => f.format !== "AUDIO") && (
-              <button className="primary-button" onClick={onRead}>
+              <button
+                className="primary-button"
+                onClick={() => onRead(selectedFile)}
+              >
                 <BookOpen size={17} />
                 {book.progress > 0 ? t("detail.resume") : t("detail.start")}
               </button>
@@ -97,6 +103,22 @@ export function BookDetails({
         </div>
       </div>
       <div className="detail-body">
+        {readableFiles.length > 1 && (
+          <label className="edition-select">
+            {t("detail.edition")}
+            <select
+              value={selectedFile}
+              onChange={(event) => setSelectedFile(event.target.value)}
+            >
+              {readableFiles.map((file) => (
+                <option key={file.id} value={file.id}>
+                  {file.name}
+                </option>
+              ))}
+            </select>
+            <span className="field-hint">{t("detail.editionHint")}</span>
+          </label>
+        )}
         <div className="detail-secondary">
           <button
             className="secondary-button"
@@ -129,7 +151,9 @@ export function BookDetails({
           </label>
         </div>
         {readOnly && <p className="field-hint">{t("detail.readOnly")}</p>}
-        {client && <BookCollections client={client} bookId={book.id} />}
+        {client && !book.id.startsWith("local-") && (
+          <BookCollections client={client} bookId={book.id} />
+        )}
         <div className="detail-description">
           <h3>{t("detail.about")}</h3>
           <p>

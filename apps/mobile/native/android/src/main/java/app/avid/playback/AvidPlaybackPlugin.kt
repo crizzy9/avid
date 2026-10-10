@@ -1,6 +1,8 @@
 package app.avid.playback
 
 import android.content.ComponentName
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Bundle
 import androidx.core.content.ContextCompat
@@ -36,6 +38,18 @@ class AvidPlaybackPlugin : Plugin() {
             try { controller = pending.get(); controller?.addListener(stateListener) }
             catch (_: Exception) { /* Commands report initialization failure; never claim playback started. */ }
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    @PluginMethod fun capabilities(call: PluginCall) = connected(call) {
+        val manager = context.packageManager
+        val service = manager.getServiceInfo(ComponentName(context, AvidPlaybackService::class.java), 0)
+        val metadata = manager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA).metaData
+        val foreground = manager.checkPermission("android.permission.FOREGROUND_SERVICE", context.packageName) == PackageManager.PERMISSION_GRANTED
+        val mediaForeground = android.os.Build.VERSION.SDK_INT < 34 || manager.checkPermission("android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK", context.packageName) == PackageManager.PERMISSION_GRANTED
+        val mediaType = android.os.Build.VERSION.SDK_INT < 29 || service.foregroundServiceType and ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK != 0
+        call.resolve(JSObject().put("backgroundAudioAvailable", service.enabled && foreground && mediaForeground && mediaType)
+            .put("systemMediaControlsAvailable", true)
+            .put("carIntegrationAvailable", service.enabled && service.exported && metadata?.containsKey("com.google.android.gms.car.application") == true))
     }
 
     private fun connected(call: PluginCall, action: (MediaController) -> Unit) {
@@ -149,6 +163,7 @@ class AvidPlaybackPlugin : Plugin() {
                 else -> "paused"
             })
             put("error", player.playerError?.message ?: "")
+            put("recoveryError", AvidPlaybackJournal.recoveryError ?: "")
             put("ended", player.playbackState == Player.STATE_ENDED)
             put("updatedAt", playbackTimestamp())
         }

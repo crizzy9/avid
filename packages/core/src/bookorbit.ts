@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import type { Annotation, Book, BookFile, BookOrbitReadStatus, Collection, ReadingAnchor, ReadingSession, ServerProfile, Session } from './types';
+import { bookOrbitTextProgress, koreaderRestoreAnchor, parseKoreaderCheckpoint, KoreaderContractError, type KoreaderCheckpoint, type KoreaderFileIdentity } from './koreader';
+import { mediaOverlayPath, mediaOverlayPlaylistSchema, type MediaOverlayPlaylist } from './media-overlay';
+import { boundedBlob } from './boundedBlob';
 
 /** Contract inspected at BookOrbit v3.3.0 / e767358443419253eeed782518d6fc4f675d69fd. */
 export const BOOKORBIT_CONTRACT_VERSION = '3.3.0';
@@ -33,7 +36,6 @@ const seriesSchema=z.object({id:numericId,name:z.string(),bookCount:z.number().i
 export type SeriesSummary=z.infer<typeof seriesSchema>;
 export interface SeriesPage {items:SeriesSummary[];total:number;page:number;size:number;}
 const authSchema = z.object({accessToken: z.string().min(1), refreshToken: z.string().optional(), user: z.object({id: numericId, username: z.string()})});
-const progressSchema = z.object({percentage: z.number(), cfi: z.string().nullable().optional(), pageNumber: z.number().nullable().optional(), positionSeconds: z.number().nullable().optional(), textUpdatedAt: z.string().nullable().optional(), updatedAt: z.string().nullable().optional(), currentFileId: numericId.optional()}).passthrough();
 const annotationSchema = z.object({id: numericId, bookId: numericId, jumpFileId: numericId.nullable().optional(), cfi: z.string().nullable().optional(), pdf: z.unknown().optional(), text: z.string(), note: z.string().nullable(), color: z.string(), createdAt: z.string(), updatedAt: z.string().nullable().optional()}).passthrough();
 const audioStateSchema=z.object({assetId:z.string(),positionMs:z.number().int().nonnegative(),percentage:z.number().min(0).max(100),completed:z.boolean(),capturedAt:z.string(),revision:z.number().int(),manifestRevision:z.string()});
 const audioBookmarkSchema=z.object({id:z.string(),bookId:z.number(),positionMs:z.number().int().nonnegative(),chapterId:z.string().nullable(),title:z.string(),note:z.string().nullable(),createdAt:z.string(),updatedAt:z.string()});
@@ -156,12 +158,12 @@ export class BookOrbitClient {
   static async login(profile: ServerProfile, password: string, options: ClientOptions = {}): Promise<Session> {
     const transport = options.fetch ?? globalThis.fetch.bind(globalThis);
     const response = await transport(`${transportBase(profile.url,options.transportBaseUrl)}/api/v1/auth/login`, {
-      method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json'},
+      method: 'POST', credentials: options.clientKind === 'native' ? 'omit' : 'include', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({username: profile.username, password, clientKind: options.clientKind ?? 'web', deviceLabel: 'Avid'}),
     });
     if (!response.ok) throw await BookOrbitClient.responseError(response);
     const auth = parse(authSchema, await response.json(), 'authentication');
-    return {profile: {...profile, url: normalizeServerUrl(profile.url), username: auth.user.username}, accessToken: auth.accessToken, refreshToken: auth.refreshToken, userId: auth.user.id};
+    return {profile: {...profile, url: normalizeServerUrl(profile.url), username: auth.user.username}, accessToken: auth.accessToken, refreshToken: auth.refreshToken, userId: auth.user.id, clientKind: options.clientKind ?? 'web'};
   }
   static async loginOptions(url: string, options: ClientOptions = {}): Promise<LoginOptions> {
     const transport=options.fetch??globalThis.fetch.bind(globalThis);
@@ -178,10 +180,10 @@ export class BookOrbitClient {
   }
   static async exchangeOidcCode(profile:ServerProfile,callback:OidcCallback,options:ClientOptions={}):Promise<Session> {
     if(!callback.code||!callback.state||!callback.codeVerifier||!callback.nonce||!callback.redirectUri)throw new ContractError('Complete OIDC callback and PKCE state are required.');
-    const response=await(options.fetch??globalThis.fetch.bind(globalThis))(`${transportBase(profile.url,options.transportBaseUrl)}/api/v1/auth/oidc/callback`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({...callback,clientKind:options.clientKind??'web',deviceLabel:'Avid'})});
+    const response=await(options.fetch??globalThis.fetch.bind(globalThis))(`${transportBase(profile.url,options.transportBaseUrl)}/api/v1/auth/oidc/callback`,{method:'POST',credentials:options.clientKind==='native'?'omit':'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({...callback,clientKind:options.clientKind??'web',deviceLabel:'Avid'})});
     if(!response.ok)throw await BookOrbitClient.responseError(response);
     const auth=parse(authSchema.extend({mode:z.literal('login')}),await response.json(),'OIDC login');
-    return {profile:{...profile,url:normalizeServerUrl(profile.url),username:auth.user.username},userId:auth.user.id,accessToken:auth.accessToken,refreshToken:auth.refreshToken};
+    return {profile:{...profile,url:normalizeServerUrl(profile.url),username:auth.user.username},userId:auth.user.id,accessToken:auth.accessToken,refreshToken:auth.refreshToken,clientKind:options.clientKind??'web'};
   }
   private static async responseError(response: Response) {
     let detail: unknown;
@@ -194,7 +196,7 @@ export class BookOrbitClient {
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${this.session.accessToken}`);
     if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
-    const response = await this.transport(`${this.endpoint}/api/v1/${path}`, {...init, headers, credentials:'include'});
+    const response = await this.transport(`${this.endpoint}/api/v1/${path}`, {...init, headers, credentials:this.session.clientKind === 'native' ? 'omit' : 'include'});
     if (response.status === 401 && retry && path !== 'auth/refresh') {
       if (!this.refreshInFlight) this.refreshInFlight = this.refresh().finally(() => { this.refreshInFlight = undefined; });
       await this.refreshInFlight;
@@ -209,10 +211,21 @@ export class BookOrbitClient {
     return body ? JSON.parse(body) : undefined;
   }
   private async refresh(): Promise<void> {
+    if (this.session.clientKind === 'native' && !this.session.refreshToken) throw new BookOrbitError('The native session has expired. Sign in again.', 401);
     const value = await this.json('auth/refresh', {method:'POST',body:JSON.stringify(this.session.refreshToken ? {refreshToken:this.session.refreshToken} : {})});
     const result = parse(z.object({accessToken:z.string(),refreshToken:z.string().optional()}),value,'refresh');
     this.session = {...this.session, accessToken:result.accessToken, refreshToken:result.refreshToken ?? this.session.refreshToken};
     this.options.onSessionChange?.(this.session);
+  }
+  /** Verify the authenticated server identity before adopting a saved account or native player. */
+  async getCurrentUser(signal?: AbortSignal): Promise<{id:string;username:string;active:boolean}> {
+    const user = parse(z.object({id:numericId,username:z.string(),active:z.boolean()}),await this.json('auth/me',{signal}),'current user');
+    if (user.id !== this.session.userId || !user.active) throw new BookOrbitError('The saved session no longer belongs to this active account. Sign in again.', 401);
+    return user;
+  }
+  /** Revoke this server session even for read-only connections. Local credential cleanup is the caller's responsibility. */
+  async logout(signal?: AbortSignal): Promise<void> {
+    await this.response('auth/logout',{method:'POST',signal,body:JSON.stringify(this.session.refreshToken ? {refreshToken:this.session.refreshToken} : {})},false,false);
   }
   async getServerInfo(): Promise<{version:string;features:string[]}> {
     return parse(z.object({version:z.string(),features:z.array(z.string()).default([])}),await this.json('app-info'),'server info');
@@ -306,6 +319,22 @@ export class BookOrbitClient {
   streamHeaders(): Record<string,string> { return {Authorization:`Bearer ${this.session.accessToken}`}; }
   async getFileBlob(id: string, signal?: AbortSignal): Promise<Blob> { return (await this.response(`books/files/${routeId(id)}/serve`,{signal})).blob(); }
   async coverBlob(id: string, signal?: AbortSignal): Promise<Blob> { return (await this.response(`books/${routeId(id)}/cover`,{signal})).blob(); }
+  /** Read-only KOReader context. EPUB translation stays on BookOrbit; native locators remain opaque. */
+  async getKoreaderCheckpoint(identity: KoreaderFileIdentity): Promise<KoreaderCheckpoint | null> {
+    const binding = { ...identity, serverUrl: this.baseUrl, userId: this.session.userId };
+    const value = await this.json(`books/files/${routeId(identity.fileId)}/progress`);
+    try {
+      const checkpoint = parseKoreaderCheckpoint(binding, value);
+      if (!checkpoint?.nativeLocator) return checkpoint;
+      let syncInfo: unknown;
+      try { syncInfo = await this.json(`koreader/books/${routeId(identity.bookId)}/progress`); }
+      catch (error) { if (!(error instanceof BookOrbitError && [403, 404, 405].includes(error.status))) throw error; }
+      return parseKoreaderCheckpoint(binding, value, syncInfo);
+    } catch (error) {
+      if (error instanceof KoreaderContractError) throw error.reason === 'identity' ? new ProgressConflictError(error.message) : new ContractError(error.message);
+      throw error;
+    }
+  }
   async getProgress(identity: Pick<ReadingAnchor,'bookId'|'fileId'|'kind'>): Promise<ReadingAnchor | null> {
     if(identity.kind==='audio') {
       const state=await this.getAudioPlaybackState(identity.bookId);
@@ -317,13 +346,10 @@ export class BookOrbitClient {
       const position=audioPosition(manifest,{fileId:String(asset.fileId),locator:JSON.stringify({version:1,trackId:String(asset.fileId),trackTime:state.positionMs/1000})});
       return {...identity,locator:JSON.stringify({version:1,trackId:String(asset.fileId),trackTime:state.positionMs/1000,time:position.time,manifestRevision:manifest.revision}),progress:state.percentage/100,updatedAt:state.capturedAt};
     }
-    const value = await this.json(`books/files/${routeId(identity.fileId)}/progress`);
-    if (value === null) return null;
-    const p = parse(progressSchema,value,'progress');
-    if(p.currentFileId&&p.currentFileId!==identity.fileId)throw new ProgressConflictError('The saved reading position belongs to a different source file.');
-    const locator = identity.kind==='epub' ? p.cfi : p.pageNumber;
-    if (locator == null) return null;
-    return {...identity,fileId:p.currentFileId ?? identity.fileId,locator:String(locator),progress:p.percentage/100,updatedAt:p.textUpdatedAt ?? p.updatedAt ?? ''};
+    const checkpoint = await this.getKoreaderCheckpoint({ ...identity, kind: identity.kind });
+    if (!checkpoint) return null;
+    try { return koreaderRestoreAnchor(checkpoint, { ...identity, kind: identity.kind, serverUrl: this.baseUrl, userId: this.session.userId }); }
+    catch (error) { if (error instanceof KoreaderContractError) throw new ProgressConflictError(error.message); throw error; }
   }
   async saveProgress(anchor: ReadingAnchor, options:{operationId?:string}={}): Promise<void> {
     if(this.readOnly) throw new ReadOnlyError();
@@ -345,8 +371,9 @@ export class BookOrbitClient {
         await this.saveAudioPlaybackState(anchor.bookId,{assetId:position.asset.assetId,positionMs:position.positionMs,capturedAt:anchor.updatedAt,operationId:options.operationId??crypto.randomUUID(),baseRevision:state?.revision??0,manifestRevision:manifest.revision});
       } catch(error) { if(error instanceof BookOrbitError&&[409,412].includes(error.status)) throw new ProgressConflictError('The audiobook state or edition changed during synchronization.');throw error; }
     } else {
-      const body = anchor.kind==='epub' ? {percentage,cfi:anchor.locator} : {percentage,pageNumber:Number(anchor.locator)};
-      if ('pageNumber' in body && (!Number.isInteger(body.pageNumber)||Number(body.pageNumber)<0)) throw new ContractError('Page locator must be a nonnegative integer.');
+      let body: ReturnType<typeof bookOrbitTextProgress>;
+      try { body = bookOrbitTextProgress(anchor, { bookId: anchor.bookId, fileId: anchor.fileId, kind: anchor.kind, serverUrl: this.baseUrl, userId: this.session.userId }); }
+      catch (error) { if (error instanceof KoreaderContractError) throw error.reason === 'identity' ? new ProgressConflictError(error.message) : new ContractError(error.message); throw error; }
       await this.json(`books/files/${routeId(anchor.fileId)}/progress`,{method:'POST',body:JSON.stringify(body)},true);
     }
   }
@@ -431,6 +458,16 @@ export class BookOrbitClient {
     const chapter=z.object({id:z.string(),title:z.string(),assetId:z.string(),sequence:z.number(),startMs:z.number(),endMs:z.number(),assetOffsetMs:z.number()});
     return parse(z.object({schema:z.literal('bookorbit.audiobook-manifest'),schemaVersion:z.literal(2),revision:z.string(),assets:z.array(asset),chapters:z.array(chapter),totalDurationMs:z.number()}),await this.json(`audiobooks/${routeId(bookId)}/manifest`),'audiobook manifest');
   }
+  /** Explicit file selection prevents the server's primary-file fallback from linking another edition. */
+  async getMediaOverlayPlaylist(bookId:string,fileId:string):Promise<MediaOverlayPlaylist> {
+    const value=parse(mediaOverlayPlaylistSchema,await this.json(`epub/${routeId(bookId)}/media-overlay?fileId=${routeId(fileId)}`),'EPUB media-overlay playlist');
+    if(String(value.bookId)!==bookId||String(value.fileId)!==fileId)throw new ProgressConflictError('The narration playlist belongs to a different book or EPUB file.');
+    return value;
+  }
+  mediaOverlayResourceUrl(bookId:string,fileId:string,href:string):string {
+    const path=mediaOverlayPath(href).split('/').map(encodeURIComponent).join('/');
+    return `${this.endpoint}/api/v1/epub/${routeId(bookId)}/media-overlay/file/${path}?fileId=${routeId(fileId)}`;
+  }
   /** Streaming source for PlaybackController: cookie/proxy URLs, never complete audiobook blobs. */
   async getPlaybackSource(book:Book):Promise<PlaybackSource> {
     const manifest=await this.getAudioManifest(book.id),assets=orderedAssets(manifest);
@@ -441,6 +478,13 @@ export class BookOrbitClient {
       chapters:[...manifest.chapters].sort((a,b)=>a.sequence-b.sequence).map(chapter=>({id:chapter.id,title:chapter.title,start:chapter.startMs/1000,duration:(chapter.endMs-chapter.startMs)/1000})),};
   }
   audioAssetUrl(bookId:string,assetId:string):string { return `${this.endpoint}/api/v1/audiobooks/${routeId(bookId)}/assets/${encodeURIComponent(assetId)}/content`; }
+  /** Explicit alignment verification only; normal playback continues to stream. */
+  async getAudioAssetBlob(bookId:string,assetId:string,options:{signal?:AbortSignal;maxBytes?:number}={}):Promise<Blob> {
+    const maxBytes=options.maxBytes??64*1024*1024;
+    if(!assetId||!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>64*1024*1024)throw new ContractError('Audio verification accepts complete assets up to 64 MiB.');
+    options.signal?.throwIfAborted();
+    return boundedBlob(await this.response(`audiobooks/${routeId(bookId)}/assets/${encodeURIComponent(assetId)}/content`,{signal:options.signal}),maxBytes,options.signal);
+  }
   async getAudioPlaybackState(bookId:string):Promise<AudioPlaybackState|null> { return parse(audioStateSchema.nullable(),await this.json(`audiobooks/${routeId(bookId)}/playback-state`),'audio state'); }
   async saveAudioPlaybackState(bookId:string,state:AudioPlaybackWrite):Promise<AudioPlaybackState> { return parse(audioStateSchema,await this.json(`audiobooks/${routeId(bookId)}/playback-state`,{method:'PUT',body:JSON.stringify(state)},true),'audio state'); }
   async getAudioBookmarks(bookId:string):Promise<AudioBookmark[]> { return parse(z.array(audioBookmarkSchema),await this.json(`audiobooks/${routeId(bookId)}/bookmarks`),'audio bookmarks'); }

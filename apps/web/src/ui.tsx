@@ -1,5 +1,5 @@
 import { useI18n } from "../../../packages/i18n/src";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X, BookOpen, Headphones, ChevronRight } from "lucide-react";
 import type { Book } from "../../../packages/core/src/types";
 import { useBookCover } from "./CoverContext";
@@ -59,6 +59,16 @@ export function Cover({
 }) {
   const { t, locale, setLocale } = useI18n();
   const { ref, url } = useBookCover(book);
+  const [failedUrl, setFailedUrl] = useState<string>();
+  const channels = /^#[0-9a-f]{6}$/i.test(book.color)
+    ? [1, 3, 5].map(
+        (i) => Number.parseInt(book.color.slice(i, i + 2), 16) / 255,
+      )
+    : [0, 0, 0];
+  const luminance = channels
+    .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+    .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+  const fallbackInk = luminance > 0.179 ? "#000000" : "#ffffff";
 
   return (
     <div
@@ -66,18 +76,16 @@ export function Cover({
       className={`cover ${large ? "large" : ""}`}
       style={{ background: book.color }}
     >
-      {url ? (
+      {url && failedUrl !== url ? (
         <img
           key={url}
           src={url}
           alt=""
           loading={large ? "eager" : "lazy"}
-          onError={(e) => {
-            e.currentTarget.style.visibility = "hidden";
-          }}
+          onError={() => setFailedUrl(url)}
         />
       ) : (
-        <div className="cover-fallback">
+        <div className="cover-fallback" style={{ color: fallbackInk }}>
           <span>{book.title}</span>
           <BookOpen size={45} />
           <small>{book.authors.join(", ")}</small>

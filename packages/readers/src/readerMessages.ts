@@ -1,6 +1,17 @@
 /** English, Finnish, French, German, Polish, Simplified Chinese, Spanish. */
 type Translations = readonly [string, string, string, string, string, string, string];
 export const readerMessages = {
+  mangaKeywordsLimit: ['Use at most 100 manga keywords, each up to 80 characters.','Käytä enintään 100 mangan avainsanaa, kussakin enintään 80 merkkiä.','Utilisez au maximum 100 mots-clés manga de 80 caractères chacun.','Verwende höchstens 100 Manga-Schlüsselwörter mit jeweils bis zu 80 Zeichen.','Użyj maksymalnie 100 słów kluczowych mangi, każde do 80 znaków.','最多使用 100 个日式漫画关键词，每个不超过 80 个字符。','Usa un máximo de 100 palabras clave de manga, de hasta 80 caracteres cada una.'],
+  preferenceSaveFailed: ['Could not save this preference.','Asetusta ei voitu tallentaa.','Impossible d’enregistrer cette préférence.','Diese Einstellung konnte nicht gespeichert werden.','Nie udało się zapisać tego ustawienia.','无法保存此偏好设置。','No se pudo guardar esta preferencia.'],
+  automaticDirection: ['Automatic','Automaattinen','Automatique','Automatisch','Automatycznie','自动','Automático'],
+  mangaRtl: ['Manga (right to left)','Manga (oikealta vasemmalle)','Manga (de droite à gauche)','Manga (rechts nach links)','Manga (od prawej do lewej)','日式漫画（从右到左）','Manga (de derecha a izquierda)'],
+  comicLtr: ['Comic (left to right)','Sarjakuva (vasemmalta oikealle)','BD (de gauche à droite)','Comic (links nach rechts)','Komiks (od lewej do prawej)','漫画（从左到右）','Cómic (de izquierda a derecha)'],
+  mangaKeywords: ['Manga keywords, separated by commas','Mangan avainsanat pilkuin erotettuina','Mots-clés manga, séparés par des virgules','Manga-Schlüsselwörter, durch Kommas getrennt','Słowa kluczowe mangi, oddzielone przecinkami','日式漫画关键词（用逗号分隔）','Palabras clave de manga, separadas por comas'],
+  matchMangaFields: ['Match keywords in','Etsi avainsanat kentistä','Rechercher les mots-clés dans','Schlüsselwörter suchen in','Szukaj słów kluczowych w','匹配关键词的字段','Buscar palabras clave en'],
+  genresField: ['Genres','Lajityypit','Genres','Genres','Gatunki','类型','Géneros'],
+  titleField: ['Title','Nimi','Titre','Titel','Tytuł','书名','Título'],
+  seriesField: ['Series','Sarja','Série','Reihe','Seria','系列','Serie'],
+  mangaRuleHint: ['Automatic uses these account preferences without case sensitivity. An explicit direction applies only to this title.','Automaattinen tila käyttää tilin asetuksia kirjainkoosta riippumatta. Valittu suunta koskee vain tätä kirjaa.','Le mode automatique utilise ces préférences du compte sans tenir compte de la casse. Une direction explicite s’applique uniquement à ce titre.','Automatisch verwendet diese Kontoeinstellungen ohne Beachtung der Groß- und Kleinschreibung. Eine feste Richtung gilt nur für diesen Titel.','Tryb automatyczny używa tych ustawień konta bez rozróżniania wielkości liter. Wybrany kierunek dotyczy tylko tego tytułu.','自动模式使用这些账户偏好设置，不区分大小写。手动指定的阅读方向仅适用于本书。','El modo automático usa estas preferencias de la cuenta sin distinguir mayúsculas. Una dirección explícita solo se aplica a este título.'],
   opening: ['Opening your book…','Avataan kirjaa…','Ouverture du livre…','Buch wird geöffnet…','Otwieranie książki…','正在打开图书…','Abriendo el libro…'],
   reading: ['Reading','Luetaan','Lecture','Lesen','Czytanie','阅读中','Leyendo'],
   readingTitle: ['Reading {title}','Luetaan: {title}','Lecture de {title}','Lesen: {title}','Czytanie: {title}','正在阅读《{title}》','Leyendo {title}'],

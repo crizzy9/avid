@@ -218,7 +218,7 @@ blockquote {
   padding: 11px 18px;
   font-size: 13px;
   border-radius: 28px;
-  color: #746e64;
+  color: var(--muted);
   transition: background 0.15s;
 }
 .main-nav button svg {
@@ -447,7 +447,7 @@ blockquote {
 .hero-kicker {
   font-family: var(--serif);
   font-style: italic;
-  color: #7d7060;
+  color: #645b50;
   font-size: 16px;
   margin: 0 0 8px;
 }
@@ -458,13 +458,13 @@ blockquote {
 }
 .hero-author {
   font-size: 13px;
-  color: #7b6c5b;
+  color: #645b50;
   margin: 0 0 17px;
 }
 .hero-description {
   font-size: 12px;
   line-height: 1.65;
-  color: #807667;
+  color: #645b50;
   max-width: 515px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -476,7 +476,7 @@ blockquote {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #8d7a65;
+  color: #645b50;
   font-size: 10px;
   margin-bottom: 18px;
 }
@@ -611,7 +611,7 @@ blockquote {
   position: absolute;
   bottom: 9px;
   right: 7px;
-  background: #0004;
+  background: #000b;
   border: 1px solid #fff2;
   border-radius: 4px;
   color: white;
@@ -2889,3 +2889,12 @@ blockquote {
   margin: 28px 0;
   font-size: 13px;
 }
+
+.alignment-controls { width: 100%; max-height: 35vh; overflow: auto; font-size: 13px; line-height: 1.5; }
+.alignment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.alignment-controls p { margin: 10px 0 0; max-width: 80ch; }
+.alignment-pairings { display: grid; gap: 12px; padding-bottom: 8px; }
+.alignment-pairings label { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.alignment-pairings select { max-width: 100%; width: min(100%, 640px); padding: 8px; }
+.alignment-pairings button { justify-self: start; }
+.alignment-controls [role="alert"] { font-weight: 600; }

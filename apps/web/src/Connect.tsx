@@ -1,5 +1,5 @@
 import { useI18n } from "../../../packages/i18n/src";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   BookOpen,
   Server,
@@ -9,11 +9,14 @@ import {
 } from "lucide-react";
 import { BookOrbitClient } from "../../../packages/core/src/bookorbit";
 import type { Session } from "../../../packages/core/src/types";
+import { ProviderSignIn } from "./ProviderSignIn";
 
 export function Connect({
   onConnect,
+  onAttempt,
 }: {
   onConnect: (session: Session, readOnly: boolean) => Promise<void>;
+  onAttempt?: () => void;
 }) {
   const { t, locale, setLocale } = useI18n();
 
@@ -23,8 +26,20 @@ export function Connect({
   const [readOnly, setReadOnly] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const mounted = useRef(false),
+    attempt = useRef(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      attempt.current++;
+    };
+  }, []);
   async function submit(e: FormEvent) {
     e.preventDefault();
+    const current = ++attempt.current;
+    const active = () => mounted.current && current === attempt.current;
+    onAttempt?.();
     setBusy(true);
     setError("");
     try {
@@ -40,18 +55,20 @@ export function Connect({
         fetch: bookOrbitFetch,
         transportBaseUrl: proxyBaseFor(serverUrl),
       });
+      if (!active()) return;
       setPassword("");
       await onConnect(session, readOnly);
     } catch (err) {
-      setError(
-        err instanceof TypeError
-          ? t("connect.unreachable")
-          : err instanceof Error
-            ? err.message
-            : t("connect.failed"),
-      );
+      if (active())
+        setError(
+          err instanceof TypeError
+            ? t("connect.unreachable")
+            : err instanceof Error
+              ? err.message
+              : t("connect.failed"),
+        );
     } finally {
-      setBusy(false);
+      if (active()) setBusy(false);
     }
   }
   return (
@@ -72,6 +89,7 @@ export function Connect({
             autoComplete="url"
             placeholder="https://books.example.com"
             value={url}
+            disabled={busy}
             onChange={(e) => setUrl(e.target.value)}
           />
         </div>
@@ -82,6 +100,7 @@ export function Connect({
           required
           autoComplete="username"
           value={username}
+          disabled={busy}
           onChange={(e) => setUsername(e.target.value)}
           placeholder={t("connect.usernameHint")}
         />
@@ -93,6 +112,7 @@ export function Connect({
           type="password"
           autoComplete="current-password"
           value={password}
+          disabled={busy}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={t("connect.passwordHint")}
         />
@@ -101,6 +121,7 @@ export function Connect({
         <input
           type="checkbox"
           checked={readOnly}
+          disabled={busy}
           onChange={(e) => setReadOnly(e.target.checked)}
         />{" "}
         {t("connect.readOnly")}
@@ -123,6 +144,12 @@ export function Connect({
         )}{" "}
         {busy ? t("connect.busy") : t("connect.button")}
       </button>
+      <ProviderSignIn
+        serverUrl={url}
+        readOnly={readOnly}
+        disabled={busy}
+        onAttempt={onAttempt}
+      />
       <p className="privacy-note">
         <ShieldCheck size={15} />
         {t("connect.privacy")}

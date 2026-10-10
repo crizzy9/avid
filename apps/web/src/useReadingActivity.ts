@@ -49,6 +49,7 @@ export function useReadingActivity(
     }
     const tracker = new ActivitySessionTracker(record, {
       journal,
+      readOnly: options.readOnly !== false,
       onError: (error) => onError.current?.(error.message),
     });
     let kind: ReadingSession["kind"] = "reading";
@@ -95,7 +96,7 @@ export function useReadingActivity(
       sample(true, true);
       changeKind.current = null;
     };
-  }, [identity, record, options.accountScope, interval]);
+  }, [identity, record, options.accountScope, options.readOnly, interval]);
   return useCallback(
     (kind: ReadingSession["kind"]) => changeKind.current?.(kind),
     [],

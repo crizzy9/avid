@@ -28,6 +28,9 @@ internal object JournalPlaybackTiming {
 
 /** Durable playback metadata. Neither media URLs nor credentials enter this journal. */
 object AvidPlaybackJournal {
+    /** Sticky until a durable insertion succeeds; a no-op sample must not hide lost durability. */
+    @Volatile var recoveryError: String? = null
+        private set
     private var helper: Store? = null
     private var previous: Sample? = null
     private var activity: Activity? = null
@@ -67,7 +70,13 @@ object AvidPlaybackJournal {
             put("id", id); put("account_scope", source.scope); put("book_id", source.bookId); put("file_id", source.fileId)
             put("event_type", type); put("created_at", createdAt); put("payload", payload.toString()); put("read_only", if (source.readOnly) 1 else 0)
         }
-        database().insertOrThrow("events", null, values)
+        try {
+            database().insertOrThrow("events", null, values)
+            recoveryError = null
+        } catch (error: Exception) {
+            recoveryError = "Playback continues, but progress and listening time could not be saved on this device. Keep Avid open until storage recovers."
+            throw error
+        }
     }
     private fun readSample(value: JSONObject): Sample? {
         val scope = value.optString("accountScope"); val book = value.optString("bookId"); val file = value.optString("fileId")

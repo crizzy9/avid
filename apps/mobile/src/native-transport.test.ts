@@ -10,6 +10,7 @@ function setup() {
   const operations: string[] = [];
   const remove = vi.fn(async () => {});
   const plugin: NativePlaybackPlugin = {
+    capabilities: vi.fn(async () => ({ backgroundAudioAvailable: true, systemMediaControlsAvailable: true, carIntegrationAvailable: false })),
     load: vi.fn(async () => { operations.push('load'); }),
     play: vi.fn(async () => { operations.push('play'); state = { ...state, playing: true, status: 'playing' }; }),
     pause: vi.fn(async () => { state = { ...state, playing: false, status: 'paused' }; }),
@@ -26,6 +27,14 @@ afterEach(() => { transports.splice(0).forEach(value => value.destroy()); vi.use
 const drain = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 
 describe('native authoritative playback transport', () => {
+  it('shows a durable recovery warning without reporting playing audio as failed, then clears on recovery', async () => {
+    const { transport, emit } = setup(); transports.push(transport);
+    transport.load(book); await transport.play();
+    emit({ recoveryError: 'Progress could not be saved.', status: 'playing', playing: true, updatedAt: new Date(2000).toISOString() });
+    expect(transport.getSnapshot()).toMatchObject({ status: 'playing', error: 'Progress could not be saved.' });
+    emit({ recoveryError: '', updatedAt: new Date(3000).toISOString() });
+    expect(transport.getSnapshot()).toMatchObject({ status: 'playing', error: null });
+  });
   it('serializes native load then play and uses source snapshots for seek/chapter/checkpoints', async () => {
     const { transport, operations, emit, plugin } = setup(); transports.push(transport);
     const checkpoint = vi.fn(); transport.onCheckpoint(checkpoint);

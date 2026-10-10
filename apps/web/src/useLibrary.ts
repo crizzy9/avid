@@ -19,6 +19,8 @@ import type {
 import { demoBooks, demoCollections } from "./fixtures";
 import { bookOrbitFetch, proxyBaseFor } from "./Connect";
 import { BookCoverCache } from "./coverCache";
+import { getNativeJournal } from "../../mobile/src/native-journal";
+import { commitNativeEvents, replayNativeJournal } from "./nativeJournalReplay";
 
 const db = new AvidDatabase();
 const demoSession: Session = {
@@ -39,7 +41,11 @@ const message = (error: unknown, fallback: string) =>
 const serverResource = (id: string) =>
   /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id) > 0;
 
-export function useLibrary() {
+export function useLibrary(options: { onSessionChange?: (session: Session, readOnly: boolean, isActive: () => boolean) => void } = {}) {
+  const [nativeJournal] = useState(getNativeJournal);
+  const recoveryFlight = useRef<{repo: LibraryRepository; client: BookOrbitClient; promise: Promise<void>} | null>(null);
+  const callbacks = useRef(options);
+  callbacks.current = options;
   const [client, setClient] = useState<BookOrbitClient | null>(null);
   const [repo, setRepo] = useState(
     () => new LibraryRepository(db, demoSession),
@@ -58,6 +64,7 @@ export function useLibrary() {
   const queryAttempt = useRef(0);
   const queryAbort = useRef<AbortController | null>(null);
   const annotationRead = useRef(0);
+  const activityRead = useRef(0);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [coverCache, setCoverCache] = useState<BookCoverCache | null>(null);
   const coverStore = useRef<BookCoverCache | null>(null);
@@ -95,6 +102,7 @@ export function useLibrary() {
   useEffect(() => {
     let active = true;
     const notesRead = ++annotationRead.current;
+    const sessionsRead = ++activityRead.current;
     Promise.all([
       repo.getBooks(),
       repo.getAnnotations(),
@@ -112,7 +120,7 @@ export function useLibrary() {
           setTotal(saved.length || demoBooks.length);
         }
         if (notesRead === annotationRead.current) setAnnotations(notes);
-        setSessions(activity);
+        if (sessionsRead === activityRead.current) setSessions(activity);
       })
       .catch((cause) => {
         if (active && isCurrent(repo, client))
@@ -154,21 +162,27 @@ export function useLibrary() {
   }, []);
 
   const connect = useCallback(
-    async (session: Session, readOnly: boolean) => {
+    async (session: Session, readOnly: boolean, isActive: () => boolean = () => true) => {
+      if (!isActive()) return;
       const attempt = ++connectionAttempt.current;
-      const nextClient = new BookOrbitClient(session, {
+      const active = () => mounted.current && attempt === connectionAttempt.current && isActive();
+      const nextRepo = new LibraryRepository(db, session);
+      const nextClient: BookOrbitClient = new BookOrbitClient(session, {
         readOnly,
         fetch: bookOrbitFetch,
         transportBaseUrl: proxyBaseFor(session.profile.url),
+        onSessionChange: (updated) => {
+          const current = () => isCurrent(nextRepo, nextClient);
+          if (current()) callbacks.current.onSessionChange?.(updated, readOnly, current);
+        },
       });
-      const nextRepo = new LibraryRepository(db, session);
       const [page, shelves, notes, activity] = await Promise.all([
         nextClient.listBooks({ size: 48 }),
         nextClient.listCollections(),
         nextRepo.getAnnotations(),
         nextRepo.getSessions(),
       ]);
-      if (!mounted.current || attempt !== connectionAttempt.current) return;
+      if (!active()) return;
       try {
         const info = await nextClient.getServerInfo();
         // Discovery may refresh the token; preserve that newer session.
@@ -179,17 +193,19 @@ export function useLibrary() {
       } catch {
         /* Older servers may not expose version discovery. */
       }
-      if (!mounted.current || attempt !== connectionAttempt.current) return;
+      if (!active()) return;
       await Promise.all([
         nextRepo.putBooks(page.items),
         nextRepo.putCollections(shelves),
       ]);
-      if (!mounted.current || attempt !== connectionAttempt.current) return;
+      if (!active()) return;
       queryAttempt.current++;
       queryAbort.current?.abort();
       clearMedia();
       localProgress.current.clear();
       context.current = { repo: nextRepo, client: nextClient };
+      activityRead.current++;
+      callbacks.current.onSessionChange?.(nextClient.session, readOnly, () => isCurrent(nextRepo, nextClient));
       const nextCovers = new BookCoverCache((id, signal) =>
         nextClient.coverBlob(id, signal),
       );
@@ -206,7 +222,7 @@ export function useLibrary() {
       setLoading(false);
       setSyncStatus(readOnly ? "Read-only server" : "Connected");
     },
-    [clearMedia, presentPage],
+    [clearMedia, presentPage, isCurrent],
   );
   const disconnect = useCallback(() => {
     connectionAttempt.current++;
@@ -216,6 +232,7 @@ export function useLibrary() {
     localProgress.current.clear();
     const nextRepo = new LibraryRepository(db, demoSession);
     context.current = { repo: nextRepo, client: null };
+    activityRead.current++;
     setCoverCache(null);
     setClient(null);
     setRepo(nextRepo);
@@ -341,6 +358,48 @@ export function useLibrary() {
       retryTimer.current = null;
     };
   }, [client, flush]);
+  const recoverNative = useCallback((): Promise<void> => {
+    if (!nativeJournal || !client || !isCurrent(repo, client)) return Promise.resolve();
+    if (recoveryFlight.current?.repo === repo && recoveryFlight.current.client === client) return recoveryFlight.current.promise;
+    const active = () => isCurrent(repo, client);
+    const promise = (async () => {
+      let recovered = 0;
+      for (let page = 0; page < 10 && active(); page++) {
+        const count = await replayNativeJournal(nativeJournal, repo, client.readOnly, active);
+        recovered += count;
+        if (count < 200) break;
+      }
+      if (!recovered || !active()) return;
+      const sessionsRead = ++activityRead.current;
+      const [anchors, activity] = await Promise.all([repo.getAnchors(), repo.getSessions()]);
+      if (!active()) return;
+      for (const anchor of anchors) {
+        const previous = localProgress.current.get(anchor.bookId);
+        if (!previous || Date.parse(anchor.updatedAt) > Date.parse(previous.updatedAt)) localProgress.current.set(anchor.bookId, anchor);
+      }
+      setBooks(previous => previous.map(book => {
+        const anchor = localProgress.current.get(book.id);
+        return anchor ? {...book, progress: anchor.progress, status: anchor.progress >= .995 ? "finished" : "reading"} : book;
+      }));
+      if (sessionsRead === activityRead.current) setSessions(activity);
+      await flush();
+    })();
+    recoveryFlight.current = {repo, client, promise};
+    void promise.finally(() => { if (recoveryFlight.current?.promise === promise) recoveryFlight.current = null; }).catch(() => {});
+    return promise;
+  }, [nativeJournal, repo, client, isCurrent, flush]);
+  useEffect(() => {
+    if (!nativeJournal || !client) return;
+    const recover = () => { void recoverNative().catch(() => {
+      if (isCurrent(repo, client)) setError("Native reading history is still stored safely, but could not be recovered yet.");
+    }); };
+    const visible = () => { if (!document.hidden) recover(); };
+    recover();
+    const timer = setInterval(recover, 15_000);
+    window.addEventListener("online", recover);
+    document.addEventListener("visibilitychange", visible);
+    return () => { clearInterval(timer); window.removeEventListener("online", recover); document.removeEventListener("visibilitychange", visible); };
+  }, [nativeJournal, client, repo, recoverNative, isCurrent]);
   const localOnly = useCallback(
     (bookId: string, fileId: string) =>
       !client ||
@@ -352,9 +411,22 @@ export function useLibrary() {
   const saveAnchor = useCallback(
     async (anchor: ReadingAnchor) => {
       try {
-        await repo.checkpoint(anchor, {
-          readOnly: localOnly(anchor.bookId, anchor.fileId),
-        });
+        let nativeRecord: { id: string; readOnly: boolean } | undefined;
+        if (nativeJournal && client && anchor.kind !== "audio" && isCurrent(repo, client)) {
+          try {
+            nativeRecord = await nativeJournal.recordProgress({accountScope: repo.scope, anchor, readOnly: localOnly(anchor.bookId, anchor.fileId)});
+          } catch {
+            if (isCurrent(repo, client)) setError("This position is saved in the interface, but native recovery storage is unavailable.");
+          }
+        }
+        if (nativeRecord) {
+          await commitNativeEvents(repo, [{id:nativeRecord.id, accountScope:repo.scope, bookId:anchor.bookId, fileId:anchor.fileId,
+            type:"progress", createdAt:anchor.updatedAt, readOnly:nativeRecord.readOnly, payload:anchor}], localOnly(anchor.bookId, anchor.fileId));
+          // A lost acknowledgement remains safe: the atomic receipt prevents another outbox write.
+          await nativeJournal!.ack({accountScope:repo.scope, ids:[nativeRecord.id]}).catch(() => {});
+        } else {
+          await repo.checkpoint(anchor, { readOnly: localOnly(anchor.bookId, anchor.fileId) });
+        }
         const stored = await repo.getAnchor(anchor);
         if (!stored || !isCurrent(repo, client)) return;
         const current = localProgress.current.get(anchor.bookId);
@@ -381,7 +453,7 @@ export function useLibrary() {
           setError(message(cause, "Position could not be saved."));
       }
     },
-    [repo, client, localOnly, isCurrent, flush],
+    [repo, client, localOnly, isCurrent, flush, nativeJournal],
   );
   const refreshAnnotations = useCallback(async () => {
     if (!isCurrent(repo, client)) return;
@@ -404,15 +476,17 @@ export function useLibrary() {
     async (
       activity: ReadingSession,
       fileId: string,
-      options?: { endedAt: string },
+      options?: { endedAt: string; readOnly?: boolean },
     ) => {
       await repo.recordSession(activity, fileId, {
-        readOnly: localOnly(activity.bookId, fileId),
+        readOnly: localOnly(activity.bookId, fileId) || options?.readOnly === true,
         endedAt: options?.endedAt,
       });
+      if (!isCurrent(repo, client)) return;
+      const sessionsRead = ++activityRead.current;
       const activityRows = await repo.getSessions();
       if (!isCurrent(repo, client)) return;
-      setSessions(activityRows);
+      if (sessionsRead === activityRead.current) setSessions(activityRows);
       await flush();
     },
     [repo, client, localOnly, isCurrent, flush],
@@ -476,5 +550,6 @@ export function useLibrary() {
     saveCollections,
     createCollection,
     refreshAnnotations,
+    recoverNative,
   };
 }

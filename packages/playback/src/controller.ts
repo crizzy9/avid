@@ -23,6 +23,7 @@ export class PlaybackController {
   private wantPlayback = false;
   private disposed = false;
   private generation = 0;
+  private declaredDurations = new Map<string, number>();
 
   constructor(options: PlaybackOptions = {}) {
     this.options = options;
@@ -83,7 +84,8 @@ export class PlaybackController {
     this.wantPlayback = false;
     this.audio.pause();
     this.setSleepTimer(null);
-    this.book = { ...book, tracks: book.tracks.map(track => ({ ...track })), chapters: book.chapters?.map(chapter => ({ ...chapter })) };
+    this.declaredDurations = new Map(book.tracks.flatMap(track => track.duration === undefined ? [] : [[track.id, track.duration]]));
+    this.book = { ...book, tracks: book.tracks.map(({ decodedDuration: _observation, ...track }) => ({ ...track })), chapters: book.chapters?.map(chapter => ({ ...chapter })) };
     const duration = this.totalDuration();
     const time = clamp(position, 0, duration || Infinity);
     const target = trackAtTime(this.book.tracks, time);
@@ -245,7 +247,12 @@ export class PlaybackController {
   }
   private updateDuration(): void {
     if (!this.book || !Number.isFinite(this.audio.duration) || this.audio.duration <= 0) return;
-    this.book.tracks[this.snapshot.trackIndex]!.duration = this.audio.duration;
+    const track = this.book.tracks[this.snapshot.trackIndex]!;
+    track.decodedDuration = this.audio.duration;
+    // A manifest duration defines every subsequent track offset. Decoder rounding,
+    // container padding or delayed metadata must never silently shift that timeline.
+    // Only initially unknown durations may be discovered/refined by the decoder.
+    if (!this.declaredDurations.has(track.id)) track.duration = this.audio.duration;
     this.update({ duration: this.totalDuration() });
   }
   private totalDuration(): number {

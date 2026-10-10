@@ -12,7 +12,7 @@ export interface Book {
   files: BookFile[]; chapters?: AudioChapter[];
 }
 export interface ServerProfile { id: string; name: string; url: string; username?: string; version?: string }
-export interface Session { profile: ServerProfile; accessToken: string; refreshToken?: string; userId: string }
+export interface Session { profile: ServerProfile; accessToken: string; refreshToken?: string; userId: string; clientKind?: 'web' | 'native' }
 export interface ReadingAnchor { bookId: string; fileId: string; kind: 'epub' | 'pdf' | 'comic' | 'audio'; locator: string; progress: number; updatedAt: string }
 export interface Annotation { id: string; bookId: string; fileId: string; kind: 'highlight' | 'note' | 'audio'; quote: string; text: string; color: string; locator: string; createdAt: string; updatedAt: string; deleted?: boolean }
 export interface Collection { id: string; name: string; bookIds: string[] }

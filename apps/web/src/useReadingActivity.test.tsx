@@ -28,14 +28,17 @@ const reader = { book: { id: "book" }, file: { id: "file" } };
 function Subject({
   identity = reader,
   scope = "a",
+  readOnly = true,
   record,
 }: {
   identity?: typeof reader | null;
   scope?: string;
+  readOnly?: boolean;
   record: RecordPlaybackActivity;
 }) {
   useReadingActivity(identity, record, {
     accountScope: scope,
+    readOnly,
     flushIntervalMs: 5000,
   });
   return null;
@@ -92,5 +95,21 @@ describe("visible reading activity", () => {
       bookId: "new",
       duration: 5,
     });
+  });
+  it("keeps failed read-only reading chunks local across a writable mode change", async () => {
+    const failed = vi.fn().mockRejectedValue(new Error("Storage unavailable"));
+    await act(async () => root.render(<Subject record={failed} readOnly />));
+    await act(async () => vi.advanceTimersByTime(5000));
+    const recovered = vi.fn().mockResolvedValue(undefined);
+    await act(async () =>
+      root.render(<Subject record={recovered} readOnly={false} />),
+    );
+    expect(recovered.mock.calls[0][2].readOnly).toBe(true);
+    expect(recovered.mock.calls[0][0].id).toBe(failed.mock.calls[0][0].id);
+    await act(async () => vi.advanceTimersByTime(5000));
+    const writable = recovered.mock.calls.filter((call) => !call[2].readOnly);
+    expect(writable).toHaveLength(1);
+    expect(writable[0][0].duration).toBe(5);
+    expect(writable[0][0].id).not.toBe(recovered.mock.calls[0][0].id);
   });
 });

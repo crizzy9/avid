@@ -6,6 +6,8 @@ export interface AudioTrack {
   title?: string;
   /** Source seconds, required for all but the final track of a multi-track book. */
   duration?: number;
+  /** Decoder observation only. Never replaces a declared source-timeline boundary. */
+  decodedDuration?: number;
 }
 
 export interface AudioChapter {

@@ -8,6 +8,8 @@ import { fontRules } from './fonts';
 import { clamp } from './anchors';
 import { publicationSource } from './publicationSource';
 import { buildSpeechText, speechBoundaryRange, nextLinearSection } from './speechText';
+import { alignedPassageAtRange, verifyPublicationAudiobook } from './alignedPassage';
+import { alignmentSha256 } from '../../playback/src/standalone-alignment';
 import '../vendor/foliate/view.js';
 import { makeBook } from '../vendor/foliate/view.js';
 import { Overlayer } from '../vendor/foliate/overlayer.js';
@@ -23,6 +25,7 @@ export function EbookView(props: EngineProps) {
   useEffect(() => {
     let cancelled = false;
     let loadedBook: any;
+    let handoffLocator = props.initialAnchor?.kind === 'epub' ? props.initialAnchor.locator : undefined;
     const isolatedUrls = new Map<number, string>();
     const view = document.createElement('foliate-view') as FoliateView;
     view.setAttribute('aria-label', t('readingArea'));
@@ -104,6 +107,40 @@ export function EbookView(props: EngineProps) {
       if (!source) throw new ReaderError('fileUnavailable');
       const input = publicationSource(source, props.file.name, props.file.format);
       loadedBook = await makeBook(input); if (cancelled) { loadedBook.destroy?.(); return; }
+      // A URL fetched later could contain a different edition. Only hash the exact Blob
+      // passed to the parser; root normally supplies its authenticated/cached source Blob.
+      if (input instanceof Blob) {
+        let digest: Promise<string> | undefined;
+        current.current.onAlignmentReady?.({ pauseNarration: () => { if (!cancelled) { stop(); view.mediaOverlay?.pause(); } }, verifyAudiobook: async (playlist, manifest, audioFileId, assets) => {
+          if (cancelled || props.file.format !== 'EPUB') throw new Error('The aligned EPUB reader is no longer available.');
+          const map = await verifyPublicationAudiobook(input, loadedBook, { accountScope: props.accountScope ?? 'local', bookId: props.book.id, textFileId: props.file.id, audioFileId }, playlist, manifest, assets);
+          if (cancelled) throw new Error('The reader closed before alignment verification completed.');
+          return map;
+        }, currentPassage: async (map, edition) => {
+          digest ??= input.arrayBuffer().then(alignmentSha256);
+          const actualHash = await digest;
+          if (cancelled || edition.bookId !== props.book.id || edition.textFileId !== props.file.id || edition.accountScope !== (props.accountScope ?? 'local') || edition.textSha256 !== actualHash) {
+            throw new Error('The open reader does not match the verified text and audio edition.');
+          }
+          const contents = view.renderer?.getContents?.() ?? [];
+          const selected = contents.map((item: { doc: Document }) => item.doc.getSelection()).find((value: Selection | null) => value?.rangeCount && !value.isCollapsed);
+          if (!selected && handoffLocator) {
+            const navigation = view.resolveNavigation(handoffLocator);
+            const content = contents.find((item: { index: number }) => item.index === navigation?.index);
+            const target = content && navigation?.anchor?.(content.doc);
+            if (target && typeof target === 'object') {
+              const point = 'startContainer' in target ? target.cloneRange() as Range : content.doc.createRange() as Range;
+              if (!('startContainer' in target)) point.selectNodeContents(target);
+              const passage = alignedPassageAtRange(map, edition, content.doc, content.index, point);
+              if (passage) return passage;
+            }
+          }
+          const range = (selected?.getRangeAt(0) ?? view.lastLocation?.range) as Range | undefined;
+          if (!range) return null;
+          const content = contents.find((item: { doc: Document }) => item.doc === range.startContainer.ownerDocument);
+          return content ? alignedPassageAtRange(map, edition, content.doc, content.index, range) : null;
+        } });
+      } else current.current.onAlignmentReady?.(null);
       loadedBook.transformTarget?.addEventListener('load', (event: CustomEvent) => { if (event.detail.isScript) event.detail.allow = false; });
       for (const [index, section] of loadedBook.sections.entries()) {
         const originalLoad = section.load.bind(section);
@@ -126,6 +163,9 @@ export function EbookView(props: EngineProps) {
       loadedBook.media ??= {};
       loadedBook.media.activeClass ||= 'avid-narration-active';
       await view.open(loadedBook); if (cancelled) return;
+      view.renderer.addEventListener('relocate', (event: CustomEvent) => {
+        if (['page', 'scroll', 'snap'].includes(event.detail.reason)) handoffLocator = undefined;
+      });
       applyStyle(view, current.current.settings, props.accountScope);
       await view.init({ lastLocation: props.initialAnchor?.kind === 'epub' ? props.initialAnchor.locator : undefined, showTextStart: true });
       if (cancelled) { view.close(); loadedBook.destroy?.(); return; }
@@ -140,8 +180,8 @@ export function EbookView(props: EngineProps) {
         update();
       } else current.current.onMediaState({ available: false, playing: false, seconds: 0 });
       current.current.onReady({
-        next: () => { void view.next(); }, prev: () => { void view.prev(); },
-        goTo: locator => { stop(); void view.goTo(locator); }, selection,
+        next: () => { handoffLocator = undefined; void view.next(); }, prev: () => { handoffLocator = undefined; void view.prev(); },
+        goTo: locator => { stop(); handoffLocator = typeof locator === 'string' ? locator : undefined; void view.goTo(locator); }, selection,
         search: async query => {
           const results: SearchResult[] = [];
           for await (const item of view.search({ query, matchCase: false })) {
@@ -174,8 +214,8 @@ export function EbookView(props: EngineProps) {
       }, loadedBook.toc as TocItem[] ?? []);
     };
     void open().catch(error => { if (!cancelled) current.current.onError(readerError(error, 'ebookFailed')); });
-    return () => { cancelled = true; stop(); view.mediaOverlay?.stop(); view.close?.(); view.remove(); loadedBook?.destroy?.(); for (const url of isolatedUrls.values()) URL.revokeObjectURL(url); viewRef.current = null; };
-  }, [props.book.id, props.file.id, props.file.url, props.source]);
+    return () => { cancelled = true; current.current.onAlignmentReady?.(null); stop(); view.mediaOverlay?.stop(); view.close?.(); view.remove(); loadedBook?.destroy?.(); for (const url of isolatedUrls.values()) URL.revokeObjectURL(url); viewRef.current = null; };
+  }, [props.book.id, props.file.id, props.file.url, props.source, props.accountScope]);
   useEffect(() => { viewRef.current?.setAttribute('aria-label', t('readingArea')); }, [locale]);
   useEffect(() => { if (viewRef.current?.renderer) applyStyle(viewRef.current, props.settings, props.accountScope); }, [props.settings, props.accountScope]);
   useEffect(() => {

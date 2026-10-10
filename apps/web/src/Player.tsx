@@ -1,4 +1,5 @@
 import { useI18n } from "../../../packages/i18n/src";
+import { useAlignmentI18n } from "./alignmentMessages";
 import { useState, useSyncExternalStore } from "react";
 import {
   Play,
@@ -9,6 +10,7 @@ import {
   Timer,
   BookmarkPlus,
   Headphones,
+  BookOpen,
 } from "lucide-react";
 import type {PlaybackTransport} from '../../mobile/src/native-transport';
 import type { Book } from "../../../packages/core/src/types";
@@ -18,12 +20,15 @@ export function Player({
   controller,
   book,
   onNote,
+  onRead,
 }: {
   controller: PlaybackTransport;
   book: Book;
   onNote: () => void;
+  onRead?: () => void;
 }) {
   const { t, locale, setLocale } = useI18n();
+  const { t: alignmentText } = useAlignmentI18n();
 
   const state = useSyncExternalStore(
     controller.subscribe,
@@ -156,6 +161,7 @@ export function Player({
           </select>
         </label>
       </div>
+      {onRead && <button className="secondary-button full-width" onClick={onRead}><BookOpen size={18} />{alignmentText('read')}</button>}
       <div className="player-bottom">
         <button className="text-button" onClick={onNote}>
           <BookmarkPlus size={18} />

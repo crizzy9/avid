@@ -1,9 +1,13 @@
 import type { Annotation, Book, BookFile, ReadingAnchor } from '../../core/src/types';
+import type { ReaderAlignmentHandle } from './alignedPassage';
+import type { ReactNode } from 'react';
 export type { Annotation, Book, BookFile, ReadingAnchor };
 export interface ReaderProps {
   book: Book;
   accountScope?: string;
   onActivity?: (activity: 'reading' | 'speech' | 'listening') => void;
+  onAlignmentReady?: (handle: ReaderAlignmentHandle | null) => void;
+  modeControls?: ReactNode;
   file?: BookFile;
   source?: Blob;
   initialAnchor?: ReadingAnchor;

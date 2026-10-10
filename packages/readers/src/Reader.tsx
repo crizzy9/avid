@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, BookOpen, Bookmark, ChevronLeft, ChevronRight, Highlighter, List, Minus, Plus, Search, Settings2, Square, Volume2, X } from 'lucide-react';
 import { EbookView } from './EbookView';
 import { PdfView } from './PdfView';
@@ -7,6 +7,7 @@ import { defaultSettings, themeColors, type Annotation, type EngineHandle, type 
 import { importFont, storedFonts } from './fonts';
 import { parsePageAnchor } from './anchors';
 import { useReaderI18n, readerError } from './readerI18n';
+import { getComicDirectionMode, setComicDirectionMode, getMangaRule, setMangaRule, resolveComicDirection, type ComicDirectionMode, type MangaRule, type MangaRuleField } from './comicDirection';
 import './reader.css';
 export type { ReaderProps } from './contracts';
 const settingsKey = (scope: string) => `avid.reader.settings.v1.${encodeURIComponent(scope)}`;
@@ -18,7 +19,16 @@ export function Reader(props: ReaderProps) {
   const { book, annotations, onClose, onAnnotation } = props;
   const file = props.file ?? book.files.find(item => item.format !== 'AUDIO') ?? { id: `${book.id}-text`, name: book.title, format: book.format };
   const scope = props.accountScope ?? 'local';
-  const [settings, setSettings] = useState(() => getSettings(scope));
+  const [storedSettings, setSettings] = useState(() => getSettings(scope));
+  const [, refreshComicPreferences] = useState(0);
+  const comicDirectionMode = getComicDirectionMode(localStorage, scope, book.id);
+  const mangaRule = getMangaRule(localStorage, scope);
+  // The old account-global direction is deliberately ignored for comics. Automatic
+  // classification and explicit direction are evaluated for this title only.
+  const direction = resolveComicDirection(book, comicDirectionMode, mangaRule);
+  const settings = useMemo(() => ({ ...storedSettings, direction }), [storedSettings, direction]);
+  const updateMangaRule = (rule: MangaRule) => { try { setMangaRule(localStorage, scope, rule); refreshComicPreferences(value => value + 1); } catch (error) { setNotice(readerError(error, 'preferenceSaveFailed')); } };
+  const changeComicDirection = (mode: ComicDirectionMode) => { try { setComicDirectionMode(localStorage, scope, book.id, mode); refreshComicPreferences(value => value + 1); } catch (error) { setNotice(readerError(error, 'preferenceSaveFailed')); } };
   const [settingsAccount, setSettingsAccount] = useState(scope);
   const dialog = useRef<HTMLDialogElement>(null);
   const [panel, setPanel] = useState<'contents' | 'settings' | 'search' | 'notes' | null>(null);
@@ -54,7 +64,7 @@ export function Reader(props: ReaderProps) {
     callbacks.current.onAnchor({ bookId: book.id, fileId: file.id, kind, locator, progress, updatedAt: new Date().toISOString() });
   }, [book.id, file.id, kind]);
   useEffect(() => { if (settingsAccount !== scope) { setSettings(getSettings(scope)); setFonts(storedFonts(scope).map(font => font.name)); setSettingsAccount(scope); } }, [scope, settingsAccount]);
-  useEffect(() => { if (settingsAccount === scope) localStorage.setItem(settingsKey(scope), JSON.stringify(settings)); }, [settings, scope, settingsAccount]);
+  useEffect(() => { if (settingsAccount === scope) { const { direction: _direction, ...preferences } = storedSettings; localStorage.setItem(settingsKey(scope), JSON.stringify(preferences)); } }, [storedSettings, scope, settingsAccount]);
   useEffect(() => {
     const element = dialog.current;
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -131,7 +141,7 @@ export function Reader(props: ReaderProps) {
           <label className="reader-field">{t('lineSpacing')}<span>{new Intl.NumberFormat(locale, { minimumFractionDigits: 1 }).format(settings.lineHeight)}</span><input type="range" min="1.2" max="2.4" step="0.1" value={settings.lineHeight} onChange={event => change('lineHeight', Number(event.target.value))} /></label><label className="reader-field">{t('margins')}<input type="range" min="2" max="22" value={settings.margin} onChange={event => change('margin', Number(event.target.value))} /></label>
           <label className="reader-field">{t('pageFlow')}<select value={settings.flow} onChange={event => change('flow', event.target.value as ReaderSettings['flow'])}><option value="paginated">{t('turnPages')}</option><option value="scrolled">{t('continuous')}</option></select></label>
           <label className="reader-field">{t('installedVoice')}<select value={settings.voice} onChange={event => change('voice', event.target.value)}><option value="">{t('systemDefault')}</option>{voices.map(voice => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} · {voice.lang}</option>)}</select></label><label className="reader-field">{t('speechSpeed', { rate: settings.speechRate })}<input type="range" min="0.5" max="2" step="0.1" value={settings.speechRate} onChange={event => change('speechRate', Number(event.target.value))} /></label><p className="reader-muted">{!voices.length && <>{t('noVoices')} </>}{t('wordTimingHint')}</p></>}
-          {kind === 'comic' && <><label className="reader-field">{t('readingLayout')}<select value={settings.comicMode} onChange={event => change('comicMode', event.target.value as ReaderSettings['comicMode'])}><option value="paged">{t('onePage')}</option><option value="spread">{t('twoPages')}</option><option value="webtoon">{t('webtoon')}</option></select></label><label className="reader-field">{t('direction')}<select value={settings.direction} onChange={event => change('direction', event.target.value as ReaderSettings['direction'])}><option value="ltr">{t('ltr')}</option><option value="rtl">{t('rtl')}</option></select></label></>}
+          {kind === 'comic' && <><label className="reader-field">{t('readingLayout')}<select value={settings.comicMode} onChange={event => change('comicMode', event.target.value as ReaderSettings['comicMode'])}><option value="paged">{t('onePage')}</option><option value="spread">{t('twoPages')}</option><option value="webtoon">{t('webtoon')}</option></select></label><label className="reader-field">{t('direction')}<select value={comicDirectionMode} onChange={event => changeComicDirection(event.target.value as ComicDirectionMode)}><option value="auto">{t('automaticDirection')}</option><option value="rtl">{t('mangaRtl')}</option><option value="ltr">{t('comicLtr')}</option></select></label><label className="reader-field">{t('mangaKeywords')}<input defaultValue={mangaRule.keywords.join(', ')} key={scope} maxLength={8098} onBlur={event => updateMangaRule({ ...mangaRule, keywords: event.target.value.split(',') })} /></label><fieldset className="reader-manga-rule"><legend>{t('matchMangaFields')}</legend>{(['genres', 'title', 'series'] as MangaRuleField[]).map(field => <label key={field}><input type="checkbox" checked={mangaRule.fields.includes(field)} onChange={event => updateMangaRule({ ...mangaRule, fields: event.target.checked ? [...mangaRule.fields, field] : mangaRule.fields.filter(value => value !== field) })} />{t(field === 'genres' ? 'genresField' : field === 'title' ? 'titleField' : 'seriesField')}</label>)}</fieldset><p className="reader-muted">{t('mangaRuleHint')}</p></>}
           {kind === 'pdf' && <div className="reader-two-fields"><button className="reader-primary" onClick={() => engine.current?.autoCrop?.()}>{t('detectMargins')}</button><button className="reader-secondary" onClick={() => engine.current?.resetCrop?.()}>{t('resetCrop')}</button></div>}
           <label className="reader-field">{t('pageTurn')}<select value={settings.animation} onChange={event => change('animation', event.target.value as ReaderSettings['animation'])}><option value="none">{t('none')}</option><option value="slide">{t('slide')}</option><option value="fade">{t('fade')}</option><option value="fast-fade">{t('fastFade')}</option></select></label><p className="reader-muted">{t('preferencesHint')}</p>
         </div>}
@@ -142,6 +152,7 @@ export function Reader(props: ReaderProps) {
       {selected && panel !== 'notes' && <div className="reader-selection-tools"><button onClick={() => saveAnnotation(false)}><Highlighter size={16} />{t('highlight')}</button><button onClick={() => { setPanel('notes'); setNoteText(''); setEditing(undefined); }}><Bookmark size={16} />{t('addNote')}</button><button aria-label={t('dismissSelection')} onClick={() => setSelected(undefined)}><X size={16} /></button></div>}
     </div>
     {media.available && <div className="reader-media-bar"><span><Volume2 size={16} />{t('alignedNarration')}</span><button className="reader-icon" aria-label={t('previousPassage')} onClick={() => engine.current?.mediaPrevious?.()}><ChevronLeft size={18} /></button><button className="reader-primary" onClick={() => media.playing ? engine.current?.pauseMedia?.() : engine.current?.playMedia?.()}>{t(media.playing ? 'pauseNarration' : 'readListen')}</button><button className="reader-icon" aria-label={t('nextPassage')} onClick={() => engine.current?.mediaNext?.()}><ChevronRight size={18} /></button><time>{Math.floor(media.seconds / 60)}:{String(Math.floor(media.seconds % 60)).padStart(2, '0')}</time><label><input type="checkbox" checked={followMedia} onChange={event => { setFollowMedia(event.target.checked); engine.current?.setMediaFollow?.(event.target.checked); }} />{t('followText')}</label><select aria-label={t('narrationSpeed')} value={mediaRate} onChange={event => { const rate = Number(event.target.value); setMediaRate(rate); engine.current?.setMediaRate?.(rate); }}>{[.75, 1, 1.25, 1.5, 1.75, 2].map(rate => <option key={rate} value={rate}>{new Intl.NumberFormat(locale).format(rate)}×</option>)}</select></div>}
+    {props.modeControls && <div className="reader-media-bar">{props.modeControls}</div>}
     <footer className="avid-reader-footer"><span className="reader-chapter-label">{locationLabel}</span><div className="reader-page-controls"><button className="reader-icon" disabled={!ready} aria-label={t('previousPage')} onClick={() => turn('prev')}><ChevronLeft size={19} /></button><span>{Math.round(location.progress * 100)}%</span><button className="reader-icon" disabled={!ready} aria-label={t('nextPage')} onClick={() => turn('next')}><ChevronRight size={19} /></button></div><span className="reader-footer-brand">avid <span>·</span> {file.format}</span><div className="reader-progress"><span style={{ width: `${location.progress * 100}%` }} /></div></footer>
   </dialog>;
 }

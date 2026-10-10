@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => {
             const readPost =
               req.method === "POST" &&
               (/^\/api\/v1\/auth\/(login|refresh)$/.test(path) ||
+                /^\/api\/v1\/auth\/oidc\/(?:[a-zA-Z0-9_-]+\/state|callback)$/.test(
+                  path,
+                ) ||
                 path === "/api/v1/books/query" ||
                 /^\/api\/v1\/libraries\/\d+\/books$/.test(path) ||
                 /^\/api\/v1\/collections\/\d+\/books\/query$/.test(path));

@@ -3,3 +3,6 @@
 dialog.avid-reader{width:100vw;max-width:none;max-height:none;height:100dvh;margin:0;padding:0;border:0;box-sizing:border-box}dialog.avid-reader::backdrop{background:#171b17aa}dialog.avid-reader:not([open]){display:none}
 .reader-notice{display:flex;align-items:center;justify-content:center;gap:16px;padding:7px 22px;background:color-mix(in srgb,#b79a53 17%,var(--reader-bg));font-size:12px;line-height:1.6;border-bottom:1px solid #8882}.reader-notice>span{max-width:850px}
 .reader-panel-title h2,.reader-error p{min-width:0;overflow-wrap:anywhere}.reader-theme-options button{min-width:0;overflow-wrap:anywhere;padding-inline:4px;line-height:1.4}.reader-note-actions,.reader-two-fields{flex-wrap:wrap}.reader-swatches{flex-shrink:0}.reader-selection-tools{max-width:calc(100vw - 32px);flex-wrap:wrap;justify-content:center}.reader-selection-tools button{white-space:normal}.reader-font-size>span{min-width:0;overflow-wrap:anywhere}
+ .reader-manga-rule { display:flex; flex-wrap:wrap; gap:10px; border:1px solid var(--reader-border, #ddd); border-radius:8px; padding:10px; margin:14px 0; }
+ .reader-manga-rule legend { font-size:12px; padding:0 4px; }
+ .reader-manga-rule label { display:flex; gap:6px; align-items:center; font-size:13px; }

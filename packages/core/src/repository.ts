@@ -26,9 +26,13 @@ export class AvidDatabase extends Dexie {
   sessions!:Table<RecordRow<ReadingSession>&{fileId?:string;endedAt?:string},string>;
   preferences!:Table<RecordRow<Record<string,unknown>>,string>;
   outbox!:Table<OutboxOperation,string>;
+  localFiles!:Table<RecordRow<{name:string;blob:Blob}>,string>;
+  nativeReceipts!:Table<RecordRow<{fingerprint:string}>,string>;
   constructor(name='avid-library-v1') {
     super(name);
     this.version(1).stores({books:'key,scope,[scope+id]',anchors:'key,scope,[scope+id]',annotations:'key,scope,[scope+id]',collections:'key,scope,[scope+id]',sessions:'key,scope,[scope+id]',preferences:'key,scope,[scope+id]',outbox:'key,scope,[scope+entityKey],[scope+status]'});
+    this.version(2).stores({localFiles:'key,scope,[scope+id]'});
+    this.version(3).stores({nativeReceipts:'key,scope,[scope+id]'});
   }
 }
 export const anchorIdentity=(anchor:Pick<ReadingAnchor,'bookId'|'fileId'|'kind'>)=>JSON.stringify([anchor.bookId,anchor.fileId,anchor.kind]);
@@ -45,6 +49,27 @@ export class LibraryRepository {
   }
   async getBooks():Promise<Book[]> { return (await this.db.books.where('scope').equals(this.scope).toArray()).map(row=>row.value); }
   async getBook(id:string):Promise<Book|undefined> { return (await this.db.books.get(this.key(id)))?.value; }
+  /** User-imported editions, independent of server downloads and never queued for upload. */
+  async putLocalEdition(book:Book,fileId:string,file:File):Promise<void> {
+    if(!book.id.startsWith('local-')||!fileId.startsWith('local-')||!book.files.some(f=>f.id===fileId))throw new Error('Local editions require local book and file identities.');
+    await this.db.transaction('rw',this.db.books,this.db.localFiles,async()=>{
+      if(!await this.hasLocalFile(fileId))await this.db.localFiles.put(this.row(fileId,{name:file.name,blob:file}));
+      const current=await this.getBook(book.id);
+      const files=[...(current?.files??[]),...book.files.filter(file=>!current?.files.some(previous=>previous.id===file.id))];
+      await this.putBooks([{...book,progress:current?.progress??book.progress,status:current?.status??book.status,files:files.map(({url,...metadata})=>metadata)}]);
+    });
+  }
+  async getLocalFile(fileId:string):Promise<File|undefined> {
+    const row=await this.db.localFiles.get(this.key(fileId));
+    return row?new File([row.value.blob],row.value.name,{type:row.value.blob.type}):undefined;
+  }
+  async hasLocalFile(fileId:string):Promise<boolean> { return await this.db.localFiles.where('key').equals(this.key(fileId)).count()>0; }
+  async getImportedBooks():Promise<Book[]> {
+    const keys=await this.db.localFiles.where('[scope+id]').between([this.scope,Dexie.minKey],[this.scope,Dexie.maxKey]).keys();
+    const ids=new Set<string>();
+    for(const key of keys){const value:unknown=key;if(Array.isArray(value)&&typeof value[1]==='string')ids.add(value[1]);}
+    return (await this.getBooks()).filter(book=>book.id.startsWith('local-')&&book.files.some(file=>ids.has(file.id)));
+  }
   async putCollections(collections:Collection[]):Promise<void> { await this.db.collections.bulkPut(collections.map(c=>this.row(c.id,c))); }
   async getCollections():Promise<Collection[]> { return (await this.db.collections.where('scope').equals(this.scope).toArray()).map(row=>row.value); }
   async getAnchor(identity:Pick<ReadingAnchor,'bookId'|'fileId'|'kind'>):Promise<ReadingAnchor|undefined> { return (await this.db.anchors.get(this.key(anchorIdentity(identity))))?.value; }
@@ -147,7 +172,7 @@ export class LibraryRepository {
   async updateOperation(id:string,patch:Partial<Pick<OutboxOperation,'status'|'attempts'|'error'|'nextAttemptAt'|'leaseUntil'>>):Promise<void> { await this.db.outbox.update(this.key(id),patch); }
   async acknowledge(id:string):Promise<void> { await this.db.outbox.delete(this.key(id)); }
   async clearAccount():Promise<void> {
-    const tables=[this.db.books,this.db.anchors,this.db.annotations,this.db.collections,this.db.sessions,this.db.preferences,this.db.outbox];
+    const tables=[this.db.books,this.db.anchors,this.db.annotations,this.db.collections,this.db.sessions,this.db.preferences,this.db.outbox,this.db.localFiles,this.db.nativeReceipts];
     await this.db.transaction('rw',tables,async()=>{for(const table of tables) await table.where('scope').equals(this.scope).delete();});
   }
 }

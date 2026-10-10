@@ -35,11 +35,14 @@ export interface NativePlaybackSnapshot {
   playing: boolean;
   status?: 'stopped' | 'loading' | 'playing' | 'paused' | 'buffering' | 'interrupted' | 'failed';
   error?: string;
+  /** Durable metadata failure; playback itself can still be playing. */
+  recoveryError?: string;
   ended?: boolean;
   updatedAt: string;
 }
 
 export interface NativePlaybackPlugin {
+  capabilities(): Promise<{ backgroundAudioAvailable: boolean; systemMediaControlsAvailable: boolean; carIntegrationAvailable: boolean }>;
   load(options: NativePlaybackLoad): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
