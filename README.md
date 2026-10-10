@@ -6,6 +6,8 @@ The interface follows the observed Apogee phone and tablet layouts: Home/Library
 
 **Status: working Phase 1 development preview, not a completed parity release.** The research calls for 66 Phase 1 requirements across web, iOS, Android, macOS, Windows, and Linux. Web and native implementations, tests and unsigned build packages are included. Signed builds, installed-device acceptance and live integration qualification remain open. See [the feature checklist](docs/phase-1-status.md).
 
+The [current roadmap](docs/roadmap.md) is: **1 — core online product; 2 — complete audiobook experience; 3 — full offline support; 4 — Apple Pencil and reader enhancements; 5 — UI enhancements; 6 — comparison-reference cleanup, README/docs and launch.** The [Phase 1 validation guide](docs/phase-1-validation.md) gives build/install steps, required devices/accounts and the checks needed to finish pending items. Phase 6 includes removing all Apogee mentions from release content.
+
 ## Run
 
 Requires Node.js 24 and pnpm 10.
@@ -44,7 +46,7 @@ For a development server without CORS, copy `.env.example` to `.env.local`, set 
 
 ## Boundaries
 
-Full offline downloads are Phase 2. Locally opening a file or caching a checkpoint does not make a book an offline download. Browser audio and speech depend on browser lifecycle and available codecs/voices. Unsigned iOS app/widget/CarPlay, Android debug/Auto, and linked macOS/Windows/Linux hosts compile in CI. Signing, installation, physical background playback, widgets, intents and car acceptance remain release gates. Read and Listen requires real EPUB media overlays or a verified alignment map. Explicit standalone linking verifies complete matching audio bytes and the exact EPUB/manifest edition; it does not generate alignment.
+Full offline downloads are Phase 3. Locally opening a file or caching a checkpoint does not make a book an offline download. Browser audio and speech depend on browser lifecycle and available codecs/voices. Unsigned iOS app/widget/CarPlay, Android debug/Auto, and linked macOS/Windows/Linux hosts compile in CI. Signing, installation, physical background playback, widgets, intents and car acceptance remain release gates. Read and Listen requires real EPUB media overlays or a verified alignment map. Explicit standalone linking verifies complete matching audio bytes and the exact EPUB/manifest edition; it does not generate alignment.
 
 CrossPoint delivery includes device inspection, a reviewed EPUB transfer and checksum verification, with isolated native transports and explicit discovery. Physical reader/firmware qualification remains open.
 

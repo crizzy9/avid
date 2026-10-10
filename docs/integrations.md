@@ -25,7 +25,7 @@ Each plan has an independent random destination suffix. Existing filenames are c
 
 After any timeout, connection failure, cancellation, or unexpected upload response, the plan is considered attempted. Sending that same plan again is refused. **Verify again** uses only read-only requests. If a matching file exists, the transfer is confirmed without resending. Missing or different bytes remain visible for review; Avid does not remove or repair them automatically. A user can explicitly prepare a fresh plan with a new unique filename.
 
-The panel keeps only the latest attempted receipt in account-scoped local storage: device/address, filenames, source size/hash, and event time. It contains no EPUB bytes or BookOrbit credentials. On reload, only verification is available for that receipt. Denied local storage leaves the receipt available only in the current view. This recovery record is not a durable media download or Phase 2 offline feature.
+The panel keeps only the latest attempted receipt in account-scoped local storage: device/address, filenames, source size/hash, and event time. It contains no EPUB bytes or BookOrbit credentials. On reload, only verification is available for that receipt. Denied local storage leaves the receipt available only in the current view. This recovery record is not a durable media download or Phase 3 offline feature.
 
 The default file limit is 64 MiB, configurable by the adapter host. Hashing and verification buffer the source/read-back in memory, so large-file support needs measurements on target devices. The request timeout covers response-body consumption. An injected native transport must honor AbortSignal and fetch-compatible request/response semantics.
 

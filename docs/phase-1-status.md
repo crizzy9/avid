@@ -1,6 +1,8 @@
 # Phase 1 implementation and release evidence
 
-Updated: 2026-10-09. This is the release checklist for the 66 Phase 1 rows in [the research baseline](research-baseline.md). **Phase 1 is not complete.** A working browser implementation and compiled Android, iOS app/widget/CarPlay, macOS, Windows and Linux development hosts are available; a six-platform parity claim would be premature.
+Updated: 2026-10-10. This is the release checklist for the 66 Phase 1 rows in [the research baseline](research-baseline.md). **Phase 1 is not complete.** A working browser implementation and compiled Android, iOS app/widget/CarPlay, macOS, Windows and Linux development hosts are available; a six-platform parity claim would be premature.
+
+The [current roadmap](roadmap.md) moves complete audiobook work to Phase 2, offline support to Phase 3, and adds reader/Pencil, UI and launch phases. The [Phase 1 validation guide](phase-1-validation.md) explains how to install builds and finish the pending device, integration and behavior checks. Moving later phases does not close this checklist.
 
 `Browser implemented` means the source path works in the web runtime and has the stated evidence. It does not imply that all supported formats, mobile WebViews, assistive technologies, or recovery cases passed. `Partial` identifies missing behavior or evidence. `Pending` means an applicable release requirement is not implemented or qualified. No external entitlement or device result is inferred from the presence of code.
 
@@ -106,4 +108,4 @@ Source checkpoint `430b8b6` passes 657 shared tests across 91 files, TypeScript 
 - Desktop and mobile have full scoped SQLite repository backends and verified copy-before-activation migration. Actual database/file tests and mobile wrapper compilation passed at `430b8b6`; installed bridge calls, power-loss/disk-full recovery and physical-device behavior remain unqualified. Native CrossPoint discovery is implemented with platform-specific behavior above; compiled source and fixtures do not establish physical-device acceptance.
 - Full Phase 1 includes every remaining behavior, device and integration acceptance check above. It must not be described as complete merely because the web build and unit suite pass.
 
-F67–F71 remain deliberately deferred to Phase 2.
+F67–F71 remain deliberately deferred to Phase 3 under the [current roadmap](roadmap.md).

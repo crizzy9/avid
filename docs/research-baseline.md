@@ -1,5 +1,7 @@
 # Avid research baseline
 
+> **Historical planning record — superseded phase numbers and product direction.** The [current Avid roadmap](roadmap.md), updated October 10, 2026, governs delivery: Phase 2 is complete audiobook functionality (formerly Phase 3); Phase 3 is full offline support (formerly Phase 2, requirements F67–F71); Phase 4 is Apple Pencil and reader enhancements; Phase 5 is UI enhancements; Phase 6 is reference/branding cleanup, README/docs and launch. The provisional Bookish name, redesign direction and original phase labels below are retained as historical evidence, not current instructions. The app is Avid; the user's subsequent replica request superseded the original redesign direction. Phase 6 will convert retained requirements into Avid-owned documentation and remove Apogee mentions from release content.
+
 Source: https://chatgpt.com/space/page_58b3bd60415c8191802c068b75aef6f6
 
 Bookish will be a redesigned client for a self-hosted BookOrbit library, with shared product behavior across iOS, Android, macOS, Windows, Linux, and the web. Start with the online reading and listening experience, then complete offline parity, then add audiobook improvements.

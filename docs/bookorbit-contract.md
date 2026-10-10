@@ -83,6 +83,6 @@ Writable browser connections flush durable intents on activation and on an onlin
 - The shared book model has three display groups while `Book.serverStatus` preserves all eight raw server statuses. `setReadStatus` sends those exact values. A reading status alone does not establish a file position.
 - Configured browser/native OIDC callback coordinators are implemented and tested with controlled transactions. Provider registration, actual sign-in and physical callback/process-restart behavior remain separate deployment qualification gates; see [OIDC](oidc.md).
 - Library/collection results are paginated. `listCollections()` returns collection identities with empty `bookIds`; load pages through `getCollectionBooks()` to populate membership. Cover and file URLs are authenticated resources, not public URLs.
-- This storage schema is the Phase 1 checkpoint and cache foundation. Native SQLite journal source and transactional replay are implemented; physical kill/restart qualification remains. Durable offline media downloads and a complete offline search index remain Phase 2 work.
+- This storage schema is the Phase 1 checkpoint and cache foundation. Native SQLite journal source and transactional replay are implemented; physical kill/restart qualification remains. Durable offline media downloads and a complete offline search index remain Phase 3 work.
 
 Run the isolated checks from repository root with `pnpm exec vitest run --root . packages/core/tests`.
