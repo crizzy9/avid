@@ -66,6 +66,7 @@
 		2735BC21469C432BB089B64E /* AvidOidcPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCD9C478621C4C12857E1A92 /* AvidOidcPlugin.swift */; };
 		4BCFCF31D9AC473AA344B00A /* AvidAppearancePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A09751F1FA643BCA824C22B /* AvidAppearancePlugin.swift */; };
 		E45DD864D5284CB5AABD9A6C /* AvidAuthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0614AD6D3A243BEA14F1840 /* AvidAuthPlugin.swift */; };
+		C6E1EE2707414A80B73BA3A1 /* AvidSpeechPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DEEA7D7F7F044D1BED8B326 /* AvidSpeechPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -96,6 +97,7 @@
 		BCD9C478621C4C12857E1A92 /* AvidOidcPlugin.swift */ = {isa = PBXFileReference; name = "AvidOidcPlugin.swift"; path = "AvidOidcPlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		5A09751F1FA643BCA824C22B /* AvidAppearancePlugin.swift */ = {isa = PBXFileReference; name = "AvidAppearancePlugin.swift"; path = "AvidAppearancePlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		C0614AD6D3A243BEA14F1840 /* AvidAuthPlugin.swift */ = {isa = PBXFileReference; name = "AvidAuthPlugin.swift"; path = "AvidAuthPlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		1DEEA7D7F7F044D1BED8B326 /* AvidSpeechPlugin.swift */ = {isa = PBXFileReference; name = "AvidSpeechPlugin.swift"; path = "AvidSpeechPlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -170,6 +172,7 @@
 				BCD9C478621C4C12857E1A92 /* AvidOidcPlugin.swift */,
 				5A09751F1FA643BCA824C22B /* AvidAppearancePlugin.swift */,
 				C0614AD6D3A243BEA14F1840 /* AvidAuthPlugin.swift */,
+				1DEEA7D7F7F044D1BED8B326 /* AvidSpeechPlugin.swift */,
 			);
 			name = "Avid native sources";
 			path = "../../native/ios";
@@ -298,6 +301,7 @@
 				2735BC21469C432BB089B64E /* AvidOidcPlugin.swift in Sources */,
 				4BCFCF31D9AC473AA344B00A /* AvidAppearancePlugin.swift in Sources */,
 				E45DD864D5284CB5AABD9A6C /* AvidAuthPlugin.swift in Sources */,
+				C6E1EE2707414A80B73BA3A1 /* AvidSpeechPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

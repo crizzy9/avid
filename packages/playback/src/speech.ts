@@ -12,6 +12,7 @@ export interface SpeechRequest {
   voiceURI?: string;
   rate?: number;
   start?: number;
+  onStart?: () => void;
   onBoundary?: (boundary: SpeechBoundary) => void;
   onEnd?: () => void;
   onError?: (message: string) => void;
@@ -67,7 +68,7 @@ export class SpeechController {
       if (voice) { utterance.voice = voice; utterance.lang = voice.lang; }
     }
     utterance.onstart = () => {
-      if (generation === this.generation) { this.utteranceStarted = true; this.update({ status: 'speaking', error: null }); }
+      if (generation === this.generation) { this.utteranceStarted = true; this.update({ status: 'speaking', error: null }); request.onStart?.(); }
     };
     utterance.onboundary = event => {
       if (generation !== this.generation) return;
