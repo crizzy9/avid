@@ -70,7 +70,9 @@ import { Player } from "./Player";
 import { BookDetails } from "./BookDetails";
 import { Activity } from "./Activity";
 import { CrossPointPanel, AO3Panel } from "../../../packages/integrations/src";
-import { ProviderCallback } from "./ProviderSignIn";
+import { ProviderCallback, getNativeProviderCoordinator } from "./ProviderSignIn";
+import { startNativeAuthentication } from "./nativeAuthentication";
+import { setNativeAppearance } from "../../mobile/src/native-appearance";
 import { useImportedBooks } from "./useImportedBooks";
 import { importAo3Edition, type ImportedAo3Edition } from "./localEditions";
 import { usePlaybackActivity } from "./usePlaybackActivity";
@@ -126,11 +128,14 @@ export default function App() {
   ] as const;
 
   const [sessionPersistence] = useState(() => new SessionPersistence(getNativeSessionVault()));
+  const [nativeProvider] = useState(getNativeProviderCoordinator);
+  const nativeProviderAttempt = useRef<number | null>(null);
   const [providerCallbackAtLaunch] = useState(() => location.pathname === "/oauth2-callback");
   const library = useLibrary({
     onSessionChange: (session, readOnly, active) => {
-      void sessionPersistence.persist(session, readOnly, active).catch(() => {
+      return sessionPersistence.persist(session, readOnly, active).catch(error => {
         if (active()) setToast("Secure session storage is unavailable. You may need to sign in again after closing Avid.");
+        throw error;
       });
     },
   });
@@ -154,10 +159,14 @@ export default function App() {
   dialogRef.current = dialog;
   function openConnection() {
     connectionGeneration.current++;
+    nativeProviderAttempt.current = null;
+    void nativeProvider?.cancel().catch(() => setToast("The previous provider sign-in could not be cleared. Try again."));
     setDialog("connect");
   }
   function closeConnection() {
     connectionGeneration.current++;
+    nativeProviderAttempt.current = null;
+    void nativeProvider?.cancel().catch(() => setToast("The provider sign-in could not be cleared. Try again."));
     setDialog(null);
   }
   const [selected, setSelected] = useState<Book | null>(null);
@@ -220,17 +229,30 @@ export default function App() {
   const notify = (message: string) => setToast(message);
   useEffect(() => {
     if (providerCallbackAtLaunch) return;
-    let mounted = true;
-    const attempt = connectionGeneration.current;
     const abort = new AbortController();
-    const active = () => mounted && attempt === 0 && connectionGeneration.current === attempt;
-    void restoreNativeSession(sessionPersistence,
-      url => ({fetch: bookOrbitFetch, transportBaseUrl: proxyBaseFor(url)}),
-      library.connect, active, abort.signal).catch(() => {
-      if (active()) setToast("Your saved connection could not be restored. Check your connection or sign in again.");
+    const stop = startNativeAuthentication({
+      provider: nativeProvider,
+      canRestore: () => connectionGeneration.current === 0,
+      attempt: () => nativeProviderAttempt.current,
+      claimStartup: () => { nativeProviderAttempt.current = 0; },
+      active: attempt => nativeProviderAttempt.current === attempt && connectionGeneration.current === attempt,
+      connect: library.connect,
+      connected: () => {
+        nativeProviderAttempt.current = null;
+        connectionGeneration.current++;
+        controller.pause();
+        setPlayerBook(null);
+        setDialog(null);
+        setView("home");
+        setToast("Connected to your library.");
+      },
+      restore: active => restoreNativeSession(sessionPersistence,
+        url => ({fetch: bookOrbitFetch, transportBaseUrl: proxyBaseFor(url)}),
+        library.connect, active, abort.signal),
+      error: error => setToast(error instanceof Error ? error.message : "Your saved connection could not be restored. Check your connection or sign in again."),
     });
-    return () => { mounted = false; abort.abort(); };
-  }, [sessionPersistence, library.connect, providerCallbackAtLaunch]);
+    return () => { stop(); abort.abort(); };
+  }, [sessionPersistence, nativeProvider, library.connect, providerCallbackAtLaunch, controller]);
 
   const publishNativeRecent = useNativeSurfaces(
     library.repo.scope,
@@ -305,6 +327,7 @@ export default function App() {
     const update = () => {
       document.documentElement.dataset.theme =
         theme === "system" ? (mq.matches ? "dark" : "light") : theme;
+      void setNativeAppearance(theme === "dark" || theme === "light" ? theme : "system").catch(() => setToast("System appearance could not be updated."));
     };
     update();
     mq.addEventListener("change", update);
@@ -1037,6 +1060,8 @@ export default function App() {
                     controller.pause();
                     setPlayerBook(null);
                     connectionGeneration.current++;
+                    nativeProviderAttempt.current = null;
+                    void nativeProvider?.cancel().catch(() => notify("Provider sign-in could not be cleared."));
                     void sessionPersistence.clear().catch(() => notify("Secure sign-out could not be completed. Close Avid and clear its app data before sharing this device."));
                     library.disconnect();
                     setMenu(false);
@@ -1901,7 +1926,15 @@ export default function App() {
         {dialog === "connect" && (
           <Modal title={t("connect.title")} onClose={closeConnection}>
             <Connect
-              onAttempt={() => { connectionGeneration.current++; }}
+              onAttempt={async method => {
+                connectionGeneration.current++;
+                nativeProviderAttempt.current = method === 'provider' && nativeProvider ? connectionGeneration.current : null;
+                controller.pause();
+                if (method !== 'provider') await nativeProvider?.cancel();
+                // Invalidate the old native credential owner before a login can
+                // write cookies, including while an old refresh is in flight.
+                await sessionPersistence.clear();
+              }}
               onConnect={async (session, readOnly) => {
                 const attempt = connectionGeneration.current;
                 const active = () => attempt === connectionGeneration.current && dialogRef.current === "connect";

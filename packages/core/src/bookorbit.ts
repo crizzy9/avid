@@ -20,7 +20,9 @@ export interface ClientOptions {
   transportBaseUrl?: string;
   fetch?: typeof fetch;
   clientKind?: 'web' | 'native';
-  onSessionChange?: (session: Session) => void;
+  /** Native hosts coordinate refresh with background playback and durable credential storage. */
+  refreshSession?: (session: Session) => Promise<Session>;
+  onSessionChange?: (session: Session) => void | Promise<void>;
 }
 const numericId = z.union([z.number().int().positive(), z.string().regex(/^\d+$/)]).transform(String);
 const fileSchema = z.object({ id: numericId, format: z.string().nullable(), role: z.string(), sizeBytes: z.number().nullable().optional(), filename: z.string().nullable().optional() });
@@ -193,13 +195,17 @@ export class BookOrbitClient {
   }
   private async response(path: string, init: RequestInit = {}, mutation = false, retry = true): Promise<Response> {
     if (mutation && this.readOnly) throw new ReadOnlyError();
+    const requestToken = this.session.accessToken;
     const headers = new Headers(init.headers);
-    headers.set('Authorization', `Bearer ${this.session.accessToken}`);
+    headers.set('Authorization', `Bearer ${requestToken}`);
     if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
     const response = await this.transport(`${this.endpoint}/api/v1/${path}`, {...init, headers, credentials:this.session.clientKind === 'native' ? 'omit' : 'include'});
     if (response.status === 401 && retry && path !== 'auth/refresh') {
-      if (!this.refreshInFlight) this.refreshInFlight = this.refresh().finally(() => { this.refreshInFlight = undefined; });
-      await this.refreshInFlight;
+      // A delayed response for an old token must not rotate the replacement again.
+      if (this.refreshInFlight || this.session.accessToken === requestToken) {
+        if (!this.refreshInFlight) this.refreshInFlight = this.refresh().finally(() => { this.refreshInFlight = undefined; });
+        await this.refreshInFlight;
+      }
       return this.response(path, init, mutation, false);
     }
     if (!response.ok) throw await BookOrbitClient.responseError(response);
@@ -211,11 +217,22 @@ export class BookOrbitClient {
     return body ? JSON.parse(body) : undefined;
   }
   private async refresh(): Promise<void> {
+    if (this.options.refreshSession) {
+      const previous = this.session;
+      const next = await this.options.refreshSession(structuredClone(previous));
+      if (this.session !== previous || !next || typeof next.accessToken !== 'string' || !next.accessToken.trim() ||
+        next.userId !== previous.userId || next.profile?.id !== previous.profile.id ||
+        normalizeServerUrl(next.profile.url) !== this.baseUrl || (next.clientKind ?? 'web') !== (previous.clientKind ?? 'web'))
+        throw new BookOrbitError('The refreshed session belongs to a different connection. Sign in again.', 401);
+      this.session = {...next, profile:{...next.profile, url:this.baseUrl}};
+      await this.options.onSessionChange?.(this.session);
+      return;
+    }
     if (this.session.clientKind === 'native' && !this.session.refreshToken) throw new BookOrbitError('The native session has expired. Sign in again.', 401);
     const value = await this.json('auth/refresh', {method:'POST',body:JSON.stringify(this.session.refreshToken ? {refreshToken:this.session.refreshToken} : {})});
     const result = parse(z.object({accessToken:z.string(),refreshToken:z.string().optional()}),value,'refresh');
     this.session = {...this.session, accessToken:result.accessToken, refreshToken:result.refreshToken ?? this.session.refreshToken};
-    this.options.onSessionChange?.(this.session);
+    await this.options.onSessionChange?.(this.session);
   }
   /** Verify the authenticated server identity before adopting a saved account or native player. */
   async getCurrentUser(signal?: AbortSignal): Promise<{id:string;username:string;active:boolean}> {

@@ -49,6 +49,11 @@ describe('installed platform capability evidence', () => {
     expect(row({ ...evidence, playback: { installed: true, report: playback } }, 'system-intents').available).toBe(true);
     expect(row({ ...evidence, playback: { installed: true, report: playback } }, 'system-controls').available).toBe(false);
   });
+  it('reports an installed Android widget without claiming Apple system controls', () => {
+    const evidence = { browser, playback: {installed:true,report:playback}, surfaces: { installed: true, report: { androidWidgetAvailable: true } } };
+    expect(row(evidence, 'widgets').available).toBe(true);
+    for (const id of ['system-intents', 'system-controls', 'spotlight'] as const) expect(row(evidence,id).available).toBe(false);
+  });
   it('does not claim availability before reports finish and does not infer native support from a user agent', () => {
     vi.stubGlobal('navigator', { userAgent: 'iPhone Avid iOS Native CarPlay', mediaSession: {} });
     const evidence = { browser, playback: { installed: true, checking: true, report: playback }, surfaces: { installed: true, checking: true, report: surfaces } };

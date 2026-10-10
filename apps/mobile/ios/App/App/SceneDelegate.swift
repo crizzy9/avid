@@ -11,7 +11,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.rootViewController = AvidViewController()
         window?.makeKeyAndVisible()
 
-        connectionOptions.urlContexts.forEach { AvidSystemSurfaces.handle(url: $0.url) }
+        connectionOptions.urlContexts.forEach { AvidOidcStore.accept($0.url); AvidSystemSurfaces.handle(url: $0.url) }
         connectionOptions.userActivities.forEach { AvidSystemSurfaces.handle(activity: $0) }
         if let shortcut = connectionOptions.shortcutItem { AvidSystemSurfaces.handle(shortcut: shortcut) }
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
@@ -24,7 +24,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneDidBecomeActive(_ scene: UIScene) { AvidSystemSurfaces.refresh() }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-        URLContexts.forEach { AvidSystemSurfaces.handle(url: $0.url) }
+        URLContexts.forEach { AvidOidcStore.accept($0.url); AvidSystemSurfaces.handle(url: $0.url) }
         SceneDelegateProxy.shared.scene(scene, openURLContexts: URLContexts)
     }
 

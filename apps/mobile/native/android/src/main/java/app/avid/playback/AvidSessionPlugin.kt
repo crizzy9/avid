@@ -66,6 +66,8 @@ object AvidSessionStore {
         val file = file(context); val stream = file.startWrite()
         try { stream.write(bytes); file.finishWrite(stream) } catch (error: Exception) { file.failWrite(stream); throw error }
         cached = value
+        // Redact the launcher immediately when the vault changes, even if JS never reaches clearAccount.
+        runCatching { AvidContinueWidget.refresh(context) }
         return value
     }
     private fun key(): SecretKey {

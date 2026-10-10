@@ -26,9 +26,25 @@ export class SessionPersistence {
       if (epoch !== this.epoch || !isActive()) return;
       const cursor = await this.read();
       if (!cursor || epoch !== this.epoch || !isActive()) return;
+      if (JSON.stringify(cursor.session) === JSON.stringify(snapshot) && cursor.readOnly === readOnly) return;
       // Never retry a stale generation by overwriting another owner's credentials.
       const next = await this.vault!.write({ expectedGeneration: cursor.generation, session: snapshot, readOnly });
       this.cursor = Promise.resolve(next);
+    });
+    this.queue = run;
+    return run;
+  }
+  /** Adopt an already committed native refresh; never rewrite its tokens from JS. */
+  adoptNativeRecord(record: NativeSessionRecord, isActive: () => boolean): Promise<void> {
+    const epoch = this.epoch;
+    const run = this.queue.catch(() => {}).then(async () => {
+      if (!this.vault || !record.session || epoch !== this.epoch || !isActive()) throw new DOMException('The native session changed.', 'AbortError');
+      const stored = await this.vault.read();
+      if (epoch !== this.epoch || !isActive() || stored.generation !== record.generation || !stored.session ||
+        stored.session.userId !== record.session.userId || stored.session.profile.url !== record.session.profile.url ||
+        stored.session.accessToken !== record.session.accessToken || stored.session.refreshToken !== record.session.refreshToken ||
+        stored.readOnly !== record.readOnly) throw new Error('A newer native session replaced this refresh.');
+      this.cursor = Promise.resolve(stored);
     });
     this.queue = run;
     return run;

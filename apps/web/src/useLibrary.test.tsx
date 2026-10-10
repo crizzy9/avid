@@ -92,6 +92,7 @@ const defaultTransport = async (
 let root: Root;
 let container: HTMLDivElement;
 let api: ReturnType<typeof useLibrary>;
+let sessionSaved: NonNullable<Parameters<typeof useLibrary>[0]>['onSessionChange'];
 const database = new AvidDatabase();
 const waitForStatus = async (status: string) => {
   const deadline = Date.now() + 2500;
@@ -105,6 +106,7 @@ const waitForStatus = async (status: string) => {
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   transport.mockReset().mockImplementation(defaultTransport);
+  sessionSaved = undefined;
   URL.createObjectURL = vi.fn(() => `blob:test-${crypto.randomUUID()}`);
   URL.revokeObjectURL = vi.fn();
   await Promise.all(database.tables.map((table) => table.clear()));
@@ -112,7 +114,7 @@ beforeEach(async () => {
   document.body.append(container);
   root = createRoot(container);
   function Harness() {
-    api = useLibrary();
+    api = useLibrary({ onSessionChange: (...args) => sessionSaved?.(...args) });
     return null;
   }
   await act(async () => {
@@ -131,6 +133,19 @@ afterEach(async () => {
 });
 
 describe("account-scoped library integration", () => {
+  it.each([false, true])('waits for the secure vault before publishing account surfaces (cancel=%s)', async canceled => {
+    const saved = deferred<void>();
+    let active = true;
+    sessionSaved = vi.fn(() => saved.promise);
+    let connecting!: Promise<void>;
+    await act(async () => { connecting = api.connect(session(), true, () => active); });
+    await act(async () => { await vi.waitFor(() => expect(sessionSaved).toHaveBeenCalledOnce()); });
+    expect(api.client).toBeNull();
+    if (canceled) active = false;
+    await act(async () => { saved.resolve(); await connecting; });
+    expect(api.client?.session.userId ?? null).toBe(canceled ? null : '7');
+  });
+
   it("does not replace newer activity with delayed initial hydration", async () => {
     const waiting = deferred<Book[]>();
     const getBooks = vi.spyOn(LibraryRepository.prototype, "getBooks").mockImplementationOnce(() => waiting.promise);

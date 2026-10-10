@@ -41,7 +41,7 @@ const message = (error: unknown, fallback: string) =>
 const serverResource = (id: string) =>
   /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id) > 0;
 
-export function useLibrary(options: { onSessionChange?: (session: Session, readOnly: boolean, isActive: () => boolean) => void } = {}) {
+export function useLibrary(options: { onSessionChange?: (session: Session, readOnly: boolean, isActive: () => boolean) => void | Promise<void> } = {}) {
   const [nativeJournal] = useState(getNativeJournal);
   const recoveryFlight = useRef<{repo: LibraryRepository; client: BookOrbitClient; promise: Promise<void>} | null>(null);
   const callbacks = useRef(options);
@@ -173,7 +173,9 @@ export function useLibrary(options: { onSessionChange?: (session: Session, readO
         transportBaseUrl: proxyBaseFor(session.profile.url),
         onSessionChange: (updated) => {
           const current = () => isCurrent(nextRepo, nextClient);
-          if (current()) callbacks.current.onSessionChange?.(updated, readOnly, current);
+          if (current()) void Promise.resolve(callbacks.current.onSessionChange?.(updated, readOnly, current)).catch(cause => {
+            if (current()) setError(message(cause, "The renewed session could not be saved securely."));
+          });
         },
       });
       const [page, shelves, notes, activity] = await Promise.all([
@@ -199,13 +201,16 @@ export function useLibrary(options: { onSessionChange?: (session: Session, readO
         nextRepo.putCollections(shelves),
       ]);
       if (!active()) return;
+      // Native surfaces validate their account against the secure vault. Persist
+      // before publishing a new account, and never let a stale attempt activate.
+      await callbacks.current.onSessionChange?.(nextClient.session, readOnly, active);
+      if (!active()) return;
       queryAttempt.current++;
       queryAbort.current?.abort();
       clearMedia();
       localProgress.current.clear();
       context.current = { repo: nextRepo, client: nextClient };
       activityRead.current++;
-      callbacks.current.onSessionChange?.(nextClient.session, readOnly, () => isCurrent(nextRepo, nextClient));
       const nextCovers = new BookCoverCache((id, signal) =>
         nextClient.coverBlob(id, signal),
       );

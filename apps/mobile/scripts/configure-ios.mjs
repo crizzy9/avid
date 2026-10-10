@@ -19,7 +19,7 @@ const appendArray = (objectId, property, value) => {
  text = text.replace(match[0], match[0].slice(0, -match[2].length) + `\n\t\t\t\t${value}${match[2]}`);
 };
 const shared = ['Shared/AvidSharedStore.swift', 'Shared/AvidIntents.swift'];
-const app = ['AvidPlaybackOwner.swift', 'AvidPlaybackPlugin.swift', 'AvidPlaybackSourceStore.swift', 'AvidPlaybackJournal.swift', 'AvidSystemSurfaces.swift', 'AvidSystemSurfacesPlugin.swift', 'AvidViewController.swift', ...shared];
+const app = ['AvidPlaybackOwner.swift', 'AvidPlaybackPlugin.swift', 'AvidPlaybackSourceStore.swift', 'AvidPlaybackJournal.swift', 'AvidOidcPlugin.swift', 'AvidAppearancePlugin.swift', 'AvidSystemSurfaces.swift', 'AvidSystemSurfacesPlugin.swift', 'AvidViewController.swift', ...shared];
 const widget = [...shared, 'Widgets/AvidContinueWidget.swift', 'Widgets/AvidWidgetBundle.swift'];
 const files = [...new Set([...app, ...widget])];
 insert('PBXFileReference', files.map(name => object(name, `isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "${name}"; sourceTree = "<group>";`)).join('') + object('AvidWidgets.appex', 'isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = AvidWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR;'));

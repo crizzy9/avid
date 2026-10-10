@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/avid_widget_card"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/avid_widget_background"
+    android:orientation="vertical"
+    android:padding="16dp">
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/avid_widget_heading"
+        android:textColor="@color/avid_widget_secondary"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:maxLines="1" />
+    <TextView
+        android:id="@+id/avid_widget_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
+        android:text="@string/avid_widget_empty_title"
+        android:textColor="@color/avid_widget_primary"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:ellipsize="end"
+        android:maxLines="2" />
+    <TextView
+        android:id="@+id/avid_widget_author"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="4dp"
+        android:text="@string/avid_widget_empty_detail"
+        android:textColor="@color/avid_widget_secondary"
+        android:textSize="12sp"
+        android:ellipsize="end"
+        android:maxLines="1" />
+    <TextView
+        android:id="@+id/avid_widget_percentage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textColor="@color/avid_widget_secondary"
+        android:textSize="12sp"
+        android:visibility="gone"
+        android:maxLines="1" />
+    <ProgressBar
+        android:id="@+id/avid_widget_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_marginTop="5dp"
+        android:progressTint="@color/avid_widget_accent"
+        android:progressBackgroundTint="@color/avid_widget_track"
+        android:visibility="gone"
+        android:indeterminate="false" />
+</LinearLayout>

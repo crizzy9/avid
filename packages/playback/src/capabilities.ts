@@ -88,7 +88,7 @@ export function getPlatformCapabilities(
   // All of these surfaces depend on the account-scoped shared store. OS APIs alone
   // cannot establish that the installed app can populate or open its own surfaces.
   const sharedStore = reports(surfaces, 'appGroupAvailable');
-  const widgets = sharedStore && reports(surfaces, 'widgetExtensionEmbedded');
+  const widgets = (sharedStore && reports(surfaces, 'widgetExtensionEmbedded')) || reports(surfaces, 'androidWidgetAvailable');
   const intents = sharedStore && nativeAudio && reports(surfaces, 'audioIntentsAvailable');
   const controls = widgets && nativeAudio && reports(surfaces, 'controlsAvailable');
   const spotlight = sharedStore && reports(surfaces, 'spotlightAvailable');

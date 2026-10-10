@@ -68,4 +68,21 @@ describe('secure session persistence ordering', () => {
     expect(state().session?.accessToken).toBe('other-owner');
     expect(vault.write).toHaveBeenCalledTimes(2);
   });
+  it('adopts a committed native refresh without rewriting its credentials or generation', async () => {
+    const { persistence, vault } = fixture();
+    await persistence.persist(session('old'), true, () => true);
+    const old = await persistence.read();
+    const renewed = await vault.write({ expectedGeneration: old!.generation, session: session('native-new'), readOnly: true });
+    await persistence.adoptNativeRecord(renewed, () => true);
+    await persistence.persist(session('native-new'), true, () => true);
+    expect((await persistence.read())?.generation).toBe(renewed.generation);
+    expect(vault.write).toHaveBeenCalledTimes(2);
+  });
+  it('rejects an obsolete native refresh after another account or logout wins', async () => {
+    const { persistence, vault } = fixture();
+    const renewed = await vault.write({ expectedGeneration: 'initial', session: session('native-new'), readOnly: true });
+    await vault.clear();
+    await expect(persistence.adoptNativeRecord(renewed, () => true)).rejects.toThrow('newer native session');
+    await expect(persistence.adoptNativeRecord(renewed, () => false)).rejects.toMatchObject({name:'AbortError'});
+  });
 });

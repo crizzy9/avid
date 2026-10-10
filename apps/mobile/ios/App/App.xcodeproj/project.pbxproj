@@ -63,6 +63,8 @@
 		2F8312690AD0FDDE3BBC0141 /* Embed AvidWidgets */ = {isa = PBXBuildFile; fileRef = 78BA6F44DDA93672B79403C7; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CD0190FD2EEA4E1EBB4E840A /* AvidCarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15C50C173FFD449582C6DE3A /* AvidCarPlaySceneDelegate.swift */; };
 		C12AAA93117342ACB27373FC /* AvidPlaybackJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD9AB5B48294EE1A63F11A5 /* AvidPlaybackJournal.swift */; };
+		2735BC21469C432BB089B64E /* AvidOidcPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCD9C478621C4C12857E1A92 /* AvidOidcPlugin.swift */; };
+		4BCFCF31D9AC473AA344B00A /* AvidAppearancePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A09751F1FA643BCA824C22B /* AvidAppearancePlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -90,6 +92,8 @@
 		78BA6F44DDA93672B79403C7 /* AvidWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = AvidWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		15C50C173FFD449582C6DE3A /* AvidCarPlaySceneDelegate.swift */ = {isa = PBXFileReference; name = "AvidCarPlaySceneDelegate.swift"; path = "AvidCarPlaySceneDelegate.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		4CD9AB5B48294EE1A63F11A5 /* AvidPlaybackJournal.swift */ = {isa = PBXFileReference; name = "AvidPlaybackJournal.swift"; path = "AvidPlaybackJournal.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		BCD9C478621C4C12857E1A92 /* AvidOidcPlugin.swift */ = {isa = PBXFileReference; name = "AvidOidcPlugin.swift"; path = "AvidOidcPlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		5A09751F1FA643BCA824C22B /* AvidAppearancePlugin.swift */ = {isa = PBXFileReference; name = "AvidAppearancePlugin.swift"; path = "AvidAppearancePlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -161,6 +165,8 @@
 				20F96303DF029D6E1DE51286,
 				15C50C173FFD449582C6DE3A /* AvidCarPlaySceneDelegate.swift */,
 				4CD9AB5B48294EE1A63F11A5 /* AvidPlaybackJournal.swift */,
+				BCD9C478621C4C12857E1A92 /* AvidOidcPlugin.swift */,
+				5A09751F1FA643BCA824C22B /* AvidAppearancePlugin.swift */,
 			);
 			name = "Avid native sources";
 			path = "../../native/ios";
@@ -286,6 +292,8 @@
 				D42232302CAD259C2C71C1D3,
 				CD0190FD2EEA4E1EBB4E840A /* AvidCarPlaySceneDelegate.swift in Sources */,
 				C12AAA93117342ACB27373FC /* AvidPlaybackJournal.swift in Sources */,
+				2735BC21469C432BB089B64E /* AvidOidcPlugin.swift in Sources */,
+				4BCFCF31D9AC473AA344B00A /* AvidAppearancePlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

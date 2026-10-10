@@ -12,7 +12,7 @@ export interface SystemBook {
 }
 export interface NativeNavigation { scopeHash: string; bookId: string; fileId: string; kind: SystemBook['kind'] }
 export interface NativeSystemSurfaces {
-  capabilities(): Promise<{ appGroupAvailable: boolean; spotlightAvailable: boolean; widgetExtensionEmbedded: boolean; audioIntentsAvailable: boolean; controlsAvailable: boolean }>;
+  capabilities(): Promise<{ appGroupAvailable: boolean; spotlightAvailable: boolean; widgetExtensionEmbedded: boolean; androidWidgetAvailable?: boolean; audioIntentsAvailable: boolean; controlsAvailable: boolean }>;
   activateAccount(options: { accountScope: string }): Promise<void>;
   publishRecent(options: { accountScope: string; book: SystemBook }): Promise<{ id: string }>;
   indexBooks(options: { accountScope: string; books: SystemBook[] }): Promise<{ ids: string[] }>;

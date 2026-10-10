@@ -16,7 +16,7 @@ export function Connect({
   onAttempt,
 }: {
   onConnect: (session: Session, readOnly: boolean) => Promise<void>;
-  onAttempt?: () => void;
+  onAttempt?: (method?: 'password' | 'provider') => void | Promise<void>;
 }) {
   const { t, locale, setLocale } = useI18n();
 
@@ -25,6 +25,7 @@ export function Connect({
   const [password, setPassword] = useState("");
   const [readOnly, setReadOnly] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [providerBusy, setProviderBusy] = useState(false);
   const [error, setError] = useState("");
   const mounted = useRef(false),
     attempt = useRef(0);
@@ -39,10 +40,11 @@ export function Connect({
     e.preventDefault();
     const current = ++attempt.current;
     const active = () => mounted.current && current === attempt.current;
-    onAttempt?.();
     setBusy(true);
     setError("");
     try {
+      await onAttempt?.('password');
+      if (!active()) return;
       const serverUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
       const profile = {
         id: crypto.randomUUID(),
@@ -89,7 +91,7 @@ export function Connect({
             autoComplete="url"
             placeholder="https://books.example.com"
             value={url}
-            disabled={busy}
+            disabled={busy || providerBusy}
             onChange={(e) => setUrl(e.target.value)}
           />
         </div>
@@ -100,7 +102,7 @@ export function Connect({
           required
           autoComplete="username"
           value={username}
-          disabled={busy}
+          disabled={busy || providerBusy}
           onChange={(e) => setUsername(e.target.value)}
           placeholder={t("connect.usernameHint")}
         />
@@ -112,7 +114,7 @@ export function Connect({
           type="password"
           autoComplete="current-password"
           value={password}
-          disabled={busy}
+          disabled={busy || providerBusy}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={t("connect.passwordHint")}
         />
@@ -121,7 +123,7 @@ export function Connect({
         <input
           type="checkbox"
           checked={readOnly}
-          disabled={busy}
+          disabled={busy || providerBusy}
           onChange={(e) => setReadOnly(e.target.checked)}
         />{" "}
         {t("connect.readOnly")}
@@ -134,7 +136,7 @@ export function Connect({
       )}
       <button
         className="primary-button full-width"
-        disabled={busy}
+        disabled={busy || providerBusy}
         type="submit"
       >
         {busy ? (
@@ -148,7 +150,8 @@ export function Connect({
         serverUrl={url}
         readOnly={readOnly}
         disabled={busy}
-        onAttempt={onAttempt}
+        onAttempt={() => onAttempt?.('provider')}
+        onBusyChange={setProviderBusy}
       />
       <p className="privacy-note">
         <ShieldCheck size={15} />

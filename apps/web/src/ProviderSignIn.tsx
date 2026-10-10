@@ -11,6 +11,12 @@ import {
   webOidcCallback,
 } from "./webOidc";
 import { bookOrbitFetch, proxyBaseFor } from "./Connect";
+import { getNativeOidc } from "../../mobile/src/native-oidc";
+import { configuredNativeOidc, getConfiguredNativeOidcCoordinator, nativeOidcRedirect } from "./nativeOidcCoordinator";
+
+export function getNativeProviderCoordinator() {
+  return getConfiguredNativeOidcCoordinator(url => ({ fetch: bookOrbitFetch, transportBaseUrl: proxyBaseFor(url) }));
+}
 
 let coordinator: WebOidcCoordinator | undefined;
 function getCoordinator() {
@@ -37,11 +43,13 @@ export function ProviderSignIn({
   serverUrl,
   readOnly,
   onAttempt,
+  onBusyChange,
   disabled = false,
 }: {
   serverUrl: string;
   readOnly: boolean;
-  onAttempt?: () => void;
+  onAttempt?: () => void | Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
   disabled?: boolean;
 }) {
   const { t } = useI18n();
@@ -51,6 +59,7 @@ export function ProviderSignIn({
   const generation = useRef(0);
   const mounted = useRef(false);
   const currentOptions = useRef({ serverUrl, readOnly, disabled });
+  const native = getNativeOidc() !== null;
   currentOptions.current = { serverUrl, readOnly, disabled };
   useEffect(() => {
     mounted.current = true;
@@ -65,7 +74,8 @@ export function ProviderSignIn({
     setError("");
     setBusy(false);
   }, [serverUrl, readOnly, disabled]);
-  if (!configuredWebOidc()) return null;
+  useEffect(() => { onBusyChange?.(busy); return () => onBusyChange?.(false); }, [busy, onBusyChange]);
+  if (native ? !configuredNativeOidc() : !configuredWebOidc()) return null;
   async function discover() {
     const current = ++generation.current;
     const active = () =>
@@ -79,14 +89,16 @@ export function ProviderSignIn({
       const url = /^https?:\/\//i.test(serverUrl)
         ? serverUrl
         : `https://${serverUrl}`;
-      webOidcCallback(configuredWebOidc()!, url, location.href);
+      if (native) nativeOidcRedirect(configuredNativeOidc()!, url);
+      else webOidcCallback(configuredWebOidc()!, url, location.href);
       const result = await BookOrbitClient.loginOptions(url, {
         fetch: bookOrbitFetch,
         transportBaseUrl: proxyBaseFor(url),
       });
       if (!active()) return;
-      setProviders(result.oidcProviders.filter((provider) => provider.enabled));
-      if (!result.oidcProviders.some((provider) => provider.enabled))
+      const enabled = result.oidcProviders.filter(provider => provider.enabled && (!native || configuredNativeOidc()!.providers.includes(provider.slug)));
+      setProviders(enabled);
+      if (!enabled.length)
         setError(t("oidc.none"));
     } catch (err) {
       if (active())
@@ -103,14 +115,15 @@ export function ProviderSignIn({
       currentOptions.current.serverUrl === serverUrl &&
       currentOptions.current.readOnly === readOnly &&
       !currentOptions.current.disabled;
-    onAttempt?.();
     setBusy(true);
     setError("");
     try {
+      await onAttempt?.();
+      if (!active()) return;
       const url = /^https?:\/\//i.test(serverUrl)
         ? serverUrl
         : `https://${serverUrl}`;
-      await getCoordinator().begin(
+      await (native ? getNativeProviderCoordinator()! : getCoordinator()).begin(
         {
           id: crypto.randomUUID(),
           name: new URL(url).hostname,

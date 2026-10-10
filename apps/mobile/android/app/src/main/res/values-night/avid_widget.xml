@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="avid_widget_background">#1E211F</color>
+    <color name="avid_widget_primary">#F7F6F2</color>
+    <color name="avid_widget_secondary">#BAC5BC</color>
+    <color name="avid_widget_accent">#96C7A9</color>
+    <color name="avid_widget_track">#39483E</color>
+</resources>

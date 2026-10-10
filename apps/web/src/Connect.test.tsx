@@ -49,6 +49,16 @@ const session: Session = {
   accessToken: "fixture-token",
 };
 describe("password connection cancellation", () => {
+  it('waits for the old native credential owner to clear before starting login', async () => {
+    let ready!: () => void;
+    onAttempt.mockImplementation(() => new Promise<void>(resolve => { ready = resolve; }));
+    const login = vi.spyOn(BookOrbitClient, 'login').mockResolvedValue(session);
+    await act(async () => { host.querySelector('form')!.dispatchEvent(new Event('submit', {bubbles:true,cancelable:true})); });
+    expect(login).not.toHaveBeenCalled();
+    await act(async () => { ready(); });
+    expect(login).toHaveBeenCalledOnce();
+    expect(onConnect).toHaveBeenCalledOnce();
+  });
   it("announces the manual attempt before login and ignores a response after modal unmount", async () => {
     let resolve!: (session: Session) => void;
     vi.spyOn(BookOrbitClient, "login").mockImplementation(() => {

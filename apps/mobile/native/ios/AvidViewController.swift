@@ -1,4 +1,5 @@
 import Capacitor
+import UIKit
 
 /// The generated SceneDelegate installs this bridge controller.
 final class AvidViewController: CAPBridgeViewController {
@@ -7,5 +8,13 @@ final class AvidViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(AvidSystemSurfacesPlugin())
         bridge?.registerPluginInstance(AvidSessionPlugin())
         bridge?.registerPluginInstance(AvidJournalPlugin())
+        bridge?.registerPluginInstance(AvidOidcPlugin())
+        bridge?.registerPluginInstance(AvidAppearancePlugin())
+        AvidAppearance.apply(to: self)
+    }
+    override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); AvidAppearance.apply(to: self) }
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle { AvidAppearance.apply(to: self) }
     }
 }
