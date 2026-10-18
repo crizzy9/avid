@@ -5,7 +5,7 @@ Updated: 2026-10-18. This is the current delivery order, superseding the phase n
 | Phase | Outcome | Current state |
 | --- | --- | --- |
 | 1 | Core online library, readers, listening, sync and native integrations | Working development preview; implementation and acceptance gates remain open. |
-| 2 | Complete audiobook experience, including local Prepare Read & Listen and prepared offline playback | Bounded English preparation and session-only prepared viewer implemented; broader audio work and browser/device acceptance remain open. |
+| 2 | A primary audiobook application, including local Prepare Read & Listen and prepared offline playback | [Detailed audiobook plan](phase-2-audiobook-plan.md) established; controls, cross-book queue, full-book matching and native acceptance remain open. |
 | 3 | Full offline library, editing and reconciliation | Deferred. Earlier experimental SMIL packages and local checkpoints do not complete F67–F71. |
 | 4 | Apple Pencil and reader enhancements | Planned. |
 | 5 | UI enhancements | Planned. |
@@ -29,6 +29,10 @@ The validated source checkpoint `430b8b6` passed 657 shared tests, TypeScript, t
 **Exit:** every applicable F01–F66 acceptance check has recorded evidence, and unsupported platform behavior is explicitly resolved or agreed as a scope change. The supplied BookOrbit instance stays read-only; mutation testing uses a separate disposable instance.
 
 ## Phase 2 — complete audiobook experience
+
+The **[Phase 2 audiobook plan](phase-2-audiobook-plan.md)** is the current feature and acceptance specification. It makes listening a first-class Avid workflow, inventories Plappa/Absorb/Audiobookshelf controls, defines preference scope and defaults, and sequences milestones A–H. The [reference inventory](audiobook-reference-inventory-2026-10-18.md) records dated primary sources; the [full-book validation plan](phase-2-full-book-validation.md) specifies the next matching experiments. This planning update does not claim those experiments have run.
+
+Start with a complete-book baseline and shared playback/settings contracts, then daily controls and listening queue, measured Read & Listen improvements, audio processing and native surfaces. Ordinary settings/queue persistence and online recovery are Phase 2 essentials. General offline content/editing/reconciliation stays Phase 3. BookOrbit-specific gaps are tracked separately without shrinking the client feature target. The topic list below describes broad work areas; the detailed plan controls delivery order and completion.
 
 Finish the audiobook product, including local preparation and retained offline playback of prepared read-along, before undertaking the broader Phase 3 offline system. Existing streaming playback, chapters, speed, sleep timer, notes and verified EPUB media overlays/alignment are the starting point, not evidence that this phase is complete.
 
@@ -57,6 +61,7 @@ Current release-update slice: named online voices with bounded lookahead and act
 Implement F67–F71 from the baseline under their new phase number:
 
 - Offline server-generated voice preparation and voice-storage management; series-wide batch downloads and scheduling.
+- Standalone wearable downloaded libraries, next-N queue/series/show downloads, automatic cleanup, cellular download rules and full data backup/restore. Credential-free settings-only export/import belongs to Phase 2; cross-device settings reconciliation belongs here unless a verified online contract is implemented separately.
 - Resumable, checksum-verified downloads for every supported publication type and all required resources, including covers, narration, alignment maps and chapter metadata.
 - Download manifests, content versions, network policies and clear queued, partial, ready, stale, failed and needs-sync states.
 - An offline catalog, covers, search indexes, notes and progress that work from a cold launch without a network connection.

@@ -1,5 +1,7 @@
 # Phase 2 preparation and the earlier read-along slice
 
+The [complete Phase 2 audiobook plan](phase-2-audiobook-plan.md) now controls the next delivery milestones. The [full-book validation plan](phase-2-full-book-validation.md) specifies planned corpus runs and release targets; they have not been completed. This document describes the current implementation and earlier evidence.
+
 Updated: 2026-10-18. **Phase 2 includes Prepare Read & Listen: compare an independent ebook and audiobook locally, retain the resulting preparation, and read/listen from it offline.** A bounded English implementation is now present. It is limited to foreground use and still needs full browser/device acceptance. Broader offline editing, notes/highlights, durable progress reconciliation and the full offline library are deferred to Phase 3. Neither phase is complete; Phase 1 also retains the implementation and acceptance gaps in its [checklist](phase-1-status.md) and [validation guide](phase-1-validation.md).
 
 The earlier chapter-player, SMIL handoff and small offline-package behavior below was implemented and tested before this correction. Its original evidence remains useful, but does not prove that independent audio/text preparation works. Old experimental local notes and checkpoints are preserved in their databases; the active prepared viewer does not open or modify them. See the [roadmap](roadmap.md) and [October 18 reference correction](apogee-release-delta-2026-10-18.md).
