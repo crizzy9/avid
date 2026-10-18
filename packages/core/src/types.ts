@@ -13,6 +13,9 @@ export interface Book {
   files: BookFile[]; chapters?: AudioChapter[];
   /** Optional metadata from the pinned BookOrbit card/detail contract; ratings use a five-star scale. */
   publisher?: string; publishedYear?: number; rating?: number; communityRatings?: BookCommunityRating[];
+  language?: string; isbn10?: string; isbn13?: string;
+  /** Comic detail metadata from BookOrbit; story-arc names do not imply a cross-series reading order. */
+  comicMetadata?: { storyArcs: string[]; issueNumber?: string; volumeName?: string };
 }
 export interface ServerProfile { id: string; name: string; url: string; username?: string; version?: string }
 export interface Session { profile: ServerProfile; accessToken: string; refreshToken?: string; userId: string; clientKind?: 'web' | 'native' }

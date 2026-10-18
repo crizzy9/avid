@@ -360,7 +360,7 @@ async function prepare(
   const alignmentSnapshot: GeneratedAlignmentSnapshot = {
     version: 1,
     source: "generated",
-    algorithm: "avid-word-match-v1",
+    algorithm: alignment.algorithm,
     edition: {
       accountScope: edition.accountScope,
       bookId: edition.bookId,

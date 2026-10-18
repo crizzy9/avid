@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  captureAo3WorkSkin,
+  restoreAo3WorkSkin,
+  type Ao3WorkSkin,
+} from "./ao3WorkSkin";
 
 export const AO3_ORIGIN = "https://archiveofourown.org";
 export interface Ao3FollowedWork {
@@ -18,6 +23,8 @@ export interface Ao3WorkEdition extends Ao3FollowedWork {
   chapterIds: string[];
   epubPath: string;
   checkedAt: string;
+  /** Ephemeral authenticated source formatting; never stored in follow metadata. */
+  workSkin?: Ao3WorkSkin;
 }
 export interface Ao3Import {
   accountId: string;
@@ -230,6 +237,15 @@ export async function parseAo3Edition(
     throw new Ao3Error(
       "AO3 does not currently offer an EPUB download for this work.",
     );
+  let workSkin: Ao3WorkSkin | undefined;
+  try {
+    workSkin = captureAo3WorkSkin(
+      doc,
+      content.map((element, i) => ({ id: index[i].id, element: element! })),
+    );
+  } catch (error) {
+    throw new Ao3Error(`AO3 formatting restoration failed. ${error instanceof Error ? error.message : "Cannot read the work skin."}`);
+  }
   return {
     accountId: username,
     workId,
@@ -238,8 +254,29 @@ export async function parseAo3Edition(
     chapters,
     chapterIds: chapters.map((chapter) => chapter.id),
     epubPath: download,
-    revision: await hash(JSON.stringify([workId, title, author, chapters])),
+    // No-skin editions keep their historical revision, so existing imports are not duplicated.
+    // Styling adds an immutable rendition identity; prior unstyled file/CFI identities survive.
+    revision: await hash(
+      JSON.stringify([
+        workId,
+        title,
+        author,
+        chapters,
+        ...(workSkin
+          ? [
+              {
+                workSkinVersion: workSkin.version,
+                css: workSkin.css,
+                classNames: workSkin.chapters.map(
+                  (chapter) => chapter.className,
+                ),
+              },
+            ]
+          : []),
+      ]),
+    ),
     checkedAt: new Date().toISOString(),
+    ...(workSkin ? { workSkin } : {}),
   };
 }
 const pageSchema = z.object({ url: z.string().url(), html: z.string() });
@@ -507,7 +544,7 @@ export class Ao3Client {
       `/v1/epub?path=${encodeURIComponent(edition.epubPath)}`,
       { signal },
     );
-    const file = await response.blob();
+    let file = await response.blob();
     if (
       !file.size ||
       file.size > 64 * 1024 * 1024 ||
@@ -518,6 +555,22 @@ export class Ao3Client {
     if (current.revision !== edition.revision)
       throw new Ao3Error(
         "This work changed during download. Check again before importing; the previous edition is retained.",
+      );
+    if (current.workSkin) {
+      try {
+        file = await restoreAo3WorkSkin(file, current.workSkin, signal);
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        throw new Ao3Error(
+          `AO3 formatting restoration failed. ${error instanceof Error ? error.message : "The previous edition is retained."}`,
+        );
+      }
+    }
+    signal?.throwIfAborted();
+    if (this.accountId !== edition.accountId)
+      throw new Ao3Error(
+        "This edition belongs to a different AO3 account.",
+        401,
       );
     return {
       accountId: edition.accountId,

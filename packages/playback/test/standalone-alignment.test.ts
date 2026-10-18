@@ -74,9 +74,16 @@ describe('exact standalone audiobook bridge', () => {
     handoffToAudio(alignment, edition, 'text/chapter.xhtml#p2', transport, source);
     expect(transport.pause).toHaveBeenCalledOnce(); expect(transport.load).toHaveBeenCalledWith(source, 23);
   });
+  it('keeps authored SMIL timing strict even when its duration is a whole second', async () => {
+    const alignment = await map();
+    const rounded = { ...source, tracks: source.tracks.map(track => ({ ...track, decodedDuration: track.duration! - 0.14 })) };
+    const transport = { getBook: () => rounded, getSnapshot: () => ({}) as PlaybackSnapshot, pause: vi.fn(), load: vi.fn() };
+    expect(() => handoffToAudio(alignment, edition, 'text/chapter.xhtml#p1', transport, rounded)).toThrow('decoded audio duration');
+    expect(transport.pause).not.toHaveBeenCalled();
+  });
   it('uses the final paused source time for text handoff and does not stop for unaligned gaps', async () => {
     const alignment = await map(); let time = 24;
-    const transport = { getBook: () => source, getSnapshot: () => ({ bookId: '12', fileId: '41', currentTime: time, rate: 2 }) as PlaybackSnapshot,
+    const transport = { getBook: () => source, getSnapshot: () => ({ bookId: '12', fileId: '41', currentTime: time, trackIndex: 1, rate: 2 }) as PlaybackSnapshot,
       pause: vi.fn(() => { time = 25; }), load: vi.fn() };
     expect(handoffToText(alignment, edition, transport)?.locator).toBe('text/chapter.xhtml#p2');
     expect(transport.pause).toHaveBeenCalledOnce();

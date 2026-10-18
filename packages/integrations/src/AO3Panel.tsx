@@ -341,6 +341,7 @@ export function AO3Panel({ accountScope, onImport }: AO3PanelProps) {
                   </button>
                   {edition && (
                     <>
+                      {edition.workSkin && <p>{t("ao3StylingHint")}</p>}
                       <p>
                         {t(imported ? "editionImported" : "editionAvailable", {
                           count: edition.chapterIds.length,

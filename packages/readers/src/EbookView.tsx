@@ -6,10 +6,9 @@ import type {
   SelectionAnchor,
   TocItem,
 } from "./contracts";
-import { themeColors } from "./contracts";
+import { publicationStyleRules } from "./publicationStyles";
 import { createDemoEpub } from "./demo";
 import { sanitizeBookDocument } from "./isolation";
-import { fontRules } from "./fonts";
 import { clamp } from "./anchors";
 import { publicationSource } from "./publicationSource";
 import {
@@ -32,9 +31,9 @@ import {
   type AlignmentEdition,
   type VerifiedAudioAlignment,
 } from "../../playback/src/standalone-alignment";
-import { extractPublicationText } from './generatedText';
-import type { ExtractedPublicationText } from '../../playback/src/generated-alignment';
-import { sha256Blob } from '../../core/src/blobHash';
+import { extractPublicationText } from "./generatedText";
+import type { ExtractedPublicationText } from "../../playback/src/generated-alignment";
+import { sha256Blob } from "../../core/src/blobHash";
 import { AUDIO_HIGHLIGHT_CLASS, ReadAlongHighlighter } from "./readAlong";
 import { speechProvider } from "../../playback/src/speechRuntime";
 import { prefersReducedMotion, useReducedMotion } from "./reducedMotion";
@@ -173,6 +172,7 @@ export function EbookView(props: EngineProps) {
       speechGeneration++;
       speaker.cancel();
       current.current.onSpeaking(false);
+      current.current.onSpeechPlaying?.(false);
     };
     stopSpeech.current = stop;
     const speakSection = async (startFromSelection = true) => {
@@ -182,6 +182,8 @@ export function EbookView(props: EngineProps) {
       }
       const generation = ++speechGeneration;
       speaking = true;
+      current.current.onSpeaking(true);
+      current.current.onSpeechPlaying?.(false);
       const { doc, index } = view.renderer.getContents()[0] ?? {};
       if (!doc) return stop();
       const selected = startFromSelection ? doc.getSelection() : undefined;
@@ -197,6 +199,7 @@ export function EbookView(props: EngineProps) {
       const speech = buildSpeechText(doc, startRange);
       const continueSection = async () => {
         if (!speaking || generation !== speechGeneration) return;
+        current.current.onSpeechPlaying?.(false);
         const next = nextLinearSection(view.book.sections, index);
         if (next === undefined) return stop();
         await view.goTo(next);
@@ -245,6 +248,10 @@ export function EbookView(props: EngineProps) {
           if (speaking && generation === speechGeneration)
             current.current.onSpeaking(true);
         },
+        onPlayingChange: (active) => {
+          if (speaking && generation === speechGeneration)
+            current.current.onSpeechPlaying?.(active);
+        },
         onError: (error) => {
           if (generation !== speechGeneration) return;
           stop();
@@ -276,11 +283,20 @@ export function EbookView(props: EngineProps) {
         let digest: Promise<string> | undefined;
         let extracted: Promise<ExtractedPublicationText> | undefined;
         const extractAlignmentText = async () => {
-          if (cancelled || props.file.format !== 'EPUB') throw new Error('An open EPUB is required for preparation.');
-          digest ??= sha256Blob(input,{ isActive: () => !cancelled });
-          extracted ??= digest.then(hash => extractPublicationText(loadedBook,hash,(index,range) => view.getCFI(index,range),() => !cancelled));
+          if (cancelled || props.file.format !== "EPUB")
+            throw new Error("An open EPUB is required for preparation.");
+          digest ??= sha256Blob(input, { isActive: () => !cancelled });
+          extracted ??= digest.then((hash) =>
+            extractPublicationText(
+              loadedBook,
+              hash,
+              (index, range) => view.getCFI(index, range),
+              () => !cancelled,
+            ),
+          );
           const result = await extracted;
-          if (cancelled) throw new Error('The reader changed during preparation.');
+          if (cancelled)
+            throw new Error("The reader changed during preparation.");
           return result;
         };
         const validate = async (
@@ -340,10 +356,22 @@ export function EbookView(props: EngineProps) {
         alignmentHandle = {
           extractAlignmentText,
           restorePreparedAlignment: async (snapshot, manifest, assets) => {
-            const captured=structuredClone(snapshot), capturedManifest=structuredClone(manifest), capturedAssets=assets.map(asset=>({...asset}));
+            const captured = structuredClone(snapshot),
+              capturedManifest = structuredClone(manifest),
+              capturedAssets = assets.map((asset) => ({ ...asset }));
             const publication = await extractAlignmentText();
-            return verifyPreparedPublication(captured,capturedManifest,capturedAssets,publication,
-              {accountScope:props.accountScope??'local',bookId:props.book.id,textFileId:props.file.id},()=>!cancelled);
+            return verifyPreparedPublication(
+              captured,
+              capturedManifest,
+              capturedAssets,
+              publication,
+              {
+                accountScope: props.accountScope ?? "local",
+                bookId: props.book.id,
+                textFileId: props.file.id,
+              },
+              () => !cancelled,
+            );
           },
           pauseNarration: () => {
             if (!cancelled) {
@@ -675,7 +703,6 @@ function applyStyle(
   settings: EngineProps["settings"],
   scope = "local",
 ) {
-  const colors = themeColors(settings);
   view.renderer.setAttribute("flow", settings.flow);
   view.renderer.setAttribute("gap", `${settings.margin}%`);
   view.renderer.setAttribute("margin", "12px");
@@ -686,8 +713,11 @@ function applyStyle(
     "animated",
     settings.animation === "slide" && settings.flow !== "scrolled" && !reduced,
   );
-  const family = settings.font.replace(/["\\;{}]/g, "");
   view.renderer.setStyles(
-    `${fontRules(scope)} html { color: ${colors.foreground}; background: ${colors.background}; } body { font-family: "${family}", Georgia, serif !important; font-size: ${settings.fontSize}px !important; line-height: ${settings.lineHeight} !important; } p { line-height: inherit !important; } h1, h2 { line-height: 1.3; font-weight: 500; } a { color: inherit; } ::selection { background: #d9b97188; } img { max-width:100%; } .${CSS.escape(view.book.media?.activeClass || "avid-narration-active")}, .${AUDIO_HIGHLIGHT_CLASS} { background: #d6b96e88 !important; color: inherit !important; }`,
+    publicationStyleRules(
+      settings,
+      view.book.media?.activeClass || "avid-narration-active",
+      scope,
+    ),
   );
 }

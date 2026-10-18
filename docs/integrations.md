@@ -117,6 +117,8 @@ The source verifies subscription ownership/filtering and pagination, work/chapte
 
 Checks are explicit user actions, without background polling. An edition revision hashes stable chapter IDs, chapter order, chapter content and displayed title/author. This detects new chapters and edits to existing chapters while ignoring changing hit/comment counts. Before importing, the connector downloads the observed EPUB and rechecks the work; a changed revision aborts the import. Subscriptions and imported-revision receipts are isolated by both Avid account scope and canonical AO3 account. At most 1,000 works, 2,000 chapters per work and 200 imported revision receipts per work are tracked. Credentials, cookies and story content are not stored in this metadata record.
 
+When the authenticated page includes a work skin, the safe stylesheet, restoration version and chapter-container classes also enter the edition revision. Explicit imports can restore this formatting into a new EPUB only when every chapter's text and element structure matches exactly; unmatched or ambiguous downloads fail without replacing previous editions. No-skin revision identities stay unchanged. This uses the existing page/download routes and preserves original EPUB resources, script/network isolation and older file/anchor identities. The bounded CSS subset and live-corpus/native qualification gates are documented in [AO3 formatting recovery](ao3-formatting.md).
+
 `AO3Panel` calls the host only for an explicit import:
 
 ```tsx

@@ -2,6 +2,24 @@ import { getLocale, LOCALES, useI18n, type Locale } from "../../i18n/src";
 import { Ao3Error } from "./ao3";
 import { CrossPointError, type CrossPointErrorCode } from "./crosspoint";
 export const connectorMessages = {
+  ao3StylingHint: [
+    "This import can restore safe formatting from the authenticated work page into a new edition. Earlier editions stay available. Choose Use publication formatting in the reader to use the work’s typography and colors.",
+    "Tämä tuonti voi palauttaa turvallisen muotoilun kirjautuneena avatulta teossivulta uuteen versioon. Aiemmat versiot säilyvät. Valitse lukijassa Käytä julkaisun muotoilua käyttääksesi teoksen kirjasimia ja värejä.",
+    "Cet import peut rétablir la mise en forme sûre de la page authentifiée dans une nouvelle édition. Les anciennes restent disponibles. Choisissez Utiliser la mise en forme du livre dans le lecteur pour ses polices et couleurs.",
+    "Dieser Import kann sichere Formatierung von der angemeldeten Werkseite in einer neuen Ausgabe wiederherstellen. Frühere Ausgaben bleiben verfügbar. Wähle im Leser Formatierung der Publikation verwenden, um die Schriften und Farben des Werks zu nutzen.",
+    "Ten import może przywrócić bezpieczne formatowanie z uwierzytelnionej strony utworu w nowej wersji. Poprzednie wersje pozostaną dostępne. W czytniku wybierz Użyj formatowania publikacji, aby użyć czcionek i kolorów utworu.",
+    "此导入可将已登录作品页面中的安全格式恢复到新版本。以前的版本仍会保留。在阅读器中选择“使用出版物原有格式”即可使用作品的字体和颜色。",
+    "Esta importación puede restaurar el formato seguro de la página autenticada en una nueva edición. Las anteriores siguen disponibles. Elige Usar el formato de la publicación en el lector para utilizar sus fuentes y colores.",
+  ],
+  ao3StylingFailed: [
+    "The work’s formatting could not be safely matched to this EPUB. No styled edition was imported; your previous editions are unchanged.",
+    "Teoksen muotoilua ei voitu yhdistää turvallisesti tähän EPUB-tiedostoon. Muotoiltua versiota ei tuotu; aiemmat versiot säilyvät ennallaan.",
+    "La mise en forme de l’œuvre n’a pas pu être associée de façon sûre à cet EPUB. Aucune édition mise en forme n’a été importée ; vos éditions précédentes sont inchangées.",
+    "Die Formatierung des Werks konnte dieser EPUB nicht sicher zugeordnet werden. Es wurde keine formatierte Ausgabe importiert; frühere Ausgaben bleiben unverändert.",
+    "Nie udało się bezpiecznie dopasować formatowania utworu do tego pliku EPUB. Nie zaimportowano sformatowanej wersji; poprzednie pozostają bez zmian.",
+    "无法将作品格式安全地匹配到此 EPUB。未导入带格式的版本；以前的版本保持不变。",
+    "No se pudo asociar de forma segura el formato de la obra con este EPUB. No se importó una edición con formato; las anteriores no han cambiado.",
+  ],
   cancel: [
     "Cancel",
     "Peruuta",
@@ -807,6 +825,8 @@ export function connectorError(
   if (error instanceof CrossPointError)
     return { key: deviceErrors[error.code] };
   if (error instanceof Ao3Error) {
+    if (error.message.startsWith("AO3 formatting restoration failed."))
+      return { key: "ao3StylingFailed" };
     if (error.status === 401) return { key: "ao3Auth" };
     if (error.status === 403) return { key: "ao3Restricted" };
     if (error.status === 429 || error.status === 503)

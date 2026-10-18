@@ -15,6 +15,7 @@ vi.mock("./EbookView", () => ({
     <div
       data-font-size={settings.fontSize}
       data-line-height={settings.lineHeight}
+      data-publication-styles={settings.publicationStyles===true}
     />
   ),
 }));
@@ -60,11 +61,11 @@ afterEach(async () => {
   vi.restoreAllMocks();
   host.remove();
 });
-const render = async (preferences?: ReaderPreferencePort, fileId = "5") =>
+const render = async (preferences?: ReaderPreferencePort, fileId = "5",scope='account') =>
   act(async () =>
     root.render(
       <Reader
-        accountScope="account"
+        accountScope={scope}
         book={book}
         file={{ ...book.files[0], id: fileId }}
         preferences={preferences}
@@ -150,4 +151,11 @@ it("keeps the reader available with a notice when local preference storage fails
   await render();
   expect(host.querySelector("[data-font-size]")).not.toBeNull();
   expect(host.textContent).toContain("Could not save this preference.");
+});
+it('keeps publication formatting per account and file and restores the chosen setting',async()=>{
+  await render();await click('Reading settings');const toggle=host.querySelector<HTMLInputElement>('.reader-publication-formatting input')!;
+  expect(toggle.checked).toBe(false);await act(async()=>toggle.click());expect(host.querySelector('[data-publication-styles]')?.getAttribute('data-publication-styles')).toBe('true');
+  await render(undefined,'6');expect(host.querySelector('[data-publication-styles]')?.getAttribute('data-publication-styles')).toBe('false');
+  await render(undefined,'5','other-account');expect(host.querySelector('[data-publication-styles]')?.getAttribute('data-publication-styles')).toBe('false');
+  await render();expect(host.querySelector('[data-publication-styles]')?.getAttribute('data-publication-styles')).toBe('true');
 });

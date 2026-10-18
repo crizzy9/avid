@@ -3,6 +3,8 @@ import type { Annotation, Book, BookFile, BookOrbitReadStatus, Collection, Readi
 import { bookOrbitTextProgress, koreaderRestoreAnchor, parseKoreaderCheckpoint, KoreaderContractError, type KoreaderCheckpoint, type KoreaderFileIdentity } from './koreader';
 import { mediaOverlayPath, mediaOverlayPlaylistSchema, type MediaOverlayPlaylist } from './media-overlay';
 import { boundedBlob, boundedFileBlob } from './boundedBlob';
+import { BOOK_REQUEST_PAIR_FEATURE, bookRequestWorkSchema, createBookRequestSchema, bookRequestAvailabilityQuerySchema, bookRequestAvailabilitySchema, bookRequestPageSchema, bookRequestSubmitSchema, bookRequestPairSubmitSchema, type BookRequestWork, type CreateBookRequest, type BookRequestCapabilities, type BookRequestAvailabilityQuery } from './bookRequests';
+import { serverSpeechProviderSchema, serverSpeechVoiceSchema, serverSpeechRequestSchema, decodeServerSpeech, type ServerSpeechCapabilities, type ServerSpeechRequest } from './serverSpeech';
 
 /** Contract inspected at BookOrbit v3.3.0 / e767358443419253eeed782518d6fc4f675d69fd. */
 export const BOOKORBIT_CONTRACT_VERSION = '3.3.0';
@@ -33,7 +35,9 @@ const bookSchema = z.object({
   seriesId:numericId.nullable().optional(),seriesName: z.string().nullable().optional(), seriesIndex: z.union([z.string(), z.number()]).nullable().optional(),
   addedAt: z.string(), hasCover: z.boolean().optional(), coverVersion: z.string().optional(),
   publisher: z.string().nullish(), publishedYear: z.number().int().nullish(), rating: z.number().min(0).max(5).nullish(),
+  language:z.string().nullish(),isbn10:z.string().nullish(),isbn13:z.string().nullish(),
   communityRatings: z.array(z.object({provider:z.string().min(1),rating:z.number().min(0).max(5),ratingCount:z.number().int().nonnegative().nullish()})).nullish(),
+  comicMetadata:z.object({storyArcs:z.array(z.string()).nullish(),issueNumber:z.string().nullish(),volumeName:z.string().nullish()}).nullish(),
 }).passthrough();
 const booksPageSchema = z.object({items: z.array(bookSchema), total: z.number(), page: z.number(), size: z.number()});
 const seriesSchema=z.object({id:numericId,name:z.string(),bookCount:z.number().int().nonnegative(),readCount:z.number().int().nonnegative(),authors:z.array(z.string()),coverBookIds:z.array(numericId).optional().default([]),expectedBookCount:z.number().nullable().optional(),gapCount:z.number().optional()});
@@ -248,8 +252,73 @@ export class BookOrbitClient {
   async logout(signal?: AbortSignal): Promise<void> {
     await this.response('auth/logout',{method:'POST',signal,body:JSON.stringify(this.session.refreshToken ? {refreshToken:this.session.refreshToken} : {})},false,false);
   }
-  async getServerInfo(): Promise<{version:string;features:string[]}> {
-    return parse(z.object({version:z.string(),features:z.array(z.string()).default([])}),await this.json('app-info'),'server info');
+  async getServerInfo(signal?:AbortSignal): Promise<{version:string;features:string[]}> {
+    return parse(z.object({version:z.string(),features:z.array(z.string()).default([])}),await this.json('app-info',{signal}),'server info');
+  }
+  /** Feature flags, not a guessed version cutoff, enable v3.4 pair/target semantics. */
+  private async requestPairsAvailable(signal?:AbortSignal):Promise<boolean> {
+    try { return (await this.getServerInfo(signal)).features.includes(BOOK_REQUEST_PAIR_FEATURE); }
+    catch(error) { if(error instanceof BookOrbitError&&[404,405].includes(error.status))return false;throw error; }
+  }
+  async getBookRequestCapabilities(signal?:AbortSignal):Promise<BookRequestCapabilities> {
+    try {
+      const [pairs]=await Promise.all([this.requestPairsAvailable(signal),this.listBookRequests({size:1},signal)]);
+      return {available:true,pairs,targetBook:pairs,canSubmit:!this.readOnly,...(this.readOnly?{reason:'read-only' as const}:{})};
+    } catch(error) {
+      if(error instanceof BookOrbitError&&[403,404,405].includes(error.status))return {available:false,pairs:false,targetBook:false,canSubmit:false,reason:error.status===403?'forbidden':'unsupported'};
+      throw error;
+    }
+  }
+  async listBookRequests(options:{page?:number;size?:number;groupPairs?:boolean}={},signal?:AbortSignal) {
+    const page=options.page??1,size=options.size??20;
+    if(!Number.isSafeInteger(page)||page<1||!Number.isSafeInteger(size)||size<1||size>100)throw new ContractError('Invalid request page.');
+    const params=new URLSearchParams({page:String(page),limit:String(size)});
+    if(options.groupPairs){if(!await this.requestPairsAvailable(signal))throw new ContractError('This server does not advertise paired requests.');params.set('groupPairs','true');}
+    return parse(bookRequestPageSchema,await this.json(`book-requests?${params}`,{signal}),'book requests');
+  }
+  async checkBookRequestAvailability(items:BookRequestAvailabilityQuery[],signal?:AbortSignal) {
+    const validated=parse(z.array(bookRequestAvailabilityQuerySchema).min(1).max(50),items,'request availability query');
+    const result=parse(z.array(bookRequestAvailabilitySchema),await this.json('book-requests/availability',{method:'POST',body:JSON.stringify({items:validated}),signal}),'request availability');
+    if(result.length!==validated.length)throw new ContractError('The request availability response is incomplete.');
+    return result;
+  }
+  async createBookRequest(input:CreateBookRequest,signal?:AbortSignal) {
+    if(this.readOnly)throw new ReadOnlyError();
+    const identity=this.session.userId,validated=parse(createBookRequestSchema,input,'book request');
+    if(validated.targetBookId!==undefined&&!await this.requestPairsAvailable(signal))throw new ContractError('This server does not advertise missing-format requests.');
+    signal?.throwIfAborted();
+    if(identity!==this.session.userId)throw new ContractError('The request account changed.');
+    return parse(bookRequestSubmitSchema,await this.json('book-requests',{method:'POST',body:JSON.stringify(validated),signal},true),'submitted request');
+  }
+  async createBookRequestPair(input:BookRequestWork,signal?:AbortSignal) {
+    if(this.readOnly)throw new ReadOnlyError();
+    const identity=this.session.userId,validated=parse(bookRequestWorkSchema,input,'paired book request');
+    if(!await this.requestPairsAvailable(signal))throw new ContractError('This server does not advertise paired requests.');
+    signal?.throwIfAborted();
+    if(identity!==this.session.userId)throw new ContractError('The request account changed.');
+    return parse(bookRequestPairSubmitSchema,await this.json('book-requests/pairs',{method:'POST',body:JSON.stringify(validated),signal},true),'submitted request pair');
+  }
+  async getServerSpeechCapabilities(signal?:AbortSignal):Promise<ServerSpeechCapabilities> {
+    try {
+      const [providers,voices]=await Promise.all([
+        this.json('tts/providers',{signal}).then(value=>parse(z.array(serverSpeechProviderSchema).max(100),value,'voice providers')),
+        this.json('tts/voices',{signal}).then(value=>parse(z.array(serverSpeechVoiceSchema).max(10000),value,'voices')),
+      ]);
+      const providerIds=new Set(providers.map(provider=>provider.id));
+      if(providerIds.size!==providers.length||voices.some(voice=>!providerIds.has(voice.providerId))||new Set(voices.map(voice=>JSON.stringify([voice.providerId,voice.id]))).size!==voices.length)throw new ContractError('The voice catalogue contains inconsistent identities.');
+      return {available:voices.length>0,providers,voices,...(voices.length?{}:{reason:'unconfigured' as const})};
+    }catch(error){
+      if(error instanceof BookOrbitError&&[403,404,405].includes(error.status))return {available:false,providers:[],voices:[],reason:error.status===403?'forbidden':'unsupported'};
+      throw error;
+    }
+  }
+  /** Explicit online speech only; no library/progress mutation or persistent audio cache. */
+  async synthesizeServerSpeech(input:ServerSpeechRequest,signal?:AbortSignal) {
+    const validated=parse(serverSpeechRequestSchema,input,'speech request');
+    const response=await this.response('tts/synthesize/captioned',{method:'POST',body:JSON.stringify(validated),signal});
+    const body=await boundedFileBlob(response,24*1024**2,signal);
+    signal?.throwIfAborted();
+    return decodeServerSpeech(JSON.parse(await body.text()));
   }
   async listLibraries(): Promise<LibrarySummary[]> {
     return parse(z.array(z.object({id:numericId,name:z.string()})),await this.json('libraries'),'libraries');
@@ -270,7 +339,9 @@ export class BookOrbitClient {
       serverStatus:serverStatusSchema.safeParse(status).success?status as BookOrbitReadStatus:undefined,
       series:value.seriesName ?? undefined,seriesId:value.seriesId??undefined,seriesIndex:value.seriesIndex==null?undefined:Number(value.seriesIndex),genres:value.genres,addedAt:value.addedAt,
       publisher:value.publisher?.trim()||undefined,publishedYear:value.publishedYear??undefined,rating:value.rating??undefined,
+      language:value.language??undefined,isbn10:value.isbn10??undefined,isbn13:value.isbn13??undefined,
       communityRatings:value.communityRatings?.map(({provider,rating,ratingCount})=>({provider,rating,ratingCount:ratingCount??undefined})),
+      comicMetadata:value.comicMetadata?{storyArcs:value.comicMetadata.storyArcs??[],issueNumber:value.comicMetadata.issueNumber??undefined,volumeName:value.comicMetadata.volumeName??undefined}:undefined,
       coverUrl:value.hasCover===false?undefined:this.coverUrl(value.id,value.coverVersion),};
   }
   async listBooks(query: BookQuery = {}, signal?: AbortSignal): Promise<BooksPage> {
@@ -288,7 +359,7 @@ export class BookOrbitClient {
     if(query.readStatuses?.length)rules.push({type:'rule',field:'readStatus',operator:'includesAny',value:query.readStatuses.map(status=>parse(serverStatusSchema,status,'reading status'))});
     return {sort:[{field:query.sort??'addedAt',dir:query.direction??'desc'}],pagination:{page:serverPage(query.page),size:query.size??100},q:query.query??'',collapseSeries:false,...(rules.length?{filter:{type:'group',join:'AND',rules}}:{})};
   }
-  async getBook(id: string): Promise<Book> { return this.mapBook(parse(bookSchema,await this.json(`books/${routeId(id)}`),'book')); }
+  async getBook(id: string, signal?: AbortSignal): Promise<Book> { return this.mapBook(parse(bookSchema,await this.json(`books/${routeId(id)}`,{signal}),'book')); }
   async listSeries(options:{page?:number;size?:number;query?:string}={},signal?:AbortSignal):Promise<SeriesPage> {
     const size=Math.min(100,Math.max(1,options.size??24));
     const params=new URLSearchParams({page:String(serverPage(options.page)),size:String(size),sort:'name',order:'asc'});

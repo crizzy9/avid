@@ -18,10 +18,38 @@ export interface SpeechProvider {
   subscribeVoices(listener: () => void): () => void;
   createPlayer(): SpeechPlayer;
 }
+export interface OnlineSpeechProvider extends SpeechProvider {
+  handlesVoice(voiceURI: string): boolean;
+}
 let installed: SpeechProvider | null = null;
+let online: OnlineSpeechProvider | null = null;
+const subscriptions = new Set<{ listener: () => void; cleanup: () => void }>();
+function rebindVoices() {
+  for (const entry of subscriptions) {
+    entry.cleanup();
+    entry.cleanup = bindVoices(entry.listener);
+    entry.listener();
+  }
+}
+function bindVoices(listener: () => void) {
+  const local = (installed ?? browser).subscribeVoices(listener),
+    remote = online?.subscribeVoices(listener);
+  return () => {
+    local();
+    remote?.();
+  };
+}
 /** Host-owned bridge only. Publication documents cannot register native services. */
 export function registerSpeechProvider(provider: SpeechProvider | null) {
   installed = provider;
+  rebindVoices();
+}
+/** Account-owned, explicit-choice online voices; never replaces the default installed voice. */
+export function registerOnlineSpeechProvider(
+  provider: OnlineSpeechProvider | null,
+) {
+  online = provider;
+  rebindVoices();
 }
 export function installedSpeechProvider() {
   return installed;
@@ -45,8 +73,67 @@ const browser: SpeechProvider = {
   },
   createPlayer: () => new SpeechController(),
 };
+const combined: SpeechProvider = {
+  get available() {
+    return (installed ?? browser).available || Boolean(online?.available);
+  },
+  async voices() {
+    const current = online;
+    const base = installed ?? browser;
+    const [local, remote] = await Promise.allSettled([
+      base.voices(),
+      current?.voices() ?? Promise.resolve([]),
+    ]);
+    // A slow catalogue from the old account must not erase the replacement's voices.
+    if (current !== online || base !== (installed ?? browser))
+      return combined.voices();
+    return [
+      ...(local.status === "fulfilled" ? local.value : []),
+      ...(remote.status === "fulfilled" && current === online
+        ? remote.value
+        : []),
+    ];
+  },
+  subscribeVoices(listener) {
+    const entry = { listener, cleanup: bindVoices(listener) };
+    subscriptions.add(entry);
+    return () => {
+      entry.cleanup();
+      subscriptions.delete(entry);
+    };
+  },
+  createPlayer() {
+    let player: SpeechPlayer | undefined;
+    let destroyed = false;
+    return {
+      speak(request) {
+        if (destroyed) return;
+        player?.destroy();
+        player = undefined;
+        if (request.voiceURI?.startsWith("avid-online:")) {
+          if (!online?.handlesVoice(request.voiceURI)) {
+            request.onError?.(
+              "This online voice is no longer available for the current account.",
+            );
+            return;
+          }
+          player = online.createPlayer();
+        } else player = (installed ?? browser).createPlayer();
+        player.speak(request);
+      },
+      cancel() {
+        player?.cancel();
+      },
+      destroy() {
+        destroyed = true;
+        player?.destroy();
+        player = undefined;
+      },
+    };
+  },
+};
 export function speechProvider(): SpeechProvider {
-  return installed ?? browser;
+  return combined;
 }
 
 /** Preserve every UTF-16 unit while respecting native utterance limits. */

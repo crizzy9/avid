@@ -19,7 +19,8 @@ import type {
 import type { VerifiedAudioAlignment } from "../../../../packages/playback/src/standalone-alignment";
 import type { ReaderAlignmentHandle } from "../../../../packages/readers/src/alignedPassage";
 import { decodeSpeechWindows } from "./audioWindows";
-import { LocalTranscriber, SPEECH_MODEL } from "./transcription";
+import { LocalTranscriber } from "./transcription";
+import { speechModel, type SpeechProfile } from "./model";
 import { generateAlignmentInWorker, type AlignmentMatchInput } from "./match";
 
 export type PreparationProgress = {
@@ -29,6 +30,7 @@ export type PreparationProgress = {
 };
 export interface PreparationInput {
   client: BookOrbitClient;
+  profile?: SpeechProfile;
   scope: string;
   scopeLabel: string;
   book: Book;
@@ -56,12 +58,14 @@ export interface PreparationRecognizer {
 export type RecognizerFactory = (
   signal: AbortSignal,
   onModel: (file?: string, progress?: number) => void,
+  profile?: SpeechProfile,
 ) => Promise<PreparationRecognizer>;
 export const createLocalRecognizer: RecognizerFactory = async (
   signal,
   onModel,
+  profile,
 ) => {
-  const engine = new LocalTranscriber(signal, onModel);
+  const engine = new LocalTranscriber(signal, onModel, profile);
   try {
     await engine.load();
   } catch (error) {
@@ -95,6 +99,7 @@ export async function prepareReadListen(
     | Promise<GeneratedAlignmentSnapshot> = generateAlignmentInWorker,
 ): Promise<PreparationResult> {
   const { client, scope, book, fileId, epub, handle, signal, store } = input;
+  const model = speechModel(input.profile);
   const active = () => {
     signal.throwIfAborted();
     if (!input.isActive() || accountScope(client.session) !== scope)
@@ -166,7 +171,11 @@ export async function prepareReadListen(
     active();
     return map;
   };
-  if (reusable)
+  if (
+    reusable?.alignmentSnapshot.algorithm === "avid-word-match-v2" &&
+    reusable.alignmentSnapshot.model.id === model.id &&
+    reusable.alignmentSnapshot.model.revision === model.revision
+  )
     return {
       descriptor: reusable,
       map: await restore(reusable.alignmentSnapshot, reusable.sources),
@@ -195,7 +204,8 @@ export async function prepareReadListen(
     guard,
   );
   active();
-  const sources: { assetId: string; blob: Blob }[] = cached?.sources ?? [];
+  const sources: { assetId: string; blob: Blob }[] =
+    reusable?.sources ?? cached?.sources ?? [];
   let downloaded = 0;
   for (const asset of manifest.assets) {
     if (sources.some((source) => source.assetId === asset.assetId)) {
@@ -220,13 +230,22 @@ export async function prepareReadListen(
     downloaded += blob.size;
   }
   report({ stage: "model" });
-  const recognizer = await recognizerFactory(signal, (detail, percent) =>
-    report({
-      stage: "model",
-      detail,
-      fraction: percent === undefined ? undefined : percent / 100,
-    }),
+  const recognizer = await recognizerFactory(
+    signal,
+    (detail, percent) =>
+      report({
+        stage: "model",
+        detail,
+        fraction: percent === undefined ? undefined : percent / 100,
+      }),
+    input.profile,
   );
+  let recognizerDisposed = false;
+  const disposeRecognizer = () => {
+    if (recognizerDisposed) return;
+    recognizerDisposed = true;
+    recognizer.dispose();
+  };
   try {
     active();
     const tracks: GeneratedAudioTrack[] = [];
@@ -261,6 +280,9 @@ export async function prepareReadListen(
       });
       processed += asset.durationMs! / 1000;
     }
+    // Release the speech model before allocating the full-book matching worker
+    // and verifying/storing publication bytes, especially on memory-limited hosts.
+    disposeRecognizer();
     const snapshot = await matcher(
       {
         edition: {
@@ -273,7 +295,7 @@ export async function prepareReadListen(
         },
         publication,
         tracks,
-        model: SPEECH_MODEL,
+        model,
         language: "en",
       },
       signal,
@@ -303,6 +325,6 @@ export async function prepareReadListen(
     active();
     return { descriptor, map, reused: false };
   } finally {
-    recognizer.dispose();
+    disposeRecognizer();
   }
 }

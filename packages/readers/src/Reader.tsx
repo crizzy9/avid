@@ -12,7 +12,6 @@ import {
   Bookmark,
   ChevronLeft,
   ChevronRight,
-  Highlighter,
   List,
   Minus,
   Plus,
@@ -25,6 +24,9 @@ import {
 import { EbookView } from "./EbookView";
 import { PdfView } from "./PdfView";
 import { ComicView } from "./ComicView";
+import { SelectionCard } from "./SelectionCard";
+import { useSelectionI18n } from "./selectionMessages";
+import { isOnlineBookOrbitVoice } from "./voiceDisclosure";
 import {
   defaultSettings,
   themeColors,
@@ -80,6 +82,7 @@ function getSettings(scope: string, fileId: string): ReaderSettings {
 }
 export function Reader(props: ReaderProps) {
   const { t, locale } = useReaderI18n();
+  const { t: selectionText } = useSelectionI18n();
   const reducedMotion = useReducedMotion();
   const { book, annotations, onClose, onAnnotation } = props;
   const file = props.file ??
@@ -156,7 +159,12 @@ export function Reader(props: ReaderProps) {
     label: "",
   });
   const [selected, setSelected] = useState<SelectionAnchor>();
+  useEffect(
+    () => setSelected(undefined),
+    [props.book.id, file.id, props.source, props.accountScope],
+  );
   const [speaking, setSpeaking] = useState(false);
+  const [speechPlaying, setSpeechPlaying] = useState(false);
   const [media, setMedia] = useState({
     available: false,
     playing: false,
@@ -450,9 +458,9 @@ export function Reader(props: ReaderProps) {
   }, [turn, escape, kind, settings.direction]);
   useEffect(() => {
     callbacks.current.onActivity?.(
-      media.playing ? "listening" : speaking ? "speech" : "reading",
+      media.playing ? "listening" : speechPlaying ? "speech" : "reading",
     );
-  }, [media.playing, speaking]);
+  }, [media.playing, speechPlaying]);
   const change = <K extends keyof ReaderSettings>(
     key: K,
     value: ReaderSettings[K],
@@ -521,8 +529,16 @@ export function Reader(props: ReaderProps) {
     onReadingEscape: escape,
     onError: setError,
     onNotice: setNotice,
-    onSelection: setSelected,
-    onSpeaking: setSpeaking,
+    onSelection: (value: SelectionAnchor | undefined) => {
+      // Focusing the selection card must not discard the captured PDF/EPUB locator.
+      if (value || !document.activeElement?.closest(".reader-selection-card"))
+        setSelected(value);
+    },
+    onSpeaking: (active: boolean) => {
+      setSpeaking(active);
+      setSpeechPlaying(active);
+    },
+    onSpeechPlaying: setSpeechPlaying,
     onMediaState: setMedia,
   };
   const locationLabel = !ready
@@ -623,16 +639,18 @@ export function Reader(props: ReaderProps) {
           >
             <Search size={19} />
           </button>
-          {props.annotationsEnabled !== false && <button
-            className={`reader-icon ${panel === "notes" ? "active" : ""}`}
-            aria-expanded={panel === "notes"}
-            aria-controls="reader-panel"
-            aria-label={t("highlightsNotes")}
-            title={t("notebook")}
-            onClick={() => togglePanel("notes")}
-          >
-            <Bookmark size={19} />
-          </button>}
+          {props.annotationsEnabled !== false && (
+            <button
+              className={`reader-icon ${panel === "notes" ? "active" : ""}`}
+              aria-expanded={panel === "notes"}
+              aria-controls="reader-panel"
+              aria-label={t("highlightsNotes")}
+              title={t("notebook")}
+              onClick={() => togglePanel("notes")}
+            >
+              <Bookmark size={19} />
+            </button>
+          )}
           {kind === "epub" && !props.externalNarration && (
             <button
               className={`reader-icon ${speaking ? "active" : ""}`}
@@ -908,6 +926,19 @@ export function Reader(props: ReaderProps) {
                 )}
                 {kind === "epub" && (
                   <>
+                    <label className="reader-publication-formatting">
+                      <input
+                        type="checkbox"
+                        checked={settings.publicationStyles === true}
+                        onChange={(event) =>
+                          change("publicationStyles", event.target.checked)
+                        }
+                      />
+                      {selectionText("publicationStyles")}
+                    </label>
+                    <p className="reader-muted">
+                      {selectionText("publicationStylesHint")}
+                    </p>
                     <label className="reader-field">
                       {t("typeface")}
                       <select
@@ -1017,7 +1048,7 @@ export function Reader(props: ReaderProps) {
                       </select>
                     </label>
                     <label className="reader-field">
-                      {t("installedVoice")}
+                      {selectionText("voice")}
                       <select
                         value={settings.voice}
                         onChange={(event) =>
@@ -1032,6 +1063,12 @@ export function Reader(props: ReaderProps) {
                         ))}
                       </select>
                     </label>
+                    {isOnlineBookOrbitVoice(settings.voice) && (
+                      <p className="reader-online-voice reader-muted">
+                        <strong>{selectionText("onlineVoice")}</strong>{" "}
+                        {selectionText("onlineVoiceHint")}
+                      </p>
+                    )}
                     <label className="reader-field">
                       {t("speechSpeed", { rate: settings.speechRate })}
                       <input
@@ -1209,29 +1246,32 @@ export function Reader(props: ReaderProps) {
             </>
           )}
         </div>
-        {selected && panel !== "notes" && props.annotationsEnabled !== false && (
-          <div className="reader-selection-tools">
-            <button onClick={() => saveAnnotation(false)}>
-              <Highlighter size={16} />
-              {t("highlight")}
-            </button>
-            <button
-              onClick={() => {
-                setPanel("notes");
-                setNoteText("");
-                setEditing(undefined);
-              }}
-            >
-              <Bookmark size={16} />
-              {t("addNote")}
-            </button>
-            <button
-              aria-label={t("dismissSelection")}
-              onClick={() => setSelected(undefined)}
-            >
-              <X size={16} />
-            </button>
-          </div>
+        {selected && panel !== "notes" && (
+          <SelectionCard
+            key={`${scope}:${file.id}:${selected.locator}:${selected.quote}`}
+            selection={selected}
+            title={book.title}
+            authors={book.authors}
+            annotationsEnabled={props.annotationsEnabled !== false}
+            onDismiss={() => setSelected(undefined)}
+            onSave={(selection, color, note) => {
+              if (props.annotationsEnabled === false) return;
+              const now = new Date().toISOString();
+              onAnnotation({
+                id: crypto.randomUUID(),
+                bookId: book.id,
+                fileId: file.id,
+                kind: note === undefined ? "highlight" : "note",
+                quote: selection.quote,
+                text: note ?? "",
+                color,
+                locator: selection.locator,
+                createdAt: now,
+                updatedAt: now,
+              });
+              setSelected(undefined);
+            }}
+          />
         )}
       </div>
       {media.available && !props.externalNarration && (

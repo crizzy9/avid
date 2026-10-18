@@ -104,9 +104,24 @@ it('prepared mode hides notebook and selection editing while retaining reading c
     onClose={fixture.close} onAnchor={()=>{}} onAnnotation={save} />));
   await act(async () => fixture.props!.onSelection({quote:'Original selected passage',locator:'epubcfi(/6/2!/4/2/1:0)'}));
   expect(host.querySelector('[aria-label="Highlights and notes"]')).toBeNull();
-  expect(host.querySelector('.reader-selection-tools')).toBeNull();
+  expect(host.querySelector('.reader-selection-tools')).not.toBeNull();
+  expect(host.querySelector('.reader-selection-highlights')).toBeNull();
+  expect(host.querySelector('.reader-selection-note')).toBeNull();
+  expect(host.querySelector('.reader-selection-actions')?.textContent).toContain('Copy');
   expect(host.querySelector('[aria-label="Search in book"]')).not.toBeNull();
   expect(save).not.toHaveBeenCalled();
+});
+it('keeps the captured EPUB selection when the card gains focus and clears it on source change',async()=>{
+  const save=vi.fn(),selection={quote:'Captured EPUB words',locator:'epubcfi(/6/2!/4/2,/1:1,/1:19)'};
+  const view=(account='one')=><Reader book={book} accountScope={account} annotations={[]} onClose={fixture.close} onAnchor={()=>{}} onAnnotation={save}/>;
+  await act(async()=>root.render(view()));
+  await act(async()=>fixture.props!.onSelection(selection));
+  const copy=[...host.querySelectorAll<HTMLButtonElement>('.reader-selection-card button')].find(item=>item.textContent==='Copy')!;
+  copy.focus();await act(async()=>fixture.props!.onSelection(undefined));
+  expect(host.querySelector('blockquote')?.textContent).toBe(selection.quote);
+  const highlight=[...host.querySelectorAll<HTMLButtonElement>('.reader-selection-card button')].find(item=>item.textContent==='Highlight')!;
+  await act(async()=>highlight.click());expect(save).toHaveBeenCalledWith(expect.objectContaining({locator:selection.locator,quote:selection.quote,color:'#d6b96e'}));
+  await act(async()=>fixture.props!.onSelection(selection));await act(async()=>root.render(view('two')));expect(host.querySelector('.reader-selection-card')).toBeNull();
 });
 const tap = async (element: Element, elapsed = 20, drag = 0) =>
   act(async () => {

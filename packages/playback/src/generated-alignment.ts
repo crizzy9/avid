@@ -42,7 +42,7 @@ export interface GeneratedAlignedSegment extends StandaloneAlignedSegment {
 export interface GeneratedAlignmentSnapshot {
   version: 1;
   source: "generated";
-  algorithm: "avid-word-match-v1";
+  algorithm: "avid-word-match-v1" | "avid-word-match-v2";
   edition: AlignmentEdition;
   model: { id: string; revision: string };
   language?: string;
@@ -59,15 +59,41 @@ export interface GeneratedAlignmentSnapshot {
 const hashPattern = /^[0-9a-f]{64}$/;
 const MAX_PASSAGES = 100_000,
   MAX_WORDS = 1_000_000;
-export function alignmentTokens(text: string): string[] {
+const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
+function literalAlignmentTokens(text: string): string[] {
   const normalized = text.normalize("NFKC").toLowerCase().replace(/[’‘]/g, "'");
-  return [
-    ...new Intl.Segmenter(undefined, { granularity: "word" }).segment(
-      normalized,
-    ),
-  ]
+  return [...wordSegmenter.segment(normalized)]
     .filter((item) => item.isWordLike)
     .map((item) => item.segment.replace(/'/g, ""));
+}
+const smallNumbers =
+  "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split(
+    " ",
+  );
+const tens =
+  "zero ten twenty thirty forty fifty sixty seventy eighty ninety".split(" ");
+/** English recognition spelling variants only; no fuzzy phonetic/name substitutions. */
+export function alignmentTokens(text: string): string[] {
+  return literalAlignmentTokens(text.replace(/&/g, " and ")).flatMap(
+    (token) => {
+      if (/^(?:0|[1-9]\d?)$/.test(token)) {
+        const value = Number(token);
+        return value < 20
+          ? [smallNumbers[value]!]
+          : [
+              tens[Math.floor(value / 10)]!,
+              ...(value % 10 ? [smallNumbers[value % 10]!] : []),
+            ];
+      }
+      return [
+        new Map([
+          ["mr", "mister"],
+          ["mrs", "missus"],
+          ["dr", "doctor"],
+        ]).get(token) ?? token,
+      ];
+    },
+  );
 }
 function fail(): never {
   throw new Error(
@@ -105,7 +131,9 @@ export function validateGeneratedAlignment(
     !snapshot ||
     snapshot.version !== 1 ||
     snapshot.source !== "generated" ||
-    snapshot.algorithm !== "avid-word-match-v1" ||
+    !["avid-word-match-v1", "avid-word-match-v2"].includes(
+      snapshot.algorithm,
+    ) ||
     !snapshot.edition ||
     !hashPattern.test(snapshot.edition.textSha256) ||
     [
@@ -157,6 +185,10 @@ export function validateGeneratedAlignment(
   }
   if (!files.has(snapshot.edition.audioFileId) || !Number.isFinite(duration))
     fail();
+  const tokenize =
+    snapshot.algorithm === "avid-word-match-v1"
+      ? literalAlignmentTokens
+      : alignmentTokens;
   const passages = new Map<string, GeneratedTextPassage>(),
     locators = new Set<string>();
   let totalWords = 0;
@@ -165,7 +197,7 @@ export function validateGeneratedAlignment(
     if (passages.has(passage.id) || locators.has(passage.textLocator)) fail();
     passages.set(passage.id, passage);
     locators.add(passage.textLocator);
-    totalWords += alignmentTokens(passage.text).length;
+    totalWords += tokenize(passage.text).length;
   }
   const ids = new Set<string>();
   let previousEnd = -1,
@@ -207,7 +239,7 @@ export function validateGeneratedAlignment(
     ids.add(segment.id);
     previousEnd = segment.end;
     previousPassage = order.get(segment.id)!;
-    matchedWords += alignmentTokens(p.text).length;
+    matchedWords += tokenize(p.text).length;
   }
   const c = snapshot.coverage;
   if (
@@ -227,56 +259,112 @@ type TimedToken = {
   end: number;
   trackId: string;
 };
-type Match = { first: number; last: number; score: number };
-/** Match near an observed three-word seed; edit distance never invents audio boundaries. */
+type Match = { first: number; last: number; score: number; mapping: number[] };
+/** Bounded semiglobal edit alignment. Every mapped boundary is an observed recognizer token. */
 function nearMatch(
   expected: string[],
   tokens: TimedToken[],
   offset: number,
+  bounds: { begin: number; end: number } = { begin: 0, end: tokens.length },
 ): Match | null {
-  const allowance = Math.min(8, Math.floor(expected.length * 0.12));
-  const begin = Math.max(0, offset - allowance),
-    end = Math.min(tokens.length, offset + expected.length + allowance);
-  const width = end - begin;
-  type Cell = { cost: number; first: number; last: number; matches: number };
-  let previous: Cell[] = Array.from({ length: width + 1 }, () => ({
-    cost: 0,
-    first: -1,
-    last: -1,
-    matches: 0,
-  }));
+  // A long paragraph is checked in bounded pieces. Each piece must independently
+  // agree, and every jump is constrained by observed words, never by duration.
+  if (expected.length > 256) {
+    const mapping: number[] = [],
+      matches: Match[] = [];
+    let cursor = offset;
+    for (let i = 0; i < expected.length; i += 128) {
+      const piece = expected.slice(i, i + 128);
+      const match = nearMatch(piece, tokens, cursor, {
+        begin: matches.length ? matches.at(-1)!.last + 1 : bounds.begin,
+        end: bounds.end,
+      });
+      if (!match) return null;
+      matches.push(match);
+      mapping.push(...match.mapping);
+      let lastMatched = match.mapping.length - 1;
+      while (lastMatched >= 0 && match.mapping[lastMatched]! < 0) lastMatched--;
+      cursor = match.last + piece.length - lastMatched;
+    }
+    const first = matches[0]!.first,
+      last = matches.at(-1)!.last;
+    const score =
+      mapping.filter((value) => value >= 0).length /
+      Math.max(expected.length, last - first + 1);
+    return score >= 0.88 && tokens[first]!.trackId === tokens[last]!.trackId
+      ? { first, last, score, mapping }
+      : null;
+  }
+  const allowance = Math.floor(expected.length * 0.12);
+  const begin = Math.max(bounds.begin, offset - allowance),
+    end = Math.min(bounds.end, offset + expected.length + allowance),
+    width = end - begin;
+  if (width <= 0) return null;
+  const stride = width + 1,
+    directions = new Uint8Array((expected.length + 1) * stride);
+  let costs = new Uint16Array(stride),
+    agreements = new Uint16Array(stride);
   for (let i = 1; i <= expected.length; i++) {
-    const current: Cell[] = [{ cost: i, first: -1, last: -1, matches: 0 }];
+    const next = new Uint16Array(stride),
+      counts = new Uint16Array(stride);
+    next[0] = i;
+    directions[i * stride] = 2;
     for (let j = 1; j <= width; j++) {
       const same = expected[i - 1] === tokens[begin + j - 1]!.token;
-      const diagonal = previous[j - 1]!;
-      const choices = [
-        {
-          cost: diagonal.cost + (same ? 0 : 1),
-          first: same && diagonal.first < 0 ? begin + j - 1 : diagonal.first,
-          last: same ? begin + j - 1 : diagonal.last,
-          matches: diagonal.matches + (same ? 1 : 0),
-        },
-        { ...previous[j]!, cost: previous[j]!.cost + 1 },
-        { ...current[j - 1]!, cost: current[j - 1]!.cost + 1 },
-      ];
-      choices.sort((a, b) => a.cost - b.cost || b.matches - a.matches);
-      current.push(choices[0]!);
+      let cost = costs[j - 1]! + (same ? 0 : 1),
+        count = agreements[j - 1]! + (same ? 1 : 0),
+        direction = 1;
+      if (
+        costs[j]! + 1 < cost ||
+        (costs[j]! + 1 === cost && agreements[j]! > count)
+      ) {
+        cost = costs[j]! + 1;
+        count = agreements[j]!;
+        direction = 2;
+      }
+      if (
+        next[j - 1]! + 1 < cost ||
+        (next[j - 1]! + 1 === cost && counts[j - 1]! > count)
+      ) {
+        cost = next[j - 1]! + 1;
+        count = counts[j - 1]!;
+        direction = 3;
+      }
+      next[j] = cost;
+      counts[j] = count;
+      directions[i * stride + j] = direction;
     }
-    previous = current;
+    costs = next;
+    agreements = counts;
   }
-  const result = previous
-    .filter((c) => c.first >= 0 && c.last >= c.first && c.cost <= allowance)
-    .sort((a, b) => a.cost - b.cost || b.matches - a.matches)[0];
-  if (!result) return null;
-  const score =
-    result.matches / Math.max(expected.length, result.last - result.first + 1);
-  if (
-    score < 0.88 ||
-    tokens[result.first]!.trackId !== tokens[result.last]!.trackId
-  )
+  let best = 0;
+  for (let j = 1; j <= width; j++)
+    if (
+      costs[j]! < costs[best]! ||
+      (costs[j] === costs[best] && agreements[j]! > agreements[best]!)
+    )
+      best = j;
+  if (costs[best]! > allowance) return null;
+  const mapping = new Array<number>(expected.length).fill(-1);
+  for (let i = expected.length, j = best; i > 0;) {
+    const direction = directions[i * stride + j];
+    if (direction === 1) {
+      if (expected[i - 1] === tokens[begin + j - 1]!.token)
+        mapping[i - 1] = begin + j - 1;
+      i--;
+      j--;
+    } else if (direction === 2) i--;
+    else if (direction === 3) j--;
+    else break;
+  }
+  const observed = mapping.filter((value) => value >= 0),
+    first = observed[0],
+    last = observed.at(-1);
+  if (first === undefined || last === undefined) return null;
+  const score = observed.length / Math.max(expected.length, last - first + 1);
+  if (score < 0.88 || tokens[first]!.trackId !== tokens[last]!.trackId)
     return null;
-  return { first: result.first, last: result.last, score };
+  return { first, last, score, mapping };
 }
 
 /** Conservative actual-transcript matching. Ambiguity, skipped text and silence remain gaps. */
@@ -342,34 +430,32 @@ export function generateAlignment(input: {
     const key = words.join(" ");
     counts.set(key, (counts.get(key) ?? 0) + 1);
   });
-  const segments: GeneratedAlignedSegment[] = [];
-  let previousEnd = -1,
-    matchedWords = 0;
-  for (const [index, passage] of input.publication.passages.entries()) {
+  const accepted = new Map<number, Match>();
+  const matchOptions = new Map<number, Match[]>();
+  let previousEnd = -1;
+  for (const [index] of input.publication.passages.entries()) {
     const words = normalized[index]!;
-    // Short/repeated lines cannot distinguish book editions; oversized paragraphs need a later finer extractor.
+    // Short/repeated passages need two independently matched neighbors below.
     if (
       words.length < 6 ||
-      words.length > 512 ||
+      words.length > 4096 ||
       counts.get(words.join(" ")) !== 1
     )
       continue;
     const candidates = new Set<number>(),
       anchors: { offset: number; hits: number[] }[] = [];
-    for (let i = 0; i + 2 < words.length; i++) {
+    // Early seeds avoid cumulative drift in unusually long paragraphs.
+    for (let i = 0; i + 2 < Math.min(words.length, 256); i++) {
       const hits = seeds.get(words.slice(i, i + 3).join("\u0001")) ?? [];
       if (hits.length && hits.length <= 32) anchors.push({ offset: i, hits });
     }
-    // Common phrases occur thousands of times in a novel. Use the most distinctive
-    // observed anchors; collecting every common seed would drown out the real match.
-    anchors.sort((a, b) => a.hits.length - b.hits.length);
-    for (const anchor of anchors.slice(0, 8))
+    anchors.sort(
+      (a, b) => a.hits.length - b.hits.length || a.offset - b.offset,
+    );
+    for (const anchor of anchors.slice(0, 12))
       for (const hit of anchor.hits) candidates.add(hit - anchor.offset);
-    const clustered: number[] = [];
-    for (const value of [...candidates].sort((a, b) => a - b))
-      if (!clustered.some((old) => Math.abs(old - value) <= 2))
-        clustered.push(value);
-    if (!clustered.length || clustered.length > 32) continue;
+    const clustered = [...candidates];
+    if (!clustered.length || clustered.length > 64) continue;
     const matches: Match[] = [];
     for (const candidate of clustered) {
       const match = nearMatch(words, tokens, candidate);
@@ -382,19 +468,107 @@ export function generateAlignment(input: {
         matches.push(match);
     }
     matches.sort((a, b) => b.score - a.score);
+    matchOptions.set(index, matches);
     const best = matches[0];
-    // Two plausible distinct recordings/occurrences must not be disambiguated by percentage or current position.
     if (
       !best ||
       matches.some(
         (other) =>
           other !== best &&
-          (other.last < best.first || other.first > best.last) &&
-          other.score >= best.score - 0.04,
+          other.score >=
+            best.score -
+              (other.last < best.first || other.first > best.last
+                ? 0.04
+                : 1e-9),
       )
     )
       continue;
-    const first = tokens[best.first]!,
+    if (tokens[best.first]!.start < previousEnd) continue;
+    accepted.set(index, best);
+    previousEnd = tokens[best.last]!.end;
+  }
+  // Resolve short dialogue and repeated phrases only between two actual, unique
+  // text/audio anchors. Missing or ambiguous lines are deliberately left unmapped.
+  const anchors = [...accepted.entries()];
+  for (let n = 1; n < anchors.length; n++) {
+    const [leftIndex, left] = anchors[n - 1]!,
+      [rightIndex, right] = anchors[n]!;
+    if (
+      rightIndex - leftIndex < 2 ||
+      rightIndex - leftIndex > 34 ||
+      tokens[left.first]!.trackId !== tokens[right.last]!.trackId
+    )
+      continue;
+    const expected = normalized.slice(leftIndex, rightIndex + 1).flat();
+    if (
+      expected.length > 768 ||
+      right.last - left.first > expected.length * 1.3 + 8
+    )
+      continue;
+    const context = nearMatch(expected, tokens, left.first, {
+      begin: left.first,
+      end: right.last + 1,
+    });
+    if (!context || context.first !== left.first || context.last !== right.last)
+      continue;
+    let sourceOffset = normalized[leftIndex]!.length;
+    for (let i = leftIndex + 1; i < rightIndex; i++) {
+      const words = normalized[i]!,
+        mapping = context.mapping.slice(
+          sourceOffset,
+          sourceOffset + words.length,
+        );
+      sourceOffset += words.length;
+      const observed = mapping.filter((value) => value >= 0),
+        first = observed[0],
+        last = observed.at(-1);
+      if (first === undefined || last === undefined || !words.length) continue;
+      const score = observed.length / Math.max(words.length, last - first + 1);
+      if (score < 0.88 || (words.length < 6 && score !== 1)) continue;
+      // Exact duplicates inside this gap require their complete occurrence count.
+      // Otherwise one spoken "yes" could be assigned to either printed "yes".
+      const key = words.join(" ");
+      const copies = normalized
+        .slice(leftIndex + 1, rightIndex)
+        .filter((w) => w.join(" ") === key).length;
+      let occurrences = 0;
+      for (let j = left.last + 1; j + words.length <= right.first; j++)
+        if (words.every((word, k) => tokens[j + k]!.token === word))
+          occurrences++;
+      if (occurrences > copies) continue;
+      if (words.length < 6 || (counts.get(key) ?? 0) > 1) {
+        if (occurrences !== copies) continue;
+      } else {
+        // A contextual pass must not reintroduce a globally ambiguous line when
+        // multiple equally plausible occurrences remain between these anchors.
+        const options = matchOptions
+          .get(i)
+          ?.filter(
+            (option) => option.first > left.last && option.last < right.first,
+          );
+        if (
+          !options?.length ||
+          options.some(
+            (option) =>
+              (option.first !== first || option.last !== last) &&
+              option.score >=
+                score -
+                  (option.last < first || option.first > last ? 0.04 : 1e-9),
+          )
+        )
+          continue;
+      }
+      accepted.set(i, { first, last, score, mapping });
+    }
+  }
+  const segments: GeneratedAlignedSegment[] = [];
+  let matchedWords = 0;
+  previousEnd = -1;
+  for (const [index, best] of [...accepted.entries()].sort(
+    (a, b) => a[0] - b[0],
+  )) {
+    const passage = input.publication.passages[index]!,
+      first = tokens[best.first]!,
       last = tokens[best.last]!;
     if (first.start < previousEnd || last.end <= first.start) continue;
     segments.push({
@@ -413,7 +587,7 @@ export function generateAlignment(input: {
       confidence: best.score,
     });
     previousEnd = last.end;
-    matchedWords += words.length;
+    matchedWords += normalized[index]!.length;
   }
   if (!segments.length)
     throw new Error(
@@ -422,7 +596,7 @@ export function generateAlignment(input: {
   const snapshot: GeneratedAlignmentSnapshot = {
     version: 1,
     source: "generated",
-    algorithm: "avid-word-match-v1",
+    algorithm: "avid-word-match-v2",
     edition: { ...input.edition },
     model: { ...input.model },
     ...(input.language ? { language: input.language } : {}),

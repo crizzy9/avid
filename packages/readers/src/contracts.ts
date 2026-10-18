@@ -79,6 +79,8 @@ export interface ReaderSettings {
   direction: "ltr" | "rtl";
   voice: string;
   speechRate: number;
+  /** Keep the EPUB's embedded typography and colors instead of applying reader overrides. */
+  publicationStyles?: boolean;
 }
 export interface EngineHandle {
   next: () => void;
@@ -114,6 +116,8 @@ export interface EngineProps extends ReaderProps {
   onNotice: (message: string) => void;
   onSelection: (selection: SelectionAnchor | undefined) => void;
   onSpeaking: (active: boolean) => void;
+  /** Actual audible speech, separate from a cancellable synthesis/buffering session. */
+  onSpeechPlaying?: (active: boolean) => void;
   onMediaState: (state: {
     available: boolean;
     playing: boolean;
@@ -134,6 +138,7 @@ export const defaultSettings: ReaderSettings = {
   direction: "ltr",
   voice: "",
   speechRate: 1,
+  publicationStyles: false,
 };
 export function themeColors(settings: ReaderSettings) {
   return settings.theme === "dark"

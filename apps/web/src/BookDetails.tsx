@@ -17,6 +17,7 @@ import type {
 } from "../../../packages/core/src/types";
 import { BookOrbitClient } from "../../../packages/core/src/bookorbit";
 import { Cover } from "./ui";
+import { BookFormatRequests } from "./BookFormatRequests";
 import { BookCollections } from "./BookCollections";
 import { useAppI18n } from "./appMessages";
 import { descriptionToPlainText } from "./descriptionText";
@@ -313,6 +314,17 @@ export function BookDetails({
                 </select>
                 <span className="field-hint">{t("detail.editionHint")}</span>
               </label>
+            )}
+            {client && /^\d+$/.test(book.id) && (
+              <BookFormatRequests
+                client={client}
+                book={{
+                  ...book,
+                  language: metadata.language ?? book.language,
+                  isbn10: metadata.isbn10 ?? book.isbn10,
+                  isbn13: metadata.isbn13 ?? book.isbn13,
+                }}
+              />
             )}
             <div className="book-detail-management">
               <button

@@ -9,6 +9,10 @@ import type {
   PreparationProgress,
   PreparationResult,
 } from "./preparation/prepareReadListen";
+import {
+  DEFAULT_SPEECH_PROFILE,
+  type SpeechProfile,
+} from "./preparation/model";
 import { usePreparationI18n } from "./preparationMessages";
 
 export interface PrepareReadListenProps {
@@ -30,6 +34,7 @@ export function PrepareReadListen(props: PrepareReadListenProps) {
   const t = usePreparationI18n();
   const { client, book, fileId, source, handle } = props;
   const scope = accountScope(client.session);
+  const [profile, setProfile] = useState<SpeechProfile>(DEFAULT_SPEECH_PROFILE);
   const [expanded, setExpanded] = useState(false),
     [progress, setProgress] = useState<PreparationProgress>();
   const [result, setResult] = useState<PreparationResult>(),
@@ -99,6 +104,7 @@ export function PrepareReadListen(props: PrepareReadListenProps) {
       if (!active()) return;
       const prepared = await prepareReadListen({
         client,
+        profile,
         scope,
         scopeLabel: props.scopeLabel,
         book,
@@ -166,6 +172,22 @@ export function PrepareReadListen(props: PrepareReadListenProps) {
           <p>{t("requirements")}</p>
           <p>{t("limits")}</p>
           <p>{t("timing")}</p>
+          <label>
+            {t("modelLabel")}
+            <select
+              value={profile}
+              disabled={Boolean(progress) || listening}
+              onChange={(event) => {
+                setProfile(event.target.value as SpeechProfile);
+                setResult(undefined);
+                resultOrigin.current = null;
+              }}
+            >
+              <option value="balanced">{t("balancedModel")}</option>
+              <option value="compact">{t("compactModel")}</option>
+            </select>
+          </label>
+          <p>{t("modelHint")}</p>
           {!progress && (
             <button
               type="button"
@@ -212,6 +234,20 @@ export function PrepareReadListen(props: PrepareReadListenProps) {
                   total:
                     visibleResult.descriptor.alignmentSnapshot.coverage
                       .totalPassages,
+                })}
+              </p>
+              <p>
+                {t("coverage", {
+                  percent: Math.round(
+                    (100 *
+                      visibleResult.descriptor.alignmentSnapshot.coverage
+                        .matchedWords) /
+                      Math.max(
+                        1,
+                        visibleResult.descriptor.alignmentSnapshot.coverage
+                          .totalWords,
+                      ),
+                  ),
                 })}
               </p>
               <div className="alignment-actions">

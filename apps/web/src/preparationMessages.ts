@@ -6,6 +6,51 @@ import {
 } from "../../../packages/i18n/src";
 type Values = readonly [string, string, string, string, string, string, string];
 export const preparationMessages = {
+  modelLabel: [
+    "Recognition model",
+    "Puheentunnistusmalli",
+    "Modèle de reconnaissance",
+    "Spracherkennungsmodell",
+    "Model rozpoznawania",
+    "语音识别模型",
+    "Modelo de reconocimiento",
+  ],
+  balancedModel: [
+    "Balanced · recommended",
+    "Tasapainoinen · suositeltu",
+    "Équilibré · recommandé",
+    "Ausgewogen · empfohlen",
+    "Zrównoważony · zalecany",
+    "均衡 · 推荐",
+    "Equilibrado · recomendado",
+  ],
+  compactModel: [
+    "Compact · smaller download",
+    "Pieni · pienempi lataus",
+    "Compact · téléchargement réduit",
+    "Kompakt · kleinerer Download",
+    "Kompaktowy · mniejsze pobieranie",
+    "精简 · 下载较小",
+    "Compacto · descarga menor",
+  ],
+  modelHint: [
+    "English audio only. Balanced matched more human audiobook excerpts in our small benchmark. It needs more memory and a larger model download. Compact uses fewer resources but may leave more gaps. Keep Avid open during preparation.",
+    "Vain englanninkielinen ääni. Tasapainoinen malli vastasi useampia äänikirjakatkelmia pienessä testissämme. Se tarvitsee enemmän muistia ja suuremman latauksen. Pieni malli käyttää vähemmän resursseja mutta voi jättää enemmän aukkoja. Pidä Avid avoinna valmistelun ajan.",
+    "Audio anglais uniquement. Le modèle Équilibré a mieux reconnu les extraits de notre petit test. Il nécessite plus de mémoire et un téléchargement plus volumineux. Compact utilise moins de ressources mais peut laisser davantage de passages sans correspondance. Gardez Avid ouvert pendant la préparation.",
+    "Nur englisches Audio. Ausgewogen erkannte mehr Hörbuchauszüge in unserem kleinen Test. Es benötigt mehr Speicher und einen größeren Download. Kompakt benötigt weniger Ressourcen, kann aber mehr Lücken lassen. Lass Avid während der Vorbereitung geöffnet.",
+    "Tylko dźwięk angielski. Model zrównoważony dopasował więcej fragmentów w naszym małym teście. Wymaga więcej pamięci i większego pobrania. Kompaktowy zużywa mniej zasobów, ale może pozostawić więcej luk. Pozostaw Avid otwarty podczas przygotowania.",
+    "仅支持英语音频。在我们的小规模测试中，均衡模型匹配了更多真人朗读片段，但需要更多内存和更大的模型下载。精简模型占用较少资源，但可能留下更多未匹配内容。准备期间请保持 Avid 打开。",
+    "Solo audio en inglés. Equilibrado reconoció más fragmentos narrados en nuestra pequeña prueba. Necesita más memoria y una descarga mayor. Compacto usa menos recursos, pero puede dejar más huecos. Mantén Avid abierto durante la preparación.",
+  ],
+  coverage: [
+    "Matched {percent}% of ebook words. Unmatched passages remain gaps; playback and reading still work separately there.",
+    "Vastine löytyi {percent} %:lle e-kirjan sanoista. Muut kohdat jäävät aukoiksi; toisto ja lukeminen toimivat niissä erikseen.",
+    "Correspondance pour {percent} % des mots. Les passages non reconnus restent sans lien ; la lecture et l’écoute y fonctionnent séparément.",
+    "{percent} % der E-Book-Wörter zugeordnet. Nicht erkannte Passagen bleiben Lücken; Lesen und Wiedergabe funktionieren dort getrennt.",
+    "Dopasowano {percent}% słów e-booka. Niedopasowane fragmenty pozostają lukami; czytanie i odtwarzanie nadal działają tam osobno.",
+    "已匹配电子书中 {percent}% 的词语。未匹配的段落不会建立同步链接，仍可分别阅读和播放。",
+    "Se ha vinculado el {percent}% de las palabras. Los pasajes sin coincidencia quedan sin enlace; allí puedes leer y escuchar por separado.",
+  ],
   prepare: [
     "Prepare Read & Listen",
     "Valmistele lue ja kuuntele",

@@ -172,4 +172,56 @@ describe("deliberate read/listen position control", () => {
       ),
     ).toBe(false);
   });
+  it("permits whole-second BookOrbit rounding for generated links only", () => {
+    const map = {
+      source: "generated",
+      edition: {
+        accountScope: "a",
+        bookId: "12",
+        audioFileId: "32",
+        manifestRevision: "revision",
+      },
+      tracks: [{ id: "asset", duration: 16 }],
+    } as unknown as VerifiedAudioAlignment;
+    const source: PlaybackBook = {
+      bookId: "12",
+      fileId: "32",
+      title: "Title",
+      authors: [],
+      manifestRevision: "revision",
+      tracks: [
+        {
+          id: "asset",
+          duration: 16,
+          decodedDuration: 15.86,
+          url: "blob:source",
+        },
+      ],
+    };
+    expect(matchingAlignedPlayback(map, source, "a")).toBe(true);
+    expect(
+      matchingAlignedPlayback(
+        { ...map, source: "smil" } as unknown as VerifiedAudioAlignment,
+        source,
+        "a",
+      ),
+    ).toBe(false);
+    expect(
+      matchingAlignedPlayback(
+        map,
+        {
+          ...source,
+          tracks: [{ ...source.tracks[0]!, decodedDuration: 16.6 }],
+        },
+        "a",
+      ),
+    ).toBe(false);
+    expect(
+      matchingAlignedPlayback(
+        map,
+        { ...source, tracks: [{ ...source.tracks[0]!, duration: 15.86 }] },
+        "a",
+      ),
+    ).toBe(false);
+  });
 });

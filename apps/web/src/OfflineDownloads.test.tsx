@@ -530,6 +530,29 @@ it("opens prior narrated packages without a session, re-verifies bytes, and disa
   );
   expect(created).toHaveBeenCalledTimes(2);
 });
+it("does not follow or hand off to the next track during the current recording's decoded tail", async () => {
+  await render();
+  const audio = audios.at(-1)!;
+  const boundary = pkg.manifest!.assets[0]!.durationMs! / 1000;
+  await act(async () => {
+    audio.metadata(boundary + 0.3);
+    audio.currentTime = boundary + 0.1;
+    audio.dispatchEvent(new Event("timeupdate"));
+  });
+  expect(harness.handle!.clearAudioHighlight).toHaveBeenCalled();
+  expect(
+    vi.mocked(harness.handle!.followAudio!).mock.calls.at(-1)?.[2],
+  ).not.toBe(boundary + 0.1);
+  await click("Open player");
+  await click("Show text");
+  expect(
+    host.querySelector('.read-along-lines [aria-current="true"]'),
+  ).toBeNull();
+  expect(host.textContent).toContain("No aligned text at this moment.");
+  await click("Read from here");
+  expect(host.querySelector('[data-testid="fixture-reader"]')).toBeNull();
+  expect(network).not.toHaveBeenCalled();
+});
 it("keeps legacy progress and notes unchanged through reading, playback, seeking and close", async () => {
   const saved: ReadingAnchor = {
     bookId: "12",

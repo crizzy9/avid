@@ -20,7 +20,7 @@ describe("preparation interface translations", () => {
         expect(
           preparationT(
             key as PreparationMessage,
-            { matched: 12, total: 40 },
+            { matched: 12, total: 40, percent: 30 },
             LOCALES[index]!.code,
           ),
         ).not.toMatch(/\{\w+\}/);
@@ -48,8 +48,8 @@ describe("preparation interface translations", () => {
       const copy = preparationT("limits", {}, code);
       for (const size of ["64", "512", "2", "3"]) expect(copy).toContain(size);
     }
-    expect(preparationT("ready", { matched: 12, total: 40 }, "en")).toContain(
-      "12 of 40 passages matched",
-    );
+    expect(
+      preparationT("ready", { matched: 12, total: 40, percent: 30 }, "en"),
+    ).toContain("12 of 40 passages matched");
   });
 });

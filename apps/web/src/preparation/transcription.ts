@@ -2,6 +2,7 @@ import type { RecognizedWord } from "../../../../packages/playback/src/generated
 import type { SpeechWindow } from "./audioWindows";
 
 export { SPEECH_MODEL } from "./model";
+import { DEFAULT_SPEECH_PROFILE, type SpeechProfile } from "./model";
 export interface SpeechChunk {
   text: string;
   timestamp: [number | null, number | null];
@@ -46,6 +47,7 @@ export class LocalTranscriber {
   constructor(
     private signal: AbortSignal,
     onModel: (file?: string, progress?: number) => void,
+    private profile: SpeechProfile = DEFAULT_SPEECH_PROFILE,
   ) {
     signal.throwIfAborted();
     this.worker = new Worker(
@@ -99,7 +101,10 @@ export class LocalTranscriber {
     const id = ++this.next;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ type, id, pcm }, pcm ? [pcm.buffer] : []);
+      this.worker.postMessage(
+        { type, id, pcm, profile: this.profile },
+        pcm ? [pcm.buffer] : [],
+      );
     });
   }
   async load() {

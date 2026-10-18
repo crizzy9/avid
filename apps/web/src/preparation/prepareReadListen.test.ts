@@ -101,12 +101,10 @@ async function fixture() {
   const store = {
     findReusable: vi.fn().mockResolvedValue(undefined),
     findReusableSources: vi.fn().mockResolvedValue(undefined),
-    put: vi
-      .fn()
-      .mockImplementation(async (input) => ({
-        alignmentSnapshot: input.alignment,
-        id: "saved",
-      })),
+    put: vi.fn().mockImplementation(async (input) => ({
+      alignmentSnapshot: input.alignment,
+      id: "saved",
+    })),
   };
   const handle = {
     pauseNarration: vi.fn(),
@@ -157,6 +155,18 @@ async function fixture() {
   };
 }
 describe("ordinary ebook/audiobook preparation orchestration", () => {
+  it("releases model memory before matching and still disposes exactly once if matching fails", async () => {
+    const f = await fixture();
+    await expect(
+      prepareReadListen(f.input, f.factory, () => {
+        expect(f.recognizer.transcribe).toHaveBeenCalledOnce();
+        expect(f.recognizer.dispose).toHaveBeenCalledOnce();
+        throw new Error("Matching failed after transcription");
+      }),
+    ).rejects.toThrow("Matching failed after transcription");
+    expect(f.recognizer.dispose).toHaveBeenCalledOnce();
+    expect(f.store.put).not.toHaveBeenCalled();
+  });
   it("compares genuine supplied speech intervals without SMIL and saves only a freshly restored map", async () => {
     const f = await fixture(),
       result = await prepareReadListen(f.input, f.factory, generateAlignment);
@@ -326,4 +336,60 @@ describe("bounded speech windows", () => {
     expect([...pcm.slice(4, 8)]).toEqual([0.75, 0.75, 0.75, 0.75]);
     expect([...pcm.slice(8)]).toEqual(new Array(8).fill(0));
   });
+});
+
+it.each(["old-matcher", "different-model"] as const)(
+  "recompares %s while reusing validated source media",
+  async (reason) => {
+    const f = await fixture();
+    const alignmentSnapshot = generateAlignment({
+      edition: {
+        accountScope: f.input.scope,
+        bookId: "12",
+        textFileId: "31",
+        textSha256: f.publication.textSha256,
+        audioFileId: "41",
+        manifestRevision: "original",
+      },
+      publication: f.publication,
+      tracks: [f.track],
+      model: SPEECH_MODEL,
+    });
+    if (reason === "old-matcher")
+      alignmentSnapshot.algorithm = "avid-word-match-v1";
+    else
+      alignmentSnapshot.model = {
+        id: "previous-model",
+        revision: "previous-revision",
+      };
+    f.store.findReusable.mockResolvedValue({
+      alignmentSnapshot,
+      sources: [{ assetId: "audio", blob: f.audio }],
+    });
+    const result = await prepareReadListen(
+      f.input,
+      f.factory,
+      generateAlignment,
+    );
+    expect(result.reused).toBe(false);
+    expect(f.getBlob).not.toHaveBeenCalled();
+    expect(f.recognizer.transcribe).toHaveBeenCalledOnce();
+    expect(result.descriptor.alignmentSnapshot.algorithm).toBe(
+      "avid-word-match-v2",
+    );
+    expect(result.descriptor.alignmentSnapshot.model).toEqual(SPEECH_MODEL);
+  },
+);
+it("passes the selected compact profile to the worker and records its pinned model", async () => {
+  const f = await fixture();
+  f.input.profile = "compact";
+  const result = await prepareReadListen(f.input, f.factory, generateAlignment);
+  expect(f.factory).toHaveBeenCalledWith(
+    f.abort.signal,
+    expect.any(Function),
+    "compact",
+  );
+  expect(result.descriptor.alignmentSnapshot.model.id).toBe(
+    "Xenova/whisper-tiny.en",
+  );
 });

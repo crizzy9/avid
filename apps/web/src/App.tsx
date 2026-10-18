@@ -120,6 +120,13 @@ import { usePlatformCapabilities } from "./usePlatformCapabilities";
 import type { NativeNavigation } from "../../mobile/src/native-surfaces";
 import { useReadingActivity } from "./useReadingActivity";
 import { SeriesBrowser } from "./SeriesBrowser";
+import { BookFormatRequests } from "./BookFormatRequests";
+import { formatRequestT } from "./formatRequestMessages";
+import { createServerSpeechProvider } from "./serverSpeechProvider";
+import { registerOnlineSpeechProvider } from "../../../packages/playback/src/speechRuntime";
+import { StoryArcBrowser } from "./StoryArcBrowser";
+import { TopNotificationBanner } from "./TopNotificationBanner";
+import { useAppNotifications } from "./appNotifications";
 import { VirtualBookGrid } from "./VirtualBookGrid";
 import { ReferenceLibrary } from "./ReferenceLibrary";
 import {
@@ -141,6 +148,7 @@ import type {
 import {
   alignedAudioAnchor,
   alignedTextTarget,
+  alignedPlaybackSeconds,
   alignmentSha256,
   handoffToText,
   type VerifiedAudioAlignment,
@@ -180,6 +188,7 @@ type Dialog =
   | "integrations"
   | "collection"
   | "recovery"
+  | "requests"
   | null;
 type ReaderState = {
   ownerScope: string;
@@ -224,6 +233,23 @@ export default function App() {
         });
     },
   });
+  useEffect(() => {
+    const client = library.client;
+    if (!client) {
+      registerOnlineSpeechProvider(null);
+      return;
+    }
+    let active = true;
+    const provider = createServerSpeechProvider(client, {
+      isActive: () => active,
+    });
+    registerOnlineSpeechProvider(provider);
+    return () => {
+      active = false;
+      registerOnlineSpeechProvider(null);
+      provider.dispose();
+    };
+  }, [library.client]);
   const importedBooks = useImportedBooks(library.repo);
   const syncMessage = appMessageKeysByEnglish[library.syncStatus];
   const [view, setView] = useState<View>(() => {
@@ -358,7 +384,8 @@ export default function App() {
   currentReader.current = reader;
   const currentReaderHandle = useRef(readerAlignment);
   currentReaderHandle.current = readerAlignment;
-  const [toast, setToast] = useState("");
+  const notifications = useAppNotifications(library.repo.scope);
+  const setToast = notifications.notify;
   const [search, setSearch] = useState("");
   const [noteQuery, setNoteQuery] = useState("");
   const [noteBook, setNoteBook] = useState("all");
@@ -453,9 +480,14 @@ export default function App() {
       handle.clearAudioHighlight?.();
       return;
     }
+    const seconds = alignedPlaybackSeconds(map, playback);
+    if (seconds === null) {
+      handle.clearAudioHighlight?.();
+      return;
+    }
     let active = true;
     void handle
-      .followAudio?.(map, map.edition, playback.currentTime, {
+      .followAudio?.(map, map.edition, seconds, {
         follow: followAudio,
       })
       .catch((error) => {
@@ -706,12 +738,6 @@ export default function App() {
     };
   }, [library.client, library.repo, controller]);
   useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(""), 4500);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
-  useEffect(() => {
     const mq = matchMedia("(prefers-color-scheme: dark)");
     const update = () => {
       document.documentElement.dataset.theme =
@@ -813,7 +839,8 @@ export default function App() {
             library.repo.scope,
           ) &&
           linked.edition.bookId === anchor.bookId &&
-          linked.edition.audioFileId === anchor.fileId
+          linked.edition.audioFileId === anchor.fileId &&
+          alignedPlaybackSeconds(linked, controller.getSnapshot()) !== null
         ) {
           const previous = confirmedPositions.current.find(
             (item) => item.source === "listening",
@@ -1365,7 +1392,14 @@ export default function App() {
           const clock = JSON.parse(audio.locator);
           if (
             clock.manifestRevision === map.edition.manifestRevision &&
-            Number.isFinite(clock.time)
+            alignedPlaybackSeconds(map, {
+              bookId: audio.bookId,
+              fileId: audio.fileId,
+              trackIndex: map.tracks.findIndex(
+                (track) => track.id === clock.trackId,
+              ),
+              currentTime: clock.time,
+            }) !== null
           )
             confirmedPositions.current = [
               ...confirmedPositions.current.filter(
@@ -1986,18 +2020,11 @@ export default function App() {
               <ArrowUpRight size={14} />
             </button>
           </div>
-          {library.error && (
-            <div className="error-banner" role="alert">
-              {library.error}
-              <button
-                aria-label={t("a11y.dismissError")}
-                className="icon-button"
-                onClick={() => library.setError("")}
-              >
-                <X size={16} />
-              </button>
-            </div>
-          )}
+          <TopNotificationBanner
+            notifications={notifications}
+            error={library.error}
+            onDismissError={() => library.setError("")}
+          />
 
           {view === "more" && (
             <section className="reference-more" aria-label={t("nav.more")}>
@@ -2032,6 +2059,11 @@ export default function App() {
                 >
                   <Download />
                   {preparationText("prepared")}
+                  <ChevronRight />
+                </button>
+                <button onClick={() => setDialog("requests")}>
+                  <Plus />
+                  {formatRequestT("title")}
                   <ChevronRight />
                 </button>
                 <button onClick={() => setDialog("integrations")}>
@@ -2480,13 +2512,21 @@ export default function App() {
                 </div>
               </section>
               {library.client ? (
-                <SeriesBrowser
-                  client={library.client}
-                  onBook={(book) => {
-                    void library.repo.putBooks([book]);
-                    setSelected(book);
-                  }}
-                />
+                <>
+                  <StoryArcBrowser
+                    client={library.client}
+                    repo={library.repo}
+                    books={catalogBooks}
+                    onBook={setSelected}
+                  />
+                  <SeriesBrowser
+                    client={library.client}
+                    onBook={(book) => {
+                      void library.repo.putBooks([book]);
+                      setSelected(book);
+                    }}
+                  />
+                </>
               ) : (
                 <section>
                   <div className="section-heading">
@@ -2716,19 +2756,6 @@ export default function App() {
                 width: `${playback.duration ? (playback.currentTime / playback.duration) * 100 : 0}%`,
               }}
             />
-          </div>
-        )}
-        {toast && (
-          <div className="toast" role="status">
-            <Check size={16} />
-            {toast}
-            <button
-              className="icon-button"
-              aria-label={t("a11y.dismiss")}
-              onClick={() => setToast("")}
-            >
-              <X size={14} />
-            </button>
           </div>
         )}
         {readingBusy && (
@@ -2988,7 +3015,7 @@ export default function App() {
                 ) ? (
                   <ReadAlongPanel
                     lines={timedText}
-                    seconds={playback.currentTime}
+                    seconds={alignedPlaybackSeconds(alignment, playback)}
                     onSeek={(seconds) => {
                       const source = controller.getBook();
                       if (
@@ -3144,6 +3171,28 @@ export default function App() {
                 {t("note.save")}
               </button>
             </form>
+          </Modal>
+        )}
+        {dialog === "requests" && (
+          <Modal
+            title={formatRequestT("title")}
+            onClose={() => setDialog(null)}
+          >
+            <BookFormatRequests
+              client={library.client}
+              onOpenBook={(id) => {
+                const client = library.client,
+                  repo = library.repo;
+                void (async () => {
+                  const book =
+                    (await repo.getBook(id)) ?? (await client?.getBook(id));
+                  if (book && accountScope.current === repo.scope) {
+                    setDialog(null);
+                    setSelected(book);
+                  }
+                })().catch((error) => notify(String(error)));
+              }}
+            />
           </Modal>
         )}
         {dialog === "connect" && (

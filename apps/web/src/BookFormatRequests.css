@@ -1,0 +1,62 @@
+.book-format-requests {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 16px;
+  max-width: 720px;
+}
+.book-format-requests h3,
+.book-format-requests h4,
+.book-format-requests p {
+  margin: 0;
+}
+.book-format-requests fieldset {
+  display: grid;
+  gap: 12px;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.book-format-requests label {
+  display: grid;
+  gap: 5px;
+}
+.book-format-requests textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+.book-format-requests input,
+.book-format-requests textarea,
+.book-format-requests select {
+  width: 100%;
+  padding: 9px;
+  border: 1px solid var(--border, #aaa);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--surface, #fff);
+  font: inherit;
+}
+.book-format-requests ul {
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+.book-format-requests li {
+  display: grid;
+  gap: 4px;
+}
+.book-format-requests nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.book-format-requests span,
+.book-format-requests small {
+  overflow-wrap: anywhere;
+}
+.book-format-requests button:disabled {
+  opacity: 0.5;
+}

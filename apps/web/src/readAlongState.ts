@@ -1,5 +1,6 @@
 import type { ReadingAnchor } from "../../../packages/core/src/types";
 import type { PlaybackBook } from "../../../packages/playback/src/types";
+import { generatedDurationCompatible } from "../../../packages/playback/src/audioDuration";
 import {
   ALIGNMENT_DURATION_PRECISION_SECONDS,
   type VerifiedAudioAlignment,
@@ -50,9 +51,14 @@ export function matchingAlignedPlayback(
         track.id === expected.id &&
         track.duration === expected.duration &&
         (track.decodedDuration === undefined ||
-          (Number.isFinite(track.decodedDuration) &&
-            Math.abs(track.decodedDuration - expected.duration) <=
-              ALIGNMENT_DURATION_PRECISION_SECONDS))
+          (map.source === "generated"
+            ? generatedDurationCompatible(
+                expected.duration,
+                track.decodedDuration,
+              )
+            : Number.isFinite(track.decodedDuration) &&
+              Math.abs(track.decodedDuration - expected.duration) <=
+                ALIGNMENT_DURATION_PRECISION_SECONDS))
       );
     })
   );

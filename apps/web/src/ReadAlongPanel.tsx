@@ -11,7 +11,7 @@ export function ReadAlongPanel({
   children,
 }: {
   lines: readonly AlignedPassageText[];
-  seconds: number;
+  seconds: number | null;
   onSeek: (seconds: number) => void;
   onUndo?: () => void;
   children?: React.ReactNode;
@@ -20,7 +20,7 @@ export function ReadAlongPanel({
   const [visible, setVisible] = useState(false),
     [follow, setFollow] = useState(true);
   const active = lines.find(
-    (line) => seconds >= line.start && seconds < line.end,
+    (line) => seconds !== null && seconds >= line.start && seconds < line.end,
   );
   const viewport = useRef<HTMLDivElement>(null);
   useEffect(() => {

@@ -4,6 +4,7 @@ import type { ReadingAnchor } from '../../core/src/types';
 import { validateAlignment, textAtAudioTime, audioAtTextLocator, type AlignedSegment, type AlignmentMap } from './alignment';
 import type { PlaybackBook, PlaybackSnapshot } from './types';
 import { validateGeneratedAlignment, type ExtractedPublicationText, type GeneratedAlignmentSnapshot, type GeneratedAudioIdentity } from './generated-alignment';
+import { EXACT_AUDIO_DURATION_PRECISION_SECONDS, generatedDurationCompatible } from './audioDuration';
 
 export interface AlignmentEdition {
   accountScope: string;
@@ -44,7 +45,7 @@ export interface VerifiedAudioAlignment extends AlignmentMap {
 }
 const MAX_PROOF_BYTES = 64 * 1024 * 1024;
 /** Millisecond manifest rounding plus decoder timestamp quantization, never a duration ratio. */
-export const ALIGNMENT_DURATION_PRECISION_SECONDS = 0.002;
+export const ALIGNMENT_DURATION_PRECISION_SECONDS = EXACT_AUDIO_DURATION_PRECISION_SECONDS;
 const shaPattern = /^[0-9a-f]{64}$/;
 function checkEdition(edition: AlignmentEdition) {
   if (!edition.accountScope || !edition.bookId || !edition.textFileId || !edition.audioFileId || !edition.manifestRevision || !shaPattern.test(edition.textSha256)) {
@@ -193,6 +194,15 @@ export function alignedTextTarget(map: VerifiedAudioAlignment, edition: Alignmen
   const segment = textAtAudioTime(map, seconds);
   return segment ? { bookId: edition.bookId, fileId: edition.textFileId, locator: segment.textLocator, segmentId: segment.id } : null;
 }
+/** A decoder's longer rounded tail must never be interpreted as the next track. */
+export function alignedPlaybackSeconds(map: VerifiedAudioAlignment, snapshot: Pick<PlaybackSnapshot, 'bookId' | 'fileId' | 'trackIndex' | 'currentTime'>): number | null {
+  assertStandaloneAlignment(map, map.edition);
+  if (snapshot.bookId !== map.edition.bookId || snapshot.fileId !== map.edition.audioFileId ||
+    !Number.isSafeInteger(snapshot.trackIndex) || snapshot.trackIndex < 0 || snapshot.trackIndex >= map.tracks.length ||
+    !Number.isFinite(snapshot.currentTime)) return null;
+  const start = map.tracks.slice(0, snapshot.trackIndex).reduce((total, track) => total + track.duration, 0);
+  return snapshot.currentTime >= start && snapshot.currentTime < start + map.tracks[snapshot.trackIndex]!.duration ? snapshot.currentTime : null;
+}
 type AlignmentTransport = {
   getBook(): PlaybackBook | null; getSnapshot(): PlaybackSnapshot; pause(): void;
   load(book: PlaybackBook, sourceSeconds?: number): void;
@@ -203,7 +213,9 @@ function assertSource(map: VerifiedAudioAlignment, source: PlaybackBook | null) 
     throw new Error('The active player source does not match the verified alignment.');
   }
   if (source.tracks.some((track, index) => track.decodedDuration !== undefined &&
-    (!Number.isFinite(track.decodedDuration) || Math.abs(track.decodedDuration - map.tracks[index]!.duration) > ALIGNMENT_DURATION_PRECISION_SECONDS))) {
+    (map.source === 'generated'
+      ? !generatedDurationCompatible(map.tracks[index]!.duration, track.decodedDuration)
+      : !Number.isFinite(track.decodedDuration) || Math.abs(track.decodedDuration - map.tracks[index]!.duration) > ALIGNMENT_DURATION_PRECISION_SECONDS))) {
     throw new Error('The decoded audio duration differs from the verified source timeline. Exact handoff is unavailable.');
   }
 }
@@ -222,10 +234,12 @@ export function handoffToText(map: VerifiedAudioAlignment, edition: AlignmentEdi
   const before = transport.getSnapshot();
   if (before.bookId !== edition.bookId || before.fileId !== edition.audioFileId) throw new Error('The player changed before the text handoff.');
   // An unaligned gap must not stop playback or move the text to a guessed passage.
-  if (!alignedTextTarget(map, edition, before.currentTime)) return null;
+  const beforeSeconds = alignedPlaybackSeconds(map, before);
+  if (beforeSeconds === null || !alignedTextTarget(map, edition, beforeSeconds)) return null;
   transport.pause();
   assertSource(map, transport.getBook());
   const after = transport.getSnapshot();
   if (after.bookId !== edition.bookId || after.fileId !== edition.audioFileId) throw new Error('The player changed during the text handoff.');
-  return alignedTextTarget(map, edition, after.currentTime);
+  const afterSeconds = alignedPlaybackSeconds(map, after);
+  return afterSeconds === null ? null : alignedTextTarget(map, edition, afterSeconds);
 }

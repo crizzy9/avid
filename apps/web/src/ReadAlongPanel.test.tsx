@@ -132,6 +132,17 @@ describe("read-along transcript", () => {
     expect(host.querySelector(".read-along-lines")).toBeNull();
     expect(panel.onSeek).toHaveBeenCalledOnce();
   });
+  it("clears active text for a decoded tail outside the current track's declared timeline", async () => {
+    await renderPanel({ seconds: 12 });
+    await click("Show text");
+    expect(activeText()).toBe(lines[1]!.text);
+    await renderPanel({ seconds: null });
+    expect(activeText()).toBeNull();
+    expect(host.textContent).toContain("No aligned text at this moment.");
+    expect(panel.onSeek).not.toHaveBeenCalled();
+    await renderPanel({ seconds: 10 });
+    expect(activeText()).toBe(lines[1]!.text);
+  });
   it("scrolls only the transcript viewport, and leaves its position alone with follow disabled", async () => {
     vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockImplementation(
       function (this: HTMLElement) {

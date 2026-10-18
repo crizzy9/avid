@@ -69,6 +69,96 @@ async function click(label: string) {
 }
 
 describe("book details reference sheet", () => {
+  it("passes hydrated request identifiers while preserving current files and action identity", async () => {
+    const client = new BookOrbitClient(
+      {
+        profile: { id: "a", name: "A", url: "https://a.example" },
+        userId: "1",
+        accessToken: "fixture",
+      },
+      {
+        fetch: vi.fn(async () => {
+          throw new Error("Unexpected fixture request");
+        }),
+      },
+    );
+    const current = {
+      ...book,
+      id: "42",
+      files: [{ id: "7", name: "Island.epub", format: "EPUB" as const }],
+    };
+    vi.spyOn(client, "getBook").mockResolvedValue({
+      ...current,
+      files: [],
+      language: "en",
+      isbn10: "1234567890",
+      isbn13: "9781234567897",
+    });
+    vi.spyOn(client, "getBookCollections").mockResolvedValue([]);
+    vi.spyOn(client, "getBookRequestCapabilities").mockResolvedValue({
+      available: true,
+      pairs: true,
+      targetBook: true,
+      canSubmit: true,
+    });
+    const availability = vi
+      .spyOn(client, "checkBookRequestAvailability")
+      .mockResolvedValue([
+        {
+          ownedBookId: null,
+          existingRequestId: null,
+          existingRequestStatus: null,
+          alreadySubscribed: false,
+        },
+      ]);
+    const submit = vi
+      .spyOn(client, "createBookRequest")
+      .mockResolvedValue({
+        subscribed: false,
+        request: {
+          id: 9,
+          userId: 1,
+          title: current.title,
+          authors: current.authors,
+          mediaKind: "audiobook",
+          status: "pending",
+          note: null,
+          matchedBookId: null,
+          statusReason: null,
+          createdAt: "2026-10-18",
+          updatedAt: "2026-10-18",
+        },
+      });
+    await render({ book: current, client });
+    await click(translate("common.more"));
+    await click("Check availability");
+    expect(availability).toHaveBeenCalledWith(
+      [
+        {
+          title: current.title,
+          author: current.authors[0],
+          isbn13: "9781234567897",
+          mediaKind: "audiobook",
+        },
+      ],
+      expect.any(AbortSignal),
+    );
+    await click("Send request");
+    expect(submit).toHaveBeenCalledWith(
+      {
+        title: current.title,
+        authors: current.authors,
+        language: "en",
+        isbn10: "1234567890",
+        isbn13: "9781234567897",
+        mediaKind: "audiobook",
+        targetBookId: 42,
+      },
+      expect.any(AbortSignal),
+    );
+    await click(translate("detail.start"));
+    expect(props.onRead).toHaveBeenCalledWith("7");
+  });
   it("omits ratings and publication facts when metadata is unavailable", async () => {
     await render();
     expect(host.querySelector(".book-detail-handle")).not.toBeNull();

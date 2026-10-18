@@ -1,0 +1,546 @@
+{
+  "schema": "avid.read-listen-benchmark-aggregate",
+  "schemaVersion": 1,
+  "date": "2026-10-18",
+  "profile": "balanced",
+  "dataset": "OpenSLR 31 Mini LibriSpeech dev-clean-2",
+  "source": "https://openslr.org/31/",
+  "license": "CC BY 4.0",
+  "selection": "First four numeric speakers, first numeric chapter per speaker, first three sorted utterance IDs per chapter; selected before recognition.",
+  "model": {
+    "id": "Xenova/whisper-base.en",
+    "revision": "95bf40a508535962c6483ead40270b2e32267508"
+  },
+  "matcher": {
+    "algorithm": "avid-word-match-v2",
+    "source": "packages/playback/src/generated-alignment.ts",
+    "sha256": "c4a46968307d681e7a117a3edf71ecca038d37b198e79f3d1e170b6513756486"
+  },
+  "baseline": {
+    "commit": "c6ad269",
+    "source": "packages/playback/src/generated-alignment.ts",
+    "sha256": "779c9347ecac913d5a1b933a1cbeeac5745afcd76439552c6efb3065c6b7bbce"
+  },
+  "recognition": {
+    "runtime": {
+      "backend": "node-cpu",
+      "node": "v24.20.0",
+      "transformers": "4.3.1",
+      "onnx": "1.30.0",
+      "platform": "linux",
+      "architecture": "x64",
+      "dtype": "q8"
+    },
+    "sampleRate": 16000,
+    "channels": 1,
+    "returnTimestamps": "word",
+    "filterVersion": 1,
+    "decoder": "ffmpeg version 9.0.1 Copyright (c) 2000-2026 the FFmpeg developers"
+  },
+  "device": "Node CPU q8; not iOS/browser qualification",
+  "legacyRuntimeUnrecorded": false,
+  "totals": {
+    "source": {
+      "baseline": {
+        "matched": 10,
+        "total": 12
+      },
+      "current": {
+        "matched": 10,
+        "total": 12
+      }
+    },
+    "reflow": {
+      "baseline": {
+        "matched": 12,
+        "total": 21
+      },
+      "current": {
+        "matched": 19,
+        "total": 21
+      }
+    },
+    "wrongBook": {
+      "baseline": {
+        "matched": 0,
+        "total": 12
+      },
+      "current": {
+        "matched": 0,
+        "total": 12
+      }
+    }
+  },
+  "samples": [
+    {
+      "id": "84-121550-0000",
+      "audioSha256": "dbd3048279d25cb4adaa25e246db50ffa01b7714e6f091691abe908027951daf",
+      "referenceSha256": "b4bb64a0f78e48ee67ca856e7284e14accc6ad53e504543a6c441104a2a2dc68",
+      "pcmSha256": "f0c404d68e0645abdad8afcc11ddc0e3678aa69086772b05f8c5609e5fa92bb7",
+      "durationSeconds": 8.435,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 2,
+            "total": 3
+          },
+          "current": {
+            "matched": 3,
+            "total": 3
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "84-121550-0001",
+      "audioSha256": "247e369979ea804e60027e88710bfa4e8ab1b8f651a355c524715ba7861e6686",
+      "referenceSha256": "9f7cbcddbc4ccd15be6f9e7fb830fe8c9d7437c361cbd954a674fa16a7a430fb",
+      "pcmSha256": "c1d142ab97e73862aeed8577785cff98ca1e7cd40f94ec5b296ae1c2934bd515",
+      "durationSeconds": 7.975,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "84-121550-0002",
+      "audioSha256": "5b0f7043f218db93d39fa5462df911c790daf2800c628e34aecd30ebdb7d7602",
+      "referenceSha256": "bec2f892f8c98fffa137400f2657a5f50db159e262bab6bc63954b664f6240b5",
+      "pcmSha256": "f11f71e9fc5fe89d9129a07751d4be2c80e24bfceda4c91f388d35b127260eb6",
+      "durationSeconds": 8.265,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "174-168635-0000",
+      "audioSha256": "dbb765967c6a51c8e794fb0098240b1e070c6b1bf0594b218570631604aab38f",
+      "referenceSha256": "7fded471dd4fbdf8e2202377b0572e35ff0f4dbf8852d0241cb6b56fb764c1da",
+      "pcmSha256": "af0ac36a0ec71d2c53f8ace1083d588bdb57d6a2d9e5b2ad6d81c4f8d5c7b1fc",
+      "durationSeconds": 4.53,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "174-168635-0001",
+      "audioSha256": "eb74f4c862ef5ce58006a967ec30d857264e746e447f75d6dd3a7fe56c698fcf",
+      "referenceSha256": "fa174d2fb5e50610f6efb11e19a39490a068c59dcb6f866e7fbfc368d10e9b58",
+      "pcmSha256": "c37e97f3a71b25e9fb7392f0c94ab6c229b62c93486ab665d8b5632b3c875e76",
+      "durationSeconds": 4.65,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "174-168635-0002",
+      "audioSha256": "9c6364899ed0575aa99d76a8a1834b7b7405acb3abcb6a4e263ed5803a2e7db2",
+      "referenceSha256": "f63162e69c37761fd9b51e6efde143311887a2700e6f23a17689b4f6c629006d",
+      "pcmSha256": "890eb78707656267d6a4a503f45d279355e0dd152348501224b28b4a7f1f3cbc",
+      "durationSeconds": 15.86,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 2,
+            "total": 8
+          },
+          "current": {
+            "matched": 8,
+            "total": 8
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "251-118436-0000",
+      "audioSha256": "8a8a2f34930ea37432f1cc1082061cd889eceed949b3c13a79cbdc10a96f99e0",
+      "referenceSha256": "91edf1ac49137925f1d94f5cb4d3fe8f42e7dbd0a996381d89778fdf6cd3c2ce",
+      "pcmSha256": "090b40ef9835b0e9616dfd9a9e68247345e39369f670614623f50835c78ad647",
+      "durationSeconds": 6.26,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "251-118436-0001",
+      "audioSha256": "3a179746f8333af93ef925b2108d53cbee8b12d5976e69bc633d1e6167b4e679",
+      "referenceSha256": "18357161ec4695a36eec209c5e9832d75092a931a053463cb5ff565a75ba6fcc",
+      "pcmSha256": "f151046163d6669694bbfc78562e9c5e6f55a1a5f0bedd95f94a2a92de88ce8c",
+      "durationSeconds": 3.725,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "251-118436-0002",
+      "audioSha256": "d5e4ce91236c75b32b0f3e5ccc1d6ce2792ff2b20aedd95e172f329de8b164d5",
+      "referenceSha256": "d64afcd09e801f651945224a53c387d9d5ad253c30d0f4325990e52d02c8de3d",
+      "pcmSha256": "47adf1801fb897e14cdf7f29fae8b02e04c94e59c09b06e81399d9e4b6331e13",
+      "durationSeconds": 6.965,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "777-126732-0000",
+      "audioSha256": "6dfb2d28b03b4f6d0039a187545349cdec13afad0bf5ba734cc8e4c6c536ac4a",
+      "referenceSha256": "7046ed2bd38a0e16b2f60dc66a8a53eb6d4feebaf80762d81a143e579dd39108",
+      "pcmSha256": "c0d8cd7f33704657c1d8b1d7e1077d7537c9a757ec8d34fea8163f6d201dd829",
+      "durationSeconds": 2.74,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "777-126732-0001",
+      "audioSha256": "4dee5919f6566aa791a3c863b70c46b262409e39131058861b0ef00e2bbf0777",
+      "referenceSha256": "a7d4785e4edd966071f32bb58c7b647c22c861d1e9feb92eac57b5ff3a2880e0",
+      "pcmSha256": "51c3a7e31464fe1ae632720877b133608f72b36c96fa69b546c52b4fcc6843bb",
+      "durationSeconds": 2.3,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "777-126732-0002",
+      "audioSha256": "810af64e7584b35c6e51c663bebfd139f551168fac60ffc163566941775ed1a0",
+      "referenceSha256": "60ee9a8826ddbd9bb308365d60421c61f4cc1a3f840fa61c100bb3dbe9ebdb58",
+      "pcmSha256": "e11e86b789899ed1a5e04929458059592b714bec237243e4d9b4e1701b8325ad",
+      "durationSeconds": 5.06,
+      "results": {
+        "source": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "reflow": {
+          "baseline": {
+            "matched": 1,
+            "total": 1
+          },
+          "current": {
+            "matched": 1,
+            "total": 1
+          }
+        },
+        "wrongBook": {
+          "baseline": {
+            "matched": 0,
+            "total": 1
+          },
+          "current": {
+            "matched": 0,
+            "total": 1
+          }
+        }
+      }
+    }
+  ],
+  "limitations": "Twelve clean English audiobook excerpts; reference transcripts, not complete commercial EPUB editions. Reflow is a controlled layout perturbation. No human word-boundary labels; this measures passage coverage and wrong-book rejection, not timestamp accuracy.",
+  "contents": "Aggregate counts, public sample identities, and source/runtime hashes only. No audio, transcript text, caches, credentials, or user-library content."
+}

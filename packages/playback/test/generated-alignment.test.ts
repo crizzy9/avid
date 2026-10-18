@@ -211,3 +211,100 @@ describe("generated source alignment", () => {
     expect(() => generateAlignment(input)).toThrow();
   });
 });
+
+function recorded(texts: string[], spoken = texts.join(" ")) {
+  const input = fixture(texts);
+  input.tracks[0]!.words = words(spoken, 1);
+  input.tracks[0]!.duration = input.tracks[0]!.words.length * 0.4 + 3;
+  return input;
+}
+describe("book-context matching", () => {
+  it("links short dialogue only when two independently matched neighbors bound its actual recording", () => {
+    const input = recorded([first, "Yes, of course.", "Why not?", second]);
+    const snapshot = generateAlignment(input);
+    expect(snapshot.segments.map((s) => s.id)).toEqual([
+      "0:0",
+      "0:1",
+      "0:2",
+      "0:3",
+    ]);
+    const yes = input.tracks[0]!.words.find((w) => w.text === "yes")!;
+    expect(snapshot.segments[1]!.start).toBe(yes.start);
+    expect(snapshot.segments[1]!.confidence).toBe(1);
+    // No next anchor: a brief phrase alone is not enough evidence.
+    expect(
+      generateAlignment(recorded([first, "Yes, of course."])).segments,
+    ).toHaveLength(1);
+  });
+  it("disambiguates a repeated paragraph from independently observed neighboring text", () => {
+    const repeated = "This was the promise they had made long ago.";
+    const middle =
+      "Suddenly a silver bird appeared above the rooftops in the western sky.";
+    const input = recorded([first, repeated, middle, repeated, second]);
+    const snapshot = generateAlignment(input);
+    expect(snapshot.segments).toHaveLength(5);
+    expect(snapshot.segments[1]!.start).toBeLessThan(
+      snapshot.segments[3]!.start,
+    );
+  });
+  it("leaves duplicate short replies unmapped if one occurrence was omitted", () => {
+    const snapshot = generateAlignment(
+      recorded(
+        [first, "Yes.", "Yes.", second],
+        [first, "Yes.", second].join(" "),
+      ),
+    );
+    expect(snapshot.segments.map((s) => s.id)).toEqual(["0:0", "0:3"]);
+  });
+  it("does not fill an omitted or misheard short phrase with adjacent audio", () => {
+    const snapshot = generateAlignment(
+      recorded(
+        [first, "Good night.", second],
+        [first, "Farewell now.", second].join(" "),
+      ),
+    );
+    expect(snapshot.segments.map((s) => s.id)).toEqual(["0:0", "0:2"]);
+  });
+  it("does not choose between repeated short phrases in the audio by estimated position", () => {
+    const snapshot = generateAlignment(
+      recorded([first, "Yes.", second], [first, "Yes. Yes.", second].join(" ")),
+    );
+    expect(snapshot.segments.map((s) => s.id)).toEqual(["0:0", "0:2"]);
+  });
+  it("aligns long paragraphs in bounded pieces, rejecting a missing middle", () => {
+    const long = Array.from({ length: 650 }, (_, i) => `word${i}`).join(" ");
+    const snapshot = generateAlignment(recorded([long]));
+    expect(snapshot.segments).toHaveLength(1);
+    expect(snapshot.coverage.matchedWords).toBe(650);
+    const missing = long
+      .split(" ")
+      .filter((_, i) => i < 280 || i >= 330)
+      .join(" ");
+    expect(() => generateAlignment(recorded([long], missing))).toThrow(
+      "No sufficiently clear",
+    );
+  });
+  it("normalizes conservative English numeric and title spelling without altering actual word intervals", () => {
+    const text =
+      "Dr. Hale carried 21 books across the narrow bridge with Mr. Green.";
+    const input = recorded([text]);
+    input.tracks[0]!.words = words(
+      "Doctor Hale carried twenty one books across the narrow bridge with Mister Green",
+      1,
+    );
+    const snapshot = generateAlignment(input);
+    expect(snapshot.segments[0]!.confidence).toBe(1);
+    expect(alignmentTokens("001 IV St. John")).toEqual([
+      "001",
+      "iv",
+      "st",
+      "john",
+    ]);
+  });
+  it("restores v1 snapshots using their original token counts", () => {
+    const input = recorded([first]);
+    const snapshot = generateAlignment(input);
+    snapshot.algorithm = "avid-word-match-v1";
+    expect(() => validateGeneratedAlignment(snapshot)).not.toThrow();
+  });
+});

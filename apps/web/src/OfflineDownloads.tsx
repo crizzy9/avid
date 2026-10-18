@@ -18,6 +18,7 @@ import type { ReadingAnchor } from "../../../packages/core/src/types";
 import { PlaybackController } from "../../../packages/playback/src";
 import {
   alignedTextTarget,
+  alignedPlaybackSeconds,
   type VerifiedAudioAlignment,
 } from "../../../packages/playback/src/standalone-alignment";
 import { Reader } from "../../../packages/readers/src/Reader";
@@ -299,9 +300,14 @@ export function PreparedReadListenViewer({
   }, [handle, pkg, paired]);
   useEffect(() => {
     if (!handle || !map || page !== "book") return;
+    const seconds = alignedPlaybackSeconds(map, playback);
+    if (seconds === null) {
+      handle.clearAudioHighlight?.();
+      return;
+    }
     let active = true;
     void handle
-      .followAudio?.(map, map.edition, playback.currentTime, {
+      .followAudio?.(map, map.edition, seconds, {
         follow: follow && playback.status === "playing",
       })
       .catch((cause) => {
@@ -310,7 +316,17 @@ export function PreparedReadListenViewer({
     return () => {
       active = false;
     };
-  }, [handle, map, page, follow, playback.currentTime, playback.status]);
+  }, [
+    handle,
+    map,
+    page,
+    follow,
+    playback.currentTime,
+    playback.status,
+    playback.trackIndex,
+    playback.bookId,
+    playback.fileId,
+  ]);
   async function listenHere() {
     try {
       if (!map || !handle) return;
@@ -327,7 +343,9 @@ export function PreparedReadListenViewer({
   }
   function readHere() {
     if (!map) return;
-    const target = alignedTextTarget(map, map.edition, playback.currentTime);
+    const seconds = alignedPlaybackSeconds(map, playback);
+    const target =
+      seconds === null ? null : alignedTextTarget(map, map.edition, seconds);
     if (!target) {
       setError(along("audioUnaligned"));
       return;
@@ -374,7 +392,7 @@ export function PreparedReadListenViewer({
             map && (
               <ReadAlongPanel
                 lines={lines}
-                seconds={playback.currentTime}
+                seconds={alignedPlaybackSeconds(map, playback)}
                 onSeek={(seconds) => {
                   setUndo(playback.currentTime);
                   controller.seek(seconds);

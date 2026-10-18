@@ -13,6 +13,8 @@ export interface SpeechRequest {
   rate?: number;
   start?: number;
   onStart?: () => void;
+  /** Optional actual-audio activity, separate from an utterance remaining open while buffering. */
+  onPlayingChange?: (playing: boolean) => void;
   onBoundary?: (boundary: SpeechBoundary) => void;
   onEnd?: () => void;
   onError?: (message: string) => void;

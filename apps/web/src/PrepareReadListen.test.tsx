@@ -39,7 +39,7 @@ const book: Book = {
 const result = {
   map: { source: "generated", edition: { bookId: "12", textFileId: "31" } },
   descriptor: {
-    alignmentSnapshot: { coverage: { matchedPassages: 8, totalPassages: 10 } },
+    alignmentSnapshot: { coverage: { matchedPassages: 8, totalPassages: 10, matchedWords: 80, totalWords: 100 } },
   },
   reused: false,
 } as unknown as PreparationResult;

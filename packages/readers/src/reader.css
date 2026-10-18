@@ -10,6 +10,31 @@ dialog.avid-reader{width:100vw;max-width:none;max-height:none;height:100dvh;marg
 .avid-reader[data-reduced-motion="true"] .reader-stage,.avid-reader[data-reduced-motion="true"] .reader-progress>span{transition:none}
 .avid-comic-sheet{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;height:100%;min-width:0}
 .avid-pdf-scroll{overflow-x:hidden}
+.avid-pdf-page .textLayer .markedContent{display:contents;top:auto;height:auto}
+.avid-pdf-scroll{padding:0 8px 16px;scrollbar-gutter:stable}
+.avid-pdf-clip{position:relative;overflow:hidden;margin:0 auto 16px;flex-shrink:0;background:white}
+.avid-pdf-page{position:relative;margin:0;flex-shrink:0}
+.avid-pdf-page canvas{display:block}
+.avid-pdf-page .textLayer{inset:0;line-height:1;text-size-adjust:none;forced-color-adjust:none}
+.avid-pdf-highlight{pointer-events:none}
+.avid-pdf-crop-controls{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px;padding:12px 0;margin:0 0 4px}
+.avid-pdf-crop-controls label{display:flex;align-items:center;gap:6px;max-width:100%;font-size:11px}
+.avid-pdf-crop-controls select{font:inherit;max-width:100%;padding:5px;border-radius:5px;background:var(--reader-bg);color:var(--reader-fg);border:1px solid #8886}
+.reader-selection-card{display:block;width:min(460px,calc(100% - 24px));box-sizing:border-box;max-height:min(70vh,580px);overflow:auto;padding:14px 16px;bottom:16px;text-align:left;font-size:12px;line-height:1.5;background:var(--reader-bg);color:var(--reader-fg);border:1px solid #8885;z-index:10}
+.reader-selection-heading,.reader-selection-highlights,.reader-selection-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.reader-selection-heading{justify-content:space-between}.reader-selection-heading strong{font-size:12px}
+.reader-selection-card blockquote{margin:8px 0 12px;padding-left:12px;border-left:2px solid #ae8e4d;max-height:92px;overflow:auto;font:14px/1.55 Georgia,serif;white-space:pre-wrap;overflow-wrap:anywhere}
+.reader-selection-card button,.reader-selection-card a{display:inline-flex;align-items:center;border:1px solid #8883;border-radius:6px;padding:7px 9px;color:inherit;background:transparent;font:inherit;line-height:1.4;text-decoration:none;min-height:34px;box-sizing:border-box}
+.reader-selection-card button:hover,.reader-selection-card a:hover{background:color-mix(in srgb,var(--reader-fg) 8%,transparent)}
+.reader-selection-card a:focus-visible{outline:2px solid #aa863d;outline-offset:3px}
+.reader-selection-card .reader-swatches{gap:5px;margin:5px 4px 5px 0}.reader-selection-card .reader-swatches button{width:24px;height:24px;min-height:24px;padding:0;border-radius:50%;border:1px solid #8885}
+.reader-selection-card .reader-swatches button.chosen{outline:2px solid var(--reader-fg);outline-offset:2px}
+.reader-selection-actions{margin-top:12px}.reader-selection-language{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+.reader-selection-language select{font:inherit;border:1px solid #8885;border-radius:5px;background:var(--reader-bg);color:inherit;padding:6px;max-width:65%}
+.reader-selection-disclosure{font-size:10px;opacity:.65;margin:10px 0 0}.reader-selection-card [role=status]{font-size:11px;margin-bottom:0}
+.reader-selection-note label{display:block;margin:10px 0}.reader-selection-note textarea,.reader-selection-manual{width:100%;box-sizing:border-box;min-height:70px;max-height:160px;resize:vertical;border:1px solid #8885;border-radius:5px;background:var(--reader-bg);color:inherit;padding:8px;margin-top:5px;font:inherit}
+.reader-publication-formatting{display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.6}.reader-publication-formatting input{margin-top:4px}
+@media(max-width:600px){.reader-selection-card{width:calc(100% - 16px);bottom:8px;padding:12px}.avid-pdf-crop-controls input[type=range]{width:66px}}
 
 /* Quiet reading chrome: title, chapter and real position remain in a stable frame. */
 dialog.avid-reader{overflow:hidden;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}

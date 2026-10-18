@@ -1,4 +1,5 @@
 import { ALL_FORMATS, AudioBufferSink, BlobSource, Input } from "mediabunny";
+import { generatedDurationCompatible } from "../../../../packages/playback/src/audioDuration";
 
 export const SPEECH_SAMPLE_RATE = 16_000;
 export interface SpeechWindow {
@@ -83,12 +84,14 @@ export async function* decodeSpeechWindows(
         "This device cannot decode this audiobook for preparation. Try a current browser or a supported audio format.",
       );
     const actualDuration = await track.computeDuration();
-    if (Math.abs(actualDuration - duration) > 0.002)
+    if (!generatedDurationCompatible(duration, actualDuration))
       throw new Error(
         "The decoded recording duration does not match this edition. Refresh its audiobook metadata before preparing.",
       );
     const sink = new AudioBufferSink(track);
-    for (const window of speechWindows(duration)) {
+    // The server's whole-second rounding is not a reason to stretch source time
+    // or transcribe beyond the canonical boundary into the next track's range.
+    for (const window of speechWindows(Math.min(duration, actualDuration))) {
       signal.throwIfAborted();
       const pcm = new Float32Array(
         Math.ceil((window.end - window.start) * SPEECH_SAMPLE_RATE),

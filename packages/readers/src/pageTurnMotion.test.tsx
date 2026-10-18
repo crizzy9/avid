@@ -34,6 +34,7 @@ vi.mock("pdfjs-dist", () => ({
       destroy: async () => {},
       getPage: async (page: number) => ({
         getViewport: ({ scale }: { scale: number }) => ({
+          userUnit: 1,
           width: 600 * scale,
           height: 800 * scale,
         }),
@@ -348,5 +349,6 @@ it("slides only after PDF canvas/text rendering, preserves selection DOM, and ca
     pageLocator(1),
     0,
     "Page 1 of 4",
+    {pageNumber:1,pageCount:4},
   );
 });
