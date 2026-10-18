@@ -100,6 +100,7 @@ import { startNativeAuthentication } from "./nativeAuthentication";
 import { setNativeAppearance } from "../../mobile/src/native-appearance";
 import { useImportedBooks } from "./useImportedBooks";
 import { useHomeShelves, uniqueBooks } from "./useHomeShelves";
+import { PinnedHomeShelves } from "./PinnedHomeShelves";
 import { useCurrentBookDescription } from "./useCurrentBookDescription";
 import { descriptionToPlainText } from "./descriptionText";
 import { useDesktopSurfaces } from "./useDesktopSurfaces";
@@ -131,7 +132,8 @@ import {
   readerKindForFile,
 } from "../../../packages/readers/src/bookFile";
 import { newestAnchor } from "./resume";
-import { AlignmentControls } from "./AlignmentControls";
+import { PrepareReadListen } from "./PrepareReadListen";
+import { usePreparationI18n } from "./preparationMessages";
 import type {
   ReaderAlignmentHandle,
   AlignedPassageText,
@@ -155,9 +157,6 @@ import {
   type HandoffPolicy,
   type ConfirmedLinkedPosition,
 } from "./readAlongState";
-import { DownloadReadAlongButton } from "./DownloadReadAlongButton";
-import { seedOfflineReadAlongProgress } from "../../../packages/core/src/offlineReadAlongProgress";
-import type { OfflineReadAlongDescriptor } from "../../../packages/core/src/offlineReadAlong";
 import { playerTimeline } from "./playerTimeline";
 import { playerRemainingLabel } from "./playerMessages";
 
@@ -194,6 +193,7 @@ export default function App() {
   const { t, locale, setLocale } = useI18n();
   const { t: appT } = useAppI18n();
   const readAlongText = useReadAlongI18n();
+  const preparationText = usePreparationI18n();
   const platformCapabilities = usePlatformCapabilities();
   const navigation = [
     { id: "home", label: t("nav.home"), icon: Home },
@@ -332,6 +332,7 @@ export default function App() {
   const [previewReading, setPreviewReading] = useState(false);
   const [followAudio, setFollowAudio] = useState(false);
   const [showDownloads, setShowDownloads] = useState(false);
+  const [showPreparationPicker, setShowPreparationPicker] = useState(false);
   const [undoAudioPosition, setUndoAudioPosition] = useState<{
     source: PlaybackBook;
     seconds: number;
@@ -1539,37 +1540,6 @@ export default function App() {
     pendingReadingConfirmation.current = pending;
     return pending;
   }
-  async function seedDownloadedProgress(
-    pkg: OfflineReadAlongDescriptor,
-    source: ReaderState,
-  ) {
-    if (
-      source.ownerScope !== accountScope.current ||
-      pkg.scope !== source.ownerScope
-    )
-      return;
-    const confirmedText = confirmedTextAnchor.current;
-    const reading =
-      confirmedText &&
-      confirmedText.source.source === source.source &&
-      confirmedText.source.book.id === pkg.book.id &&
-      confirmedText.anchor.fileId === pkg.textFileId
-        ? confirmedText.anchor
-        : undefined;
-    let audio = confirmedAudioAnchor.current;
-    try {
-      if (
-        !audio ||
-        audio.bookId !== pkg.book.id ||
-        audio.fileId !== pkg.alignmentSnapshot?.edition.audioFileId ||
-        JSON.parse(audio.locator).manifestRevision !== pkg.manifest?.revision
-      )
-        audio = undefined;
-    } catch {
-      audio = undefined;
-    }
-    await seedOfflineReadAlongProgress(pkg, { reading, audio });
-  }
   async function readFromAudio() {
     const map = alignment;
     if (
@@ -2048,6 +2018,11 @@ export default function App() {
                   {t("upload.open")}
                   <ChevronRight />
                 </button>
+                <button onClick={() => setShowPreparationPicker(true)}>
+                  <Headphones />
+                  {preparationText("prepare")}
+                  <ChevronRight />
+                </button>
                 <button
                   onClick={() => {
                     controller.pause();
@@ -2056,7 +2031,7 @@ export default function App() {
                   }}
                 >
                   <Download />
-                  {readAlongText("downloads")}
+                  {preparationText("prepared")}
                   <ChevronRight />
                 </button>
                 <button onClick={() => setDialog("integrations")}>
@@ -2184,6 +2159,14 @@ export default function App() {
                   .slice(0, 12)}
                 onSelect={setSelected}
                 onSeeAll={() => navigate("library")}
+              />
+              <PinnedHomeShelves
+                client={library.client}
+                repo={library.repo}
+                collections={library.collections}
+                books={catalogBooks}
+                onSelect={setSelected}
+                revision={homeRevision}
               />
               {!library.client && (
                 <section className="library-invitation">
@@ -2856,19 +2839,26 @@ export default function App() {
                 reader.file.format === "EPUB" ? (
                   <>
                     {library.client &&
+                      reader.source &&
                       reader.book.files.some(
                         (file) => file.format === "AUDIO",
                       ) &&
                       !reader.book.id.startsWith("local-") && (
-                        <AlignmentControls
+                        <PrepareReadListen
                           key={`${reader.ownerScope}:${reader.book.id}:${reader.file.id}`}
                           client={library.client}
                           book={reader.book}
                           fileId={reader.file.id}
                           handle={readerAlignment}
-                          alignment={alignment}
-                          onVerified={(map) => void acceptAlignment(map)}
+                          source={reader.source}
+                          scopeLabel={library.client.session.profile.name}
+                          onPrepared={acceptAlignment}
                           onListen={listenFromText}
+                          onOpenPrepared={() => {
+                            controller.pause();
+                            finishReading();
+                            setShowDownloads(true);
+                          }}
                         />
                       )}
                     <div className="read-along-reader-controls">
@@ -2943,22 +2933,6 @@ export default function App() {
                             </button>
                           </>
                         )}
-                      {reader.source && (
-                        <DownloadReadAlongButton
-                          scope={reader.ownerScope}
-                          scopeLabel={
-                            library.client?.session.profile.name ??
-                            "On this device"
-                          }
-                          book={reader.book}
-                          fileId={reader.file.id}
-                          source={reader.source}
-                          client={library.client}
-                          alignment={alignment}
-                          handle={readerAlignment}
-                          onSaved={(pkg) => seedDownloadedProgress(pkg, reader)}
-                        />
-                      )}
                     </div>
                   </>
                 ) : undefined
@@ -3059,24 +3033,62 @@ export default function App() {
                 ) : undefined
               }
               offlineControl={
-                linkedSource?.source &&
-                linkedSource.book.id === playerBook.id &&
-                linkedSource.ownerScope === library.repo.scope ? (
-                  <DownloadReadAlongButton
-                    scope={linkedSource.ownerScope}
-                    scopeLabel={
-                      library.client?.session.profile.name ?? "On this device"
-                    }
-                    book={linkedSource.book}
-                    fileId={linkedSource.file.id}
-                    source={linkedSource.source}
-                    client={library.client}
-                    alignment={alignment}
-                    onSaved={(pkg) => seedDownloadedProgress(pkg, linkedSource)}
-                  />
-                ) : undefined
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    controller.pause();
+                    setShowPlayer(false);
+                    setShowDownloads(true);
+                  }}
+                >
+                  {preparationText("prepared")}
+                </button>
               }
             />
+          </Modal>
+        )}
+        {showPreparationPicker && (
+          <Modal
+            title={preparationText("prepare")}
+            onClose={() => setShowPreparationPicker(false)}
+          >
+            <div className="form-panel">
+              <p>{preparationText("chooseBook")}</p>
+              {catalogBooks
+                .filter(
+                  (book) =>
+                    book.files.some((file) => file.format === "EPUB") &&
+                    book.files.some((file) => file.format === "AUDIO"),
+                )
+                .map((book) => (
+                  <button
+                    key={book.id}
+                    className="secondary-button"
+                    disabled={!library.client || book.id.startsWith("local-")}
+                    onClick={() => {
+                      setShowPreparationPicker(false);
+                      void openReader({ ...book, format: "EPUB" });
+                    }}
+                  >
+                    {book.title}
+                  </button>
+                ))}
+              {!catalogBooks.some(
+                (book) =>
+                  book.files.some((file) => file.format === "EPUB") &&
+                  book.files.some((file) => file.format === "AUDIO"),
+              ) && <p>{preparationText("noEligibleBooks")}</p>}
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setShowPreparationPicker(false);
+                  controller.pause();
+                  setShowDownloads(true);
+                }}
+              >
+                {preparationText("openPrepared")}
+              </button>
+            </div>
           </Modal>
         )}
         {showDownloads && (

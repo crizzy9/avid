@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => {
   return {
     root: "apps/web",
     envDir: process.cwd(),
+    resolve: {
+      conditions: [
+        "onnxruntime-web-use-extern-wasm",
+        "module",
+        "browser",
+        "development|production",
+      ],
+    },
     plugins: [
       react(),
       offlineShell(),
@@ -41,6 +49,7 @@ export default defineConfig(({ mode }) => {
       },
     ],
     build: { outDir: "../../dist", emptyOutDir: true },
+    worker: { format: "es" },
     server: {
       port: 5173,
       strictPort: true,

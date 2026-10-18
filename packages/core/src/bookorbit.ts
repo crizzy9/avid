@@ -528,12 +528,14 @@ export class BookOrbitClient {
       chapters:[...manifest.chapters].sort((a,b)=>a.sequence-b.sequence).map(chapter=>({id:chapter.id,title:chapter.title,start:chapter.startMs/1000,duration:(chapter.endMs-chapter.startMs)/1000})),};
   }
   audioAssetUrl(bookId:string,assetId:string):string { return `${this.endpoint}/api/v1/audiobooks/${routeId(bookId)}/assets/${encodeURIComponent(assetId)}/content`; }
-  /** Explicit alignment verification only; normal playback continues to stream. */
-  async getAudioAssetBlob(bookId:string,assetId:string,options:{signal?:AbortSignal;maxBytes?:number}={}):Promise<Blob> {
+  /** Explicit alignment verification/preparation only; normal playback continues to stream. */
+  async getAudioAssetBlob(bookId:string,assetId:string,options:{signal?:AbortSignal;maxBytes?:number;purpose?:'preparation'}={}):Promise<Blob> {
     const maxBytes=options.maxBytes??64*1024*1024;
-    if(!assetId||!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>64*1024*1024)throw new ContractError('Audio verification accepts complete assets up to 64 MiB.');
+    const limit=options.purpose==='preparation'?512*1024*1024:64*1024*1024;
+    if(!assetId||!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>limit)throw new ContractError(`Audio ${options.purpose==='preparation'?'preparation':'verification'} accepts complete assets up to ${limit/1024/1024} MiB.`);
     options.signal?.throwIfAborted();
-    return boundedBlob(await this.response(`audiobooks/${routeId(bookId)}/assets/${encodeURIComponent(assetId)}/content`,{signal:options.signal}),maxBytes,options.signal);
+    const response=await this.response(`audiobooks/${routeId(bookId)}/assets/${encodeURIComponent(assetId)}/content`,{signal:options.signal});
+    return options.purpose==='preparation'?boundedFileBlob(response,maxBytes,options.signal):boundedBlob(response,maxBytes,options.signal);
   }
   async getAudioPlaybackState(bookId:string):Promise<AudioPlaybackState|null> { return parse(audioStateSchema.nullable(),await this.json(`audiobooks/${routeId(bookId)}/playback-state`),'audio state'); }
   async saveAudioPlaybackState(bookId:string,state:AudioPlaybackWrite):Promise<AudioPlaybackState> { return parse(audioStateSchema,await this.json(`audiobooks/${routeId(bookId)}/playback-state`,{method:'PUT',body:JSON.stringify(state)},true),'audio state'); }

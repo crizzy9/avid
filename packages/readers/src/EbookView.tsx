@@ -22,6 +22,7 @@ import {
   passageAtLocator,
   readPublicationTimedText,
   verifyPublicationAudiobook,
+  verifyPreparedPublication,
   type AlignedPassageText,
   type ReaderAlignmentHandle,
 } from "./alignedPassage";
@@ -31,6 +32,9 @@ import {
   type AlignmentEdition,
   type VerifiedAudioAlignment,
 } from "../../playback/src/standalone-alignment";
+import { extractPublicationText } from './generatedText';
+import type { ExtractedPublicationText } from '../../playback/src/generated-alignment';
+import { sha256Blob } from '../../core/src/blobHash';
 import { AUDIO_HIGHLIGHT_CLASS, ReadAlongHighlighter } from "./readAlong";
 import { speechProvider } from "../../playback/src/speechRuntime";
 import { prefersReducedMotion, useReducedMotion } from "./reducedMotion";
@@ -270,6 +274,15 @@ export function EbookView(props: EngineProps) {
       // passed to the parser; root normally supplies its authenticated/cached source Blob.
       if (input instanceof Blob) {
         let digest: Promise<string> | undefined;
+        let extracted: Promise<ExtractedPublicationText> | undefined;
+        const extractAlignmentText = async () => {
+          if (cancelled || props.file.format !== 'EPUB') throw new Error('An open EPUB is required for preparation.');
+          digest ??= sha256Blob(input,{ isActive: () => !cancelled });
+          extracted ??= digest.then(hash => extractPublicationText(loadedBook,hash,(index,range) => view.getCFI(index,range),() => !cancelled));
+          const result = await extracted;
+          if (cancelled) throw new Error('The reader changed during preparation.');
+          return result;
+        };
         const validate = async (
           map: VerifiedAudioAlignment,
           edition: AlignmentEdition,
@@ -325,6 +338,13 @@ export function EbookView(props: EngineProps) {
           },
         });
         alignmentHandle = {
+          extractAlignmentText,
+          restorePreparedAlignment: async (snapshot, manifest, assets) => {
+            const captured=structuredClone(snapshot), capturedManifest=structuredClone(manifest), capturedAssets=assets.map(asset=>({...asset}));
+            const publication = await extractAlignmentText();
+            return verifyPreparedPublication(captured,capturedManifest,capturedAssets,publication,
+              {accountScope:props.accountScope??'local',bookId:props.book.id,textFileId:props.file.id},()=>!cancelled);
+          },
           pauseNarration: () => {
             if (!cancelled) {
               stop();

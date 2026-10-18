@@ -6,6 +6,6 @@
     "allowImportingTsExtensions": true, "resolveJsonModule": true,
     "noEmit": true, "types": ["vite/client", "node"]
   },
-  "include": ["apps/web/src", "packages", "vite.config.ts"],
+  "include": ["apps/web/src", "packages", "vite.config.ts", "vitest.config.ts"],
   "exclude": ["node_modules", "dist", "packages/readers/vendor"]
 }

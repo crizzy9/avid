@@ -3,6 +3,7 @@ import { mediaOverlayPath, type MediaOverlayPlaylist } from '../../core/src/medi
 import type { ReadingAnchor } from '../../core/src/types';
 import { validateAlignment, textAtAudioTime, audioAtTextLocator, type AlignedSegment, type AlignmentMap } from './alignment';
 import type { PlaybackBook, PlaybackSnapshot } from './types';
+import { validateGeneratedAlignment, type ExtractedPublicationText, type GeneratedAlignmentSnapshot, type GeneratedAudioIdentity } from './generated-alignment';
 
 export interface AlignmentEdition {
   accountScope: string;
@@ -32,6 +33,8 @@ export interface StandaloneAlignedSegment extends AlignedSegment {
   sectionIndex: number;
   textHref: string;
   textFragment: string;
+  /** Generated alignment uses a validated source element path rather than a publisher ID. */
+  textElementPath?: number[];
 }
 export interface VerifiedAudioAlignment extends AlignmentMap {
   readonly edition: Readonly<AlignmentEdition>;
@@ -141,6 +144,38 @@ export function createStandaloneAlignment(edition: AlignmentEdition, playlist: M
 export function assertStandaloneAlignment(map: VerifiedAudioAlignment, edition: AlignmentEdition): void {
   if (!maps.has(map)) throw new Error('Fresh verified text and audio alignment is required.');
   equalEdition(map.edition, edition);
+}
+
+/**
+ * Restore generated timing only after the caller extracted the current EPUB and hashed
+ * every actual audio asset. The brand establishes source binding; ASR timing remains an
+ * inference with the snapshot's explicit agreement score, never publisher-authored SMIL.
+ */
+export function createGeneratedAlignment(
+  snapshot: GeneratedAlignmentSnapshot,
+  publication: ExtractedPublicationText,
+  actualAudio: readonly GeneratedAudioIdentity[],
+): VerifiedAudioAlignment {
+  validateGeneratedAlignment(snapshot); checkEdition(snapshot.edition);
+  if (publication.version !== 1 || publication.textSha256 !== snapshot.edition.textSha256 ||
+    publication.passages.length !== snapshot.passages.length || publication.passages.some((passage,i) => {
+      const expected = snapshot.passages[i]!;
+      return ['id','text','textLocator','sectionIndex','textHref'].some(key=>passage[key as keyof typeof passage] !== expected[key as keyof typeof expected]) ||
+        JSON.stringify(passage.elementPath) !== JSON.stringify(expected.elementPath);
+    }) || actualAudio.length !== snapshot.tracks.length ||
+    actualAudio.some((asset, i) => {
+      const expected = snapshot.tracks[i]!;
+      return ['assetId','fileId','sha256','sizeBytes','duration'].some(key => asset[key as keyof GeneratedAudioIdentity] !== expected[key as keyof GeneratedAudioIdentity]);
+    })) throw new Error('The prepared alignment does not match the current ebook and complete audio sources.');
+  const segments = snapshot.segments.map(segment => Object.freeze({ ...segment, textElementPath: Object.freeze([...segment.textElementPath]) as unknown as number[] }));
+  const tracks = snapshot.tracks.map(track => Object.freeze({ id: track.fileId, duration: track.duration }));
+  const map: VerifiedAudioAlignment = {
+    version: `generated:${snapshot.algorithm}:${snapshot.edition.textSha256}:${snapshot.edition.manifestRevision}`,
+    source: 'generated', textFileId: snapshot.edition.textFileId, audioFileId: snapshot.edition.audioFileId,
+    edition: Object.freeze({ ...snapshot.edition }), segments, tracks,
+    duration: tracks.reduce((sum,track) => sum + track.duration, 0),
+  };
+  validateAlignment(map); Object.freeze(segments); Object.freeze(tracks); Object.freeze(map); maps.add(map); return map;
 }
 
 /** Exact href only; a CFI must first be resolved against the live EPUB DOM by the reader. */

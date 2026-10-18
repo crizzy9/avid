@@ -461,6 +461,7 @@ export function Reader(props: ReaderProps) {
     persistPreference({ [key]: value });
   };
   const saveAnnotation = (note: boolean) => {
+    if (props.annotationsEnabled === false) return;
     const selection = selected ??
       engine.current?.selection() ?? {
         quote: location.label,
@@ -622,7 +623,7 @@ export function Reader(props: ReaderProps) {
           >
             <Search size={19} />
           </button>
-          <button
+          {props.annotationsEnabled !== false && <button
             className={`reader-icon ${panel === "notes" ? "active" : ""}`}
             aria-expanded={panel === "notes"}
             aria-controls="reader-panel"
@@ -631,7 +632,7 @@ export function Reader(props: ReaderProps) {
             onClick={() => togglePanel("notes")}
           >
             <Bookmark size={19} />
-          </button>
+          </button>}
           {kind === "epub" && !props.externalNarration && (
             <button
               className={`reader-icon ${speaking ? "active" : ""}`}
@@ -757,7 +758,7 @@ export function Reader(props: ReaderProps) {
                 ))}
               </>
             )}
-            {panel === "notes" && (
+            {panel === "notes" && props.annotationsEnabled !== false && (
               <>
                 <label className="reader-field">
                   {t("searchNotes")}
@@ -1208,7 +1209,7 @@ export function Reader(props: ReaderProps) {
             </>
           )}
         </div>
-        {selected && panel !== "notes" && (
+        {selected && panel !== "notes" && props.annotationsEnabled !== false && (
           <div className="reader-selection-tools">
             <button onClick={() => saveAnnotation(false)}>
               <Highlighter size={16} />

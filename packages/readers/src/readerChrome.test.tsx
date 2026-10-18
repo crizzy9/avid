@@ -98,6 +98,16 @@ const render = () =>
     ),
   );
 const header = () => host.querySelector<HTMLElement>("#reader-controls")!;
+it('prepared mode hides notebook and selection editing while retaining reading controls', async () => {
+  const save = vi.fn();
+  await act(async () => root.render(<Reader book={book} annotations={[]} annotationsEnabled={false}
+    onClose={fixture.close} onAnchor={()=>{}} onAnnotation={save} />));
+  await act(async () => fixture.props!.onSelection({quote:'Original selected passage',locator:'epubcfi(/6/2!/4/2/1:0)'}));
+  expect(host.querySelector('[aria-label="Highlights and notes"]')).toBeNull();
+  expect(host.querySelector('.reader-selection-tools')).toBeNull();
+  expect(host.querySelector('[aria-label="Search in book"]')).not.toBeNull();
+  expect(save).not.toHaveBeenCalled();
+});
 const tap = async (element: Element, elapsed = 20, drag = 0) =>
   act(async () => {
     const down = new MouseEvent("pointerdown", {

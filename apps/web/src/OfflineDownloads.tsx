@@ -1,24 +1,22 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowLeft, Download, Trash2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Trash2 } from "lucide-react";
 import {
   OfflineReadAlongStore,
   offlinePlaybackSource,
   type OfflineReadAlongDescriptor,
   type OfflineReadAlongPackage,
-  type OfflineReadAlongIssue,
 } from "../../../packages/core/src/offlineReadAlong";
-import { createOfflineReadAlongRepository } from "../../../packages/core/src/offlineReadAlongProgress";
+import {
+  PreparedReadListenStore,
+  preparedReadListenStore,
+  preparedPlaybackSource,
+  type PreparedReadListenDescriptor,
+  type PreparedReadListenPackage,
+} from "../../../packages/core/src/preparedReadListen";
 import type { LibraryStorage } from "../../../packages/core/src/storage";
-import type {
-  Annotation,
-  ReadingAnchor,
-} from "../../../packages/core/src/types";
+import type { ReadingAnchor } from "../../../packages/core/src/types";
+import { PlaybackController } from "../../../packages/playback/src";
 import {
-  PlaybackController,
-  resolveAudioResume,
-} from "../../../packages/playback/src";
-import {
-  alignedAudioAnchor,
   alignedTextTarget,
   type VerifiedAudioAlignment,
 } from "../../../packages/playback/src/standalone-alignment";
@@ -29,82 +27,81 @@ import type {
 } from "../../../packages/readers/src/alignedPassage";
 import { Player } from "./Player";
 import { ReadAlongPanel } from "./ReadAlongPanel";
-import { HandoffControls } from "./HandoffControls";
-import {
-  handoffPolicyKey,
-  readHandoffPolicy,
-  latestConfirmedPosition,
-  type HandoffPolicy,
-  type ConfirmedLinkedPosition,
-} from "./readAlongState";
 import { useReadAlongI18n } from "./readAlongMessages";
-import { offlineReadAlongStore } from "./DownloadReadAlongButton";
+import { usePreparedReadListenI18n } from "./preparedReadListenMessages";
 import { useI18n } from "../../../packages/i18n/src";
 import { createLazyPlaybackTransport } from "../../mobile/src/lazy-transport";
-import { Modal, formatTime } from "./ui";
+import "./read-along.css";
 
+type Descriptor = PreparedReadListenDescriptor | OfflineReadAlongDescriptor;
+type Package = PreparedReadListenPackage | OfflineReadAlongPackage;
+function isPrepared(pkg: Descriptor): pkg is PreparedReadListenDescriptor {
+  return "kind" in pkg && pkg.kind === "prepared-read-listen";
+}
+function isPreparedPackage(pkg: Package): pkg is PreparedReadListenPackage {
+  return isPrepared(pkg);
+}
+let legacyStore: OfflineReadAlongStore | undefined;
+function legacyReadAlongStore() {
+  return (legacyStore ??= new OfflineReadAlongStore());
+}
+
+/** New prepared files and existing legacy packages share a read-only viewer, never a progress repository. */
 export function OfflineDownloads({
-  storage,
   onClose,
-  store = offlineReadAlongStore(),
+  store = legacyReadAlongStore(),
+  preparedStore = preparedReadListenStore(),
 }: {
   storage?: LibraryStorage;
   onClose: () => void;
   store?: OfflineReadAlongStore;
+  preparedStore?: PreparedReadListenStore;
 }) {
-  const t = useReadAlongI18n();
-  const [items, setItems] = useState<OfflineReadAlongDescriptor[]>([]),
-    [opened, setOpened] = useState<OfflineReadAlongPackage>();
-  const [issues, setIssues] = useState<OfflineReadAlongIssue[]>([]),
-    [removingIssue, setRemovingIssue] = useState(false);
+  const t = usePreparedReadListenI18n();
+  const [items, setItems] = useState<Descriptor[]>([]),
+    [opened, setOpened] = useState<Package>();
   const [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const [revision, setRevision] = useState(0),
-    [shellReady, setShellReady] = useState(false);
+    [busy, setBusy] = useState(false),
+    [damaged, setDamaged] = useState(false),
+    [revision, setRevision] = useState(0);
   const request = useRef<AbortController | null>(null);
   useEffect(() => {
     let active = true;
     void Promise.all([
+      preparedStore.list(),
       store
         .listScopes()
         .then((scopes) =>
           Promise.all(scopes.map((scope) => store.list(scope.scope))),
         ),
-      store.listIssues(),
+      Promise.all([store.listIssues(), preparedStore.listIssues()]),
     ])
-      .then(([groups, damaged]) => {
+      .then(([prepared, legacy, issues]) => {
         if (active) {
-          setItems(groups.flat());
-          setIssues(damaged);
+          setItems([...prepared, ...legacy.flat()]);
+          setDamaged(issues.some((group) => group.length > 0));
         }
       })
       .catch((cause) => {
         if (active) setError(String(cause));
       });
-    if ("serviceWorker" in navigator)
-      void navigator.serviceWorker.getRegistration("/").then((registration) => {
-        if (active)
-          setShellReady(
-            Boolean(registration?.active && navigator.serviceWorker.controller),
-          );
-      });
     return () => {
       active = false;
       request.current?.abort();
     };
-  }, [store, revision]);
-  async function open(item: OfflineReadAlongDescriptor) {
+  }, [store, preparedStore, revision]);
+  async function open(item: Descriptor) {
     request.current?.abort();
     const abort = new AbortController();
     request.current = abort;
     setBusy(true);
     setError("");
     try {
-      const pkg = await store.get(item.scope, item.id, {
-        signal: abort.signal,
-      });
+      const pkg = isPrepared(item)
+        ? await preparedStore.get(item.scope, item.id, { signal: abort.signal })
+        : await store.get(item.scope, item.id, { signal: abort.signal });
       if (!abort.signal.aborted) {
-        if (!pkg) throw new Error(t("missingDownload"));
+        if (!pkg) throw new Error(t("missing"));
         setOpened(pkg);
       }
     } catch (cause) {
@@ -113,66 +110,57 @@ export function OfflineDownloads({
       if (!abort.signal.aborted) setBusy(false);
     }
   }
-  async function removeDamaged(issue: OfflineReadAlongIssue) {
-    request.current?.abort();
-    const abort = new AbortController();
-    request.current = abort;
+  async function remove(item: Descriptor) {
     setBusy(true);
-    setRemovingIssue(true);
     setError("");
     try {
-      await store.removeIssue(issue.recoveryId);
-      if (!abort.signal.aborted) setRevision((value) => value + 1);
+      await (isPrepared(item)
+        ? preparedStore.remove(item.scope, item.id)
+        : store.remove(item.scope, item.id));
+      setRevision((value) => value + 1);
     } catch (cause) {
-      if (!abort.signal.aborted) setError(String(cause));
+      setError(String(cause));
     } finally {
-      if (!abort.signal.aborted) {
-        setBusy(false);
-        setRemovingIssue(false);
-      }
+      setBusy(false);
     }
   }
   if (opened)
     return (
-      <OfflineReadAlong
+      <PreparedReadListenViewer
         key={`${opened.scope}:${opened.id}`}
         pkg={opened}
-        storage={storage}
         onClose={() => setOpened(undefined)}
       />
     );
   return (
     <div className="offline-workspace">
       <div className="offline-workspace-header">
-        <h2>{t("downloads")}</h2>
+        <h2>{t("title")}</h2>
         <button className="secondary-button" onClick={onClose}>
           <ArrowLeft size={17} />
-          {t("backLibrary")}
+          {t("back")}
         </button>
       </div>
-      <p className="offline-disclosure">{t("device")}</p>
-      <p className="offline-disclosure">{t("foreground")}</p>
-      {!shellReady && location.protocol.startsWith("http") && (
-        <p role="status" className="offline-disclosure">
-          {t("shellUnavailable")}
-        </p>
-      )}
-      {busy && (
-        <p role="status">{t(removingIssue ? "removingDamaged" : "verify")}</p>
-      )}
+      <p className="offline-disclosure">{t("about")}</p>
+      <p className="offline-disclosure">{t("ephemeral")}</p>
+      {busy && <p role="status">{t("verifying")}</p>}
       {error && (
         <p role="alert" className="error-banner">
           {error}
         </p>
       )}
+      {damaged && <p role="status">{t("damaged")}</p>}
       <div className="offline-library">
-        {!items.length && !issues.length && !busy && <p>{t("empty")}</p>}
+        {!items.length && !busy && <p>{t("empty")}</p>}
         {items.map((item) => (
-          <article className="offline-package" key={`${item.scope}:${item.id}`}>
+          <article
+            className="offline-package"
+            key={`${isPrepared(item) ? "prepared" : "legacy"}:${item.scope}:${item.id}`}
+          >
             <h3>{item.book.title}</h3>
             <p>
               {item.scopeLabel} · {(item.totalBytes / 1024 ** 2).toFixed(1)} MiB
-              · {t(item.mode === "paired" ? "paired" : "narrated")}
+              · {t(isPrepared(item) ? "generated" : "legacy")}
             </p>
             <div className="offline-package-actions">
               <button
@@ -180,18 +168,13 @@ export function OfflineDownloads({
                 className="primary-button"
                 onClick={() => void open(item)}
               >
-                <Download size={16} />
+                <BookOpen size={16} />
                 {t("open")}
               </button>
               <button
                 className="text-button"
                 disabled={busy}
-                onClick={() =>
-                  void store
-                    .remove(item.scope, item.id)
-                    .then(() => setRevision((value) => value + 1))
-                    .catch((cause) => setError(String(cause)))
-                }
+                onClick={() => void remove(item)}
               >
                 <Trash2 size={16} />
                 {t("remove")}
@@ -199,37 +182,24 @@ export function OfflineDownloads({
             </div>
           </article>
         ))}
-        {issues.map((issue) => (
-          <article className="offline-package" key={issue.recoveryId}>
-            <h3>{t("damagedDownload")}</h3>
-            <p>{t("damagedDetails")}</p>
-            <button
-              className="text-button"
-              disabled={busy}
-              onClick={() => void removeDamaged(issue)}
-            >
-              <Trash2 size={16} />
-              {t("removeDamaged")}
-            </button>
-          </article>
-        ))}
       </div>
     </div>
   );
 }
+export const PreparedReadListen = OfflineDownloads;
 
-/** Foreground browser audio uses only freshly created blob URLs. No client/session/network is restored. */
-export function OfflineReadAlong({
+/** Session-only transport and reading location. This component never opens the old progress/notes DB. */
+export function PreparedReadListenViewer({
   pkg,
   onClose,
 }: {
-  pkg: OfflineReadAlongPackage;
+  pkg: Package;
   storage?: LibraryStorage;
   onClose: () => void;
 }) {
-  const t = useReadAlongI18n(),
+  const t = usePreparedReadListenI18n(),
+    along = useReadAlongI18n(),
     { t: common } = useI18n();
-  const [repo] = useState(() => createOfflineReadAlongRepository(pkg));
   const [controller] = useState(() =>
     createLazyPlaybackTransport(() => new PlaybackController()),
   );
@@ -242,163 +212,79 @@ export function OfflineReadAlong({
   const [map, setMap] = useState<VerifiedAudioAlignment | null>(null),
     [lines, setLines] = useState<readonly AlignedPassageText[]>([]);
   const [anchor, setAnchor] = useState<ReadingAnchor>(),
-    [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [loaded, setLoaded] = useState(false),
     [error, setError] = useState(""),
-    [preview, setPreview] = useState(false),
-    [follow, setFollow] = useState(false);
-  const [note, setNote] = useState<Annotation | null>(null),
-    [noteText, setNoteText] = useState("");
-  const [policy, setPolicy] = useState<HandoffPolicy>(() =>
-    readHandoffPolicy(pkg.scope, pkg.book.id),
-  );
-  const previewAnchor = useRef<ReadingAnchor | undefined>(undefined),
-    confirmed = useRef<ConfirmedLinkedPosition[]>([]),
+    [follow, setFollow] = useState(true),
     [undo, setUndo] = useState<number>();
-  const mounted = useRef(true),
+  const source = useRef<ReturnType<typeof preparedPlaybackSource> | undefined>(
+      undefined,
+    ),
     dispose = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const playbackSource = useRef<
-    ReturnType<typeof offlinePlaybackSource> | undefined
-  >(undefined);
-  const restoredText = useRef<ReadingAnchor | undefined>(undefined);
-  const lastAudioTime = useRef<number | undefined>(undefined);
-  const readingConfirmation = useRef(0);
-  const pendingWrites = useRef(new Set<Promise<unknown>>());
-  function trackWrite<T>(write: Promise<T>): Promise<T> {
-    pendingWrites.current.add(write);
-    void write.then(
-      () => pendingWrites.current.delete(write),
-      () => pendingWrites.current.delete(write),
-    );
-    return write;
-  }
+  const paired = isPreparedPackage(pkg) || pkg.mode === "paired";
   const readerFile = pkg.book.files.find((file) => file.id === pkg.textFileId)!;
+  const currentText = useRef<ReadingAnchor | undefined>(undefined);
   useEffect(() => {
     clearTimeout(dispose.current);
-    mounted.current = true;
-    let active = true;
-    void Promise.all([
-      repo.getAnchor({
-        bookId: pkg.book.id,
-        fileId: pkg.textFileId,
-        kind: "epub",
-      }),
-      repo.getAnnotations(),
-      pkg.alignmentSnapshot
-        ? repo.getAnchor({
-            bookId: pkg.book.id,
-            fileId: pkg.alignmentSnapshot.edition.audioFileId,
-            kind: "audio",
-          })
-        : undefined,
-    ])
-      .then(([text, notes, audio]) => {
-        if (!active) return;
-        setAnchor(text);
-        restoredText.current = text;
-        setAnnotations(notes.filter((note) => note.bookId === pkg.book.id));
-        if (pkg.mode === "paired") {
-          playbackSource.current?.revoke();
-          const source = offlinePlaybackSource(pkg);
-          playbackSource.current = source;
-          const seconds = audio
-            ? resolveAudioResume(source.source, audio.locator)
-            : 0;
-          lastAudioTime.current = seconds;
-          if (audio)
-            confirmed.current = [
-              { source: "listening", seconds, updatedAt: audio.updatedAt },
-            ];
-          controller.load(source.source, seconds);
-        }
-        setLoaded(true);
-      })
-      .catch((cause) => {
-        if (active) setError(String(cause));
-      });
-    const stop = controller.onCheckpoint((value) => {
-      if (mounted.current) {
-        const seconds: number = JSON.parse(value.locator).time;
-        if (
-          lastAudioTime.current === seconds &&
-          controller.getSnapshot().status !== "playing"
-        )
-          return;
-        lastAudioTime.current = seconds;
-        confirmed.current = [
-          ...confirmed.current.filter((item) => item.source !== "listening"),
-          { source: "listening", seconds, updatedAt: value.updatedAt },
-        ];
-        void trackWrite(repo.checkpoint(value, { readOnly: true })).catch(
-          (cause) => {
-            if (mounted.current) setError(String(cause));
-          },
-        );
+    if (paired) {
+      try {
+        controller.pause();
+        source.current?.revoke();
+        source.current = isPreparedPackage(pkg)
+          ? preparedPlaybackSource(pkg)
+          : offlinePlaybackSource(pkg);
+        controller.load(source.current.source, 0);
+      } catch (cause) {
+        setError(String(cause));
       }
-    });
+    }
     return () => {
-      active = false;
       controller.pause();
-      controller.checkpoint();
-      mounted.current = false;
-      stop();
       dispose.current = setTimeout(() => {
         controller.destroy();
-        playbackSource.current?.revoke();
-        void Promise.allSettled([...pendingWrites.current]).then(() =>
-          repo.db?.close(),
-        );
+        source.current?.revoke();
+        source.current = undefined;
       }, 0);
     };
-  }, [repo, pkg, controller]);
+  }, [controller, pkg, paired]);
   useEffect(() => {
     let active = true;
-    if (
-      !handle ||
-      pkg.mode !== "paired" ||
-      !pkg.playlist ||
-      !pkg.manifest ||
-      !pkg.alignmentSnapshot
-    )
-      return;
+    if (!handle || !paired) return;
+    setMap(null);
+    setLines([]);
     void (async () => {
-      const candidates = await Promise.all(
-        pkg.pairings.map(async (pair) => ({
-          audioHref: pair.audioHref,
-          assetId: pair.assetId,
-          fileId: pair.fileId,
-          bytes: await pkg.audioAssets
-            .find((asset) => asset.assetId === pair.assetId)!
-            .blob.arrayBuffer(),
-        })),
-      );
-      const verified = await handle.verifyAudiobook(
-        pkg.playlist!,
-        pkg.manifest!,
-        pkg.alignmentSnapshot!.edition.audioFileId,
-        candidates,
-      );
+      let verified: VerifiedAudioAlignment;
+      if (isPreparedPackage(pkg)) {
+        if (!handle.restorePreparedAlignment) throw new Error(t("unavailable"));
+        verified = await handle.restorePreparedAlignment(
+          pkg.alignmentSnapshot,
+          pkg.manifest,
+          pkg.sources.map((source) => ({
+            assetId: source.assetId,
+            fileId: pkg.assets.find(
+              (asset) => asset.assetId === source.assetId,
+            )!.fileId,
+            blob: source.blob,
+          })),
+        );
+      } else {
+        if (!pkg.playlist || !pkg.manifest || !pkg.alignmentSnapshot)
+          throw new Error(t("missing"));
+        const candidates = await Promise.all(
+          pkg.pairings.map(async (pair) => ({
+            ...pair,
+            bytes: await pkg.audioAssets
+              .find((asset) => asset.assetId === pair.assetId)!
+              .blob.arrayBuffer(),
+          })),
+        );
+        verified = await handle.verifyAudiobook(
+          pkg.playlist,
+          pkg.manifest,
+          pkg.alignmentSnapshot.edition.audioFileId,
+          candidates,
+        );
+      }
       const text =
         (await handle.getTimedText?.(verified, verified.edition)) ?? [];
-      const savedText = restoredText.current;
-      if (savedText) {
-        const passage = await handle.passageAtLocator?.(
-          verified,
-          verified.edition,
-          savedText.locator,
-        );
-        if (
-          active &&
-          passage &&
-          !confirmed.current.some((item) => item.source === "reading")
-        )
-          confirmed.current.push({
-            source: "reading",
-            seconds: passage.start,
-            updatedAt: savedText.updatedAt,
-            textAnchor: savedText,
-          });
-      }
       if (active) {
         setMap(verified);
         setLines(text);
@@ -410,147 +296,53 @@ export function OfflineReadAlong({
       active = false;
       handle.clearAudioHighlight?.();
     };
-  }, [handle, pkg]);
+  }, [handle, pkg, paired]);
   useEffect(() => {
-    if (preview) {
-      handle?.clearAudioHighlight?.();
-      return;
-    }
-    if (!map || !handle || page !== "book" || !controller.getBook()) return;
+    if (!handle || !map || page !== "book") return;
+    let active = true;
     void handle
       .followAudio?.(map, map.edition, playback.currentTime, {
         follow: follow && playback.status === "playing",
       })
-      .catch((cause) => setError(String(cause)));
-  }, [
-    map,
-    handle,
-    page,
-    preview,
-    follow,
-    playback.currentTime,
-    playback.status,
-    controller,
-  ]);
-  function changePolicy(value: HandoffPolicy) {
-    setPolicy(value);
-    try {
-      localStorage.setItem(handoffPolicyKey(pkg.scope, pkg.book.id), value);
-    } catch (cause) {
-      setError(String(cause));
-    }
-  }
-  async function saveReading(value: ReadingAnchor) {
-    const confirmation = ++readingConfirmation.current;
-    try {
-      await trackWrite(repo.checkpoint(value, { readOnly: true }));
-      if (map && handle) {
-        const passage = await handle.passageAtLocator?.(
-          map,
-          map.edition,
-          value.locator,
-        );
-        if (
-          passage &&
-          confirmation === readingConfirmation.current &&
-          mounted.current
-        )
-          confirmed.current = [
-            ...confirmed.current.filter((item) => item.source !== "reading"),
-            {
-              source: "reading",
-              seconds: passage.start,
-              updatedAt: value.updatedAt,
-              textAnchor: value,
-            },
-          ];
-      }
-    } catch (cause) {
-      if (mounted.current) setError(String(cause));
-    }
-  }
-  async function listenHere(explicit: boolean) {
+      .catch((cause) => {
+        if (active) setError(String(cause));
+      });
+    return () => {
+      active = false;
+    };
+  }, [handle, map, page, follow, playback.currentTime, playback.status]);
+  async function listenHere() {
     try {
       if (!map || !handle) return;
-      if (
-        explicit ||
-        (policy === "latest" &&
-          latestConfirmedPosition(confirmed.current)?.source === "reading")
-      ) {
-        const passage = explicit
-          ? await handle.currentPassage(map, map.edition)
-          : null;
-        const seconds =
-          passage?.start ??
-          (!explicit
-            ? latestConfirmedPosition(confirmed.current)?.seconds
-            : undefined);
-        if (seconds === undefined) throw new Error(t("readingUnaligned"));
-        setUndo(controller.getSnapshot().currentTime);
-        controller.seek(seconds);
-      }
+      const passage = await handle.currentPassage(map, map.edition);
+      if (!passage) throw new Error(along("readingUnaligned"));
       handle.pauseNarration();
+      setUndo(playback.currentTime);
+      controller.seek(passage.start);
       setPage("player");
       await controller.play();
     } catch (cause) {
       setError(String(cause));
     }
   }
-  function readHere(explicit: boolean) {
-    let shouldFollow = explicit;
-    if (map && (explicit || policy === "latest")) {
-      const latest = latestConfirmedPosition(confirmed.current);
-      const seconds =
-        explicit || latest?.source !== "reading"
-          ? playback.currentTime
-          : latest.seconds;
-      const target = alignedTextTarget(map, map.edition, seconds);
-      shouldFollow = explicit || latest?.source !== "reading";
-      if (!explicit && latest?.source === "reading" && latest.textAnchor)
-        setAnchor(latest.textAnchor);
-      else if (target)
-        setAnchor({
-          bookId: pkg.book.id,
-          fileId: pkg.textFileId,
-          kind: "epub",
-          locator: target.locator,
-          progress: seconds / map.duration,
-          updatedAt: latest?.updatedAt ?? new Date().toISOString(),
-        });
-      else {
-        setError(t("audioUnaligned"));
-        return;
-      }
+  function readHere() {
+    if (!map) return;
+    const target = alignedTextTarget(map, map.edition, playback.currentTime);
+    if (!target) {
+      setError(along("audioUnaligned"));
+      return;
     }
-    setFollow(shouldFollow);
-    setPreview(false);
+    setAnchor({
+      bookId: pkg.book.id,
+      fileId: pkg.textFileId,
+      kind: "epub",
+      locator: target.locator,
+      progress: playback.currentTime / map.duration,
+      updatedAt: new Date().toISOString(),
+    });
+    setFollow(true);
     setPage("book");
   }
-  function addAudioNote() {
-    const checkpoint = controller.checkpoint();
-    if (!checkpoint) return;
-    const now = new Date().toISOString();
-    setNoteText("");
-    setNote({
-      id: crypto.randomUUID(),
-      bookId: pkg.book.id,
-      fileId: checkpoint.fileId,
-      kind: "audio",
-      quote: "",
-      text: "",
-      color: "#b69b66",
-      locator: checkpoint.locator,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-  if (!loaded)
-    return (
-      <div className="offline-workspace">
-        <button onClick={onClose}>{common("common.close")}</button>
-        <p role={error ? "alert" : "status"}>{error || t("verify")}</p>
-      </div>
-    );
   return (
     <div className="offline-workspace">
       <div className="offline-workspace-header">
@@ -558,15 +350,16 @@ export function OfflineReadAlong({
           className="text-button"
           onClick={() => {
             controller.pause();
-            controller.checkpoint();
+            handle?.pauseNarration();
             onClose();
           }}
         >
           <ArrowLeft size={18} />
-          {t("downloads")}
+          {t("title")}
         </button>
-        <strong>{t("ready")}</strong>
+        <strong>{pkg.book.title}</strong>
       </div>
+      <p className="offline-disclosure">{t("ephemeral")}</p>
       {error && (
         <p role="alert" className="error-banner">
           {error}
@@ -576,8 +369,7 @@ export function OfflineReadAlong({
         <Player
           controller={controller}
           book={pkg.book}
-          onNote={addAudioNote}
-          onRead={map ? () => readHere(true) : undefined}
+          onRead={map ? readHere : undefined}
           readAlong={
             map && (
               <ReadAlongPanel
@@ -595,45 +387,22 @@ export function OfflineReadAlong({
                         setUndo(undefined);
                       }
                 }
-              >
-                <HandoffControls policy={policy} onPolicy={changePolicy} />
-              </ReadAlongPanel>
+              />
             )
           }
           offlineControl={
             <>
               <p className="offline-disclosure">{t("foreground")}</p>
-              <button className="text-button" onClick={() => readHere(false)}>
-                {t("openBook")}
+              <button
+                className="text-button"
+                onClick={() => {
+                  setFollow(false);
+                  setAnchor(currentText.current);
+                  setPage("book");
+                }}
+              >
+                {along("openBook")}
               </button>
-              {annotations.some(
-                (value) => value.kind === "audio" && !value.deleted,
-              ) && (
-                <details className="offline-audio-notes">
-                  <summary>{common("nav.notebook")}</summary>
-                  {annotations
-                    .filter((value) => value.kind === "audio" && !value.deleted)
-                    .map((value) => {
-                      const source = controller.getBook();
-                      const seconds = source
-                        ? resolveAudioResume(source, value.locator)
-                        : 0;
-                      return (
-                        <button
-                          className="secondary-button"
-                          key={value.id}
-                          onClick={() => {
-                            setUndo(playback.currentTime);
-                            controller.seek(seconds);
-                          }}
-                        >
-                          <time>{formatTime(seconds)}</time>
-                          <span>{value.text || value.quote}</span>
-                        </button>
-                      );
-                    })}
-                </details>
-              )}
             </>
           }
         />
@@ -645,71 +414,56 @@ export function OfflineReadAlong({
           source={pkg.epub}
           accountScope={pkg.scope}
           initialAnchor={anchor}
-          annotations={annotations}
+          annotations={[]}
+          annotationsEnabled={false}
           onAlignmentReady={setHandle}
-          externalNarration={pkg.mode === "paired"}
-          persistProgress={
-            !preview &&
-            playback.status !== "playing" &&
-            (pkg.mode !== "paired" || Boolean(map))
-          }
+          externalNarration={paired}
+          persistProgress={false}
           onPreviewAnchor={(value) => {
-            previewAnchor.current = value;
+            currentText.current = value;
           }}
-          onAnchor={(value) => {
-            setAnchor(value);
-            void saveReading(value);
+          onAnchor={() => {}}
+          onAnnotation={() => {}}
+          onActivity={(activity) => {
+            if (activity !== "reading") controller.pause();
           }}
-          onAnnotation={(value) =>
-            void trackWrite(repo.putAnnotation(value, { readOnly: true }))
-              .then(() => repo.getAnnotations())
-              .then(setAnnotations)
-              .catch((cause) => setError(String(cause)))
-          }
-          onClose={() =>
-            pkg.mode === "paired" ? setPage("player") : onClose()
-          }
+          onClose={() => {
+            handle?.pauseNarration();
+            paired ? setPage("player") : onClose();
+          }}
           modeControls={
             <div className="read-along-reader-controls">
-              <HandoffControls
-                policy={policy}
-                onPolicy={changePolicy}
-                preview={preview}
-                onPreview={(value) => {
-                  setPreview(value);
-                  if (value) setFollow(false);
-                }}
-                onConfirm={() => {
-                  if (previewAnchor.current)
-                    void saveReading({
-                      ...previewAnchor.current,
-                      updatedAt: new Date().toISOString(),
-                    });
-                }}
-              />
-              {pkg.mode === "paired" && (
+              {paired && (
                 <>
                   <button
                     className="reader-primary"
                     disabled={!map}
-                    onClick={() => void listenHere(true)}
+                    onClick={() => void listenHere()}
                   >
-                    {t("listenHere")}
+                    {along("listenHere")}
                   </button>
                   <button
                     className="reader-secondary"
-                    disabled={!map}
-                    onClick={() => void listenHere(false)}
+                    disabled={!controller.getBook()}
+                    onClick={() => {
+                      handle?.pauseNarration();
+                      setPage("player");
+                    }}
                   >
-                    {t("openPlayer")}
+                    {along("openPlayer")}
                   </button>
                   <button
                     className="reader-secondary"
-                    onClick={() =>
-                      playback.status === "playing"
-                        ? controller.pause()
-                        : void controller.play()
-                    }
+                    disabled={!controller.getBook()}
+                    onClick={() => {
+                      if (playback.status === "playing") controller.pause();
+                      else {
+                        handle?.pauseNarration();
+                        void controller
+                          .play()
+                          .catch((cause) => setError(String(cause)));
+                      }
+                    }}
                   >
                     {common(
                       playback.status === "playing"
@@ -721,56 +475,19 @@ export function OfflineReadAlong({
                     <input
                       type="checkbox"
                       checked={follow}
-                      onChange={(event) => {
-                        setFollow(event.target.checked);
-                        if (event.target.checked) setPreview(false);
-                      }}
+                      onChange={(event) => setFollow(event.target.checked)}
                     />
-                    {t("follow")}
+                    {along("follow")}
                   </label>
+                  {!map && !error && <p role="status">{t("verifying")}</p>}
                 </>
               )}
-              {error && <p role="alert">{error}</p>}
             </div>
           }
         />
       )}
-      {note && (
-        <Modal title={common("note.moment")} onClose={() => setNote(null)}>
-          <form
-            className="form-panel"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void trackWrite(
-                repo.putAnnotation(
-                  {
-                    ...note,
-                    text: noteText,
-                    updatedAt: new Date().toISOString(),
-                  },
-                  { readOnly: true },
-                ),
-              )
-                .then(() => repo.getAnnotations())
-                .then((values) => {
-                  setAnnotations(values);
-                  setNote(null);
-                })
-                .catch((cause) => setError(String(cause)));
-            }}
-          >
-            <textarea
-              aria-label={common("note.add")}
-              value={noteText}
-              onChange={(event) => setNoteText(event.target.value)}
-              required
-            />
-            <button className="primary-button" type="submit">
-              {common("note.save")}
-            </button>
-          </form>
-        </Modal>
-      )}
     </div>
   );
 }
+/** Existing fixture/callers retain this name; behavior is now the same ephemeral prepared viewer. */
+export const OfflineReadAlong = PreparedReadListenViewer;

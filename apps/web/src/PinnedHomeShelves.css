@@ -1,0 +1,141 @@
+.home-pins {
+  margin: 38px 0;
+}
+.home-pins > .section-heading h2 {
+  font-size: 20px;
+}
+.home-pins-manager {
+  padding: 20px;
+  border: 1px solid var(--line, #ddd);
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+.home-pins-manager > p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.home-pins-manager ol {
+  list-style: none;
+  padding: 0;
+}
+.home-pins-manager li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line, #ddd);
+}
+.home-pins-manager li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.home-pins small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted, #686862);
+  margin-top: 4px;
+}
+.home-pin-controls {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+.home-pin-controls button {
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--line, #ddd);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.home-pins button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.home-pins button:focus-visible {
+  outline: 2px solid var(--accent, #906e38);
+  outline-offset: 3px;
+}
+.home-pin-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.home-pin-options button {
+  text-align: left;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.home-pin-options button > span {
+  min-width: 0;
+}
+.home-pins-error {
+  padding: 12px;
+  border: 1px solid #b77059;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.home-pin-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.home-pin-heading svg {
+  flex-shrink: 0;
+}
+.home-pinned-shelf h3 {
+  font-size: 18px;
+  margin: 0;
+  min-width: 0;
+}
+.home-pin-book-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 24px;
+}
+.home-pin-pages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  font-size: 12px;
+}
+.home-pinned-shelf > .section-heading > small {
+  flex-shrink: 0;
+}
+.home-pinned-shelf {
+  margin-top: 28px;
+}
+@media (max-width: 500px) {
+  .home-pins-manager {
+    padding: 14px;
+  }
+  .home-pin-book-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  .home-pins > .section-heading {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .home-pin-pages {
+    gap: 8px;
+  }
+}

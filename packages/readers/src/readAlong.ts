@@ -6,6 +6,7 @@ import {
 } from "../../playback/src/standalone-alignment";
 import { textAtAudioTime } from "../../playback/src/alignment";
 import type { AlignedPassageText } from "./alignedPassage";
+import { passageElement } from './generatedText';
 
 export const AUDIO_HIGHLIGHT_CLASS = "avid-audio-active";
 export interface ReadAlongPort {
@@ -113,7 +114,7 @@ export class ReadAlongHighlighter {
     if (!target || this.closed) return;
     for (const { doc, index } of this.port.contents()) {
       if (!doc || index !== target.segment.sectionIndex) continue;
-      const element = doc.getElementById(target.segment.textFragment);
+      const element = passageElement(doc, target.segment);
       if (!element) continue;
       element.classList.add(AUDIO_HIGHLIGHT_CLASS);
       element.setAttribute("data-avid-audio-segment", target.segment.id);

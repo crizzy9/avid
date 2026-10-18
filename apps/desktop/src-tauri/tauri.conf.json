@@ -12,7 +12,7 @@
   "app": {
     "windows": [{ "label": "main", "title": "Avid", "width": 1280, "height": 850, "minWidth": 390, "minHeight": 600 }],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data: blob: https: http:; media-src 'self' asset: avid-media: blob: https: http:; font-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost https: http:; frame-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'"
+      "csp": "default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data: blob: https: http:; media-src 'self' asset: avid-media: blob: https: http:; font-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost https: http:; frame-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'"
     }
   },
   "bundle": {

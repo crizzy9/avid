@@ -1,17 +1,19 @@
 # Avid roadmap
 
-Updated: 2026-10-10. This is the current delivery order, superseding the phase numbers in the [historical research baseline](research-baseline.md). Requirement IDs stay stable: F01–F66 belong to Phase 1; F67–F71 now belong to Phase 3.
+Updated: 2026-10-18. This is the current delivery order, superseding the phase numbers in the [historical research baseline](research-baseline.md). Requirement IDs stay stable: F01–F66 belong to Phase 1; F67–F71 now belong to Phase 3. The user's October 18 correction explicitly places local preparation of an independent ebook/audiobook pair and offline playback of that prepared read-along in Phase 2. Broader offline editing and reconciliation are deferred to Phase 3.
 
 | Phase | Outcome | Current state |
 | --- | --- | --- |
 | 1 | Core online library, readers, listening, sync and native integrations | Working development preview; implementation and acceptance gates remain open. |
-| 2 | Complete online audiobook experience and advanced audio features | In progress: chapter player and verified read-along/handoff slice implemented; broader audio work and qualification remain. |
-| 3 | Full offline reading and listening | Bounded EPUB/read-along downloads implemented; F67–F71 are not complete as an offline system. |
+| 2 | Complete audiobook experience, including local Prepare Read & Listen and prepared offline playback | Bounded English preparation and session-only prepared viewer implemented; broader audio work and browser/device acceptance remain open. |
+| 3 | Full offline library, editing and reconciliation | Deferred. Earlier experimental SMIL packages and local checkpoints do not complete F67–F71. |
 | 4 | Apple Pencil and reader enhancements | Planned. |
 | 5 | UI enhancements | Planned. |
 | 6 | Remove Apogee references, cleanup, README/docs and launch | Planned. |
 
 Phase 2 engineering may proceed alongside Phase 1 checks that require hardware or external accounts. That does not close Phase 1 or waive its release gates. Fix correctness and accessibility defects when discovered rather than waiting for a later enhancement phase. The [Phase 1 checklist](phase-1-status.md) records evidence; the [validation guide](phase-1-validation.md) explains how to finish pending items.
+
+The [October 18 release comparison](apogee-release-delta-2026-10-18.md) tracks the current reference's 1.1.1 additions. It also corrects a baseline error: Prepare Read & Listen predates the original October 9 research. A public release-note item is not evidence that the corresponding Avid behavior passes.
 
 ## Phase 1 — core online product
 
@@ -28,25 +30,27 @@ The validated source checkpoint `430b8b6` passed 657 shared tests, TypeScript, t
 
 ## Phase 2 — complete audiobook experience
 
-Finish the online audiobook product before building full offline downloads. Existing streaming playback, chapters, speed, sleep timer, notes and verified EPUB media overlays/alignment are the starting point, not evidence that this phase is complete.
+Finish the audiobook product, including local preparation and retained offline playback of prepared read-along, before undertaking the broader Phase 3 offline system. Existing streaming playback, chapters, speed, sleep timer, notes and verified EPUB media overlays/alignment are the starting point, not evidence that this phase is complete.
 
-The current [Phase 2/3 slice](phase-2-3-read-along.md) adds chapter-relative seeking and remaining-time displays, source-aligned text with tap-to-seek/undo, visible passage highlighting, manual/latest-confirmed/separate positions and deliberate preview without changing saved progress. These are source implementations with focused regression coverage; final integrated browser and installed-device qualification remain separate. Latest means the most recent confirmed action by timestamp, including backward movement, rather than the furthest percentage reached. Transcription and generated alignment are still future work.
+The earlier [read-along slice](phase-2-3-read-along.md) adds chapter-relative seeking and remaining-time displays, source-aligned text with tap-to-seek/undo, visible passage highlighting, manual/latest-confirmed/separate positions and deliberate preview without changing saved progress. Latest means the most recent confirmed action by timestamp, including backward movement, rather than the furthest percentage reached. Its historical SMIL fixture evidence does not verify independent audiobook matching.
+
+Local English recognition, conservative paragraph matching, atomic prepared packages and a session-only viewer are now implemented. Preparation accepts up to 64 MiB per EPUB, 512 MiB per audio asset and 2 GiB total, with actual codec/storage limits enforced by the runtime. Real CPU and web-runtime WebAssembly smokes in a Node harness matched one of two synthetic paragraphs and left the other unlinked. Actual browser workers/UI/cold-start and installed-device qualification remain distinct gates; this is not a complete audiobook or accuracy claim. See the guide for the pinned model, prerequisites and current evidence.
 
 1. **Reliable playback on every supported host.** Qualify declared MP3/M4A/M4B and multi-track combinations, chapter transitions, buffering, expired credentials, interruptions, Bluetooth/remote commands, precise resume and process recovery. Record codec support per platform rather than assuming all encodings work everywhere.
 2. **Complete library and car browsing.** Browse and start eligible server audiobooks from cold native/car sessions without first preparing each book in the foreground. Add a persistent queue, useful history, bookmarks and predictable next-book behavior. Qualify CarPlay and Android Auto on their real hosts.
 3. **Listening controls.** Add configurable smart rewind, per-book playback preferences, speed presets, skip intervals and richer sleep behavior. Preserve source positions, original event times and accurate listening activity through every mode.
 4. **Optional audio processing.** Add silence skipping, voice boost and normalization with explicit capability reporting. Preserve a mapping from processed playback time to the original publication timeline so notes, chapters and synchronization stay correct.
 5. **Transcripts.** Add versioned background transcription jobs, progress, cancellation, retries, transcript search and tap-to-seek. Define processing location, storage, privacy, resource limits and model licensing before exposing jobs.
-6. **Generated alignment.** Align exact verified ebook/audio editions, report confidence and quality, support cancellation/retry and retain original inputs. Evaluate a compatible Storyteller bridge against its actual contract. Existing verified media overlays continue to work independently; matching titles alone never establish alignment.
+6. **Prepare Read & Listen.** Compare a selected independent EPUB and audiobook locally, transcribe the original audio timeline and align recognized speech to the actual ebook text. Embedded SMIL, identical embedded audio and matching chapter titles are not prerequisites. Show progress, cancellation, retries and honest unmatched/low-confidence results; retain exact source fingerprints and processing metadata. Atomically persist the prepared text, alignment and all required audio so that reopening can read and listen without network access or repeating preparation. Test changed editions, account switches, interruption, corruption and cold offline reopening. Existing verified media overlays continue to work independently. An optional Storyteller bridge requires a separately verified contract and does not replace this local flow.
 7. **Chapter and annotation tools.** Support chapter correction/import/export and transcript/audio note export without rewriting source identities or invalidating existing anchors. Review replacements before applying changed timing maps.
 8. **Speech and native surfaces.** Remove JavaScript scheduling dependencies before claiming uninterrupted locked-screen whole-book speech. Qualify word highlighting only where real boundaries exist; finish media controls, widgets, recovery and account isolation on installed builds.
 9. **Extended audio integrations.** Carry forward casting, phone-free wearable playback, e-ink companions and optional local/self-hosted voices from the original audio backlog. Define each platform contract, licensing and privacy boundary, then implement and test supported routes. External entitlement or hardware dependencies stay explicitly open; they are not silently dropped from a “full” claim.
 
-**Exit:** the supported-platform audio capability matrix and representative end-to-end tests pass, including recovery and source-time correctness. Dependent integrations have recorded qualification or an explicit scope decision. **Downloaded audiobooks, an offline audio catalog and offline reconciliation ship in Phase 3**, alongside other offline formats.
+**Exit:** the supported-platform audio capability matrix and representative end-to-end tests pass, including recovery, source-time correctness and a genuinely independent audio/text preparation followed by cold offline playback. Dependent integrations have recorded qualification or an explicit scope decision. Prepared read-along persistence is included here; general audiobook downloads, the full offline catalog, offline editing and reconciliation remain Phase 3.
 
 ## Phase 3 — full offline reading and listening
 
-The first [offline read-along slice](phase-2-3-read-along.md) stores complete self-contained narrated EPUBs and optionally their verified standalone audiobook assets. It checks source identity, byte sizes and SHA-256 before atomic publication, verifies again when reopening, and uses an original-account/edition progress database with no server sync work. Current limits are 64 MiB per EPUB/audio asset and 256 MiB per package. The production web shell can be cached for later cold opening after initial installation. This foreground, browser-storage path does not finish F67–F71; full multi-gigabyte/native background downloads, reconciliation and installed-device qualification remain pending.
+**Deferred until the Phase 2 priority is handled.** The active prepared viewer has session-only positions and no note/highlight editing or durable progress writes. Earlier experimental [SMIL packages](phase-2-3-read-along.md) remain readable, with their original 64 MiB per EPUB/audio asset and 256 MiB package bounds; their old notes/checkpoints databases are preserved without being opened or modified by the new viewer. That history does not constitute delivery of the broader offline editing, notes/highlights, progress or reconciliation system. Phase 2 prepared playback is a specific capability, not a declaration that Phase 3 has started or finished.
 
 Implement F67–F71 from the baseline under their new phase number:
 

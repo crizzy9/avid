@@ -29,9 +29,16 @@ import type { ReadingAnchor } from "../../../packages/core/src/types";
 import {
   alignmentSha256,
   createStandaloneAlignment,
+  createGeneratedAlignment,
   verifyAudioResource,
   type VerifiedAudioAlignment,
 } from "../../../packages/playback/src/standalone-alignment";
+import {
+  PreparedReadListenStore,
+  sha256Blob,
+  type PreparedReadListenInput,
+} from "../../../packages/core/src/preparedReadListen";
+import { alignmentTokens } from "../../../packages/playback/src/generated-alignment";
 import { handoffPolicyKey } from "./readAlongState";
 import { LOCALES, setLocale, translate } from "../../../packages/i18n/src";
 import { readAlongMessages } from "./readAlongMessages";
@@ -40,12 +47,20 @@ const harness = vi.hoisted(() => ({
   props: null as ReaderProps | null,
   handle: null as ReaderAlignmentHandle | null,
   locator: "",
+  mounts: 0,
+  unmounts: 0,
 }));
 const firstCfi = "epubcfi(/6/2!/4/2)",
   secondCfi = "epubcfi(/6/2!/4/4)";
 vi.mock("../../../packages/readers/src/Reader", () => ({
   Reader: (props: ReaderProps) => {
     harness.props = props;
+    useEffect(() => {
+      harness.mounts++;
+      return () => {
+        harness.unmounts++;
+      };
+    }, []);
     useEffect(() => {
       harness.locator = props.initialAnchor?.locator ?? firstCfi;
     }, [props.initialAnchor?.locator]);
@@ -232,6 +247,7 @@ class TestAudio extends EventTarget {
 }
 let audios: TestAudio[] = [],
   store: OfflineReadAlongStore,
+  prepared: PreparedReadListenStore,
   database: AvidDatabase,
   repo: LibraryRepository,
   mainDatabase: AvidDatabase,
@@ -287,6 +303,7 @@ beforeEach(async () => {
   localStorage.clear();
   audios = [];
   store = new OfflineReadAlongStore(`offline-ui-${crypto.randomUUID()}`);
+  prepared = new PreparedReadListenStore(`prepared-ui-${crypto.randomUUID()}`);
   mainDatabase = new AvidDatabase(`offline-library-ui-${crypto.randomUUID()}`);
   mainRepo = new LibraryRepository(mainDatabase, {
     profile: { id: "fixture", name: "Fixture", url: "https://fixture.invalid" },
@@ -310,6 +327,8 @@ beforeEach(async () => {
             null),
   );
   harness.locator = firstCfi;
+  harness.mounts = 0;
+  harness.unmounts = 0;
   harness.handle = {
     pauseNarration: vi.fn(),
     currentPassage: vi.fn<ReaderAlignmentHandle["currentPassage"]>(
@@ -367,9 +386,11 @@ afterEach(async () => {
   });
   host.remove();
   store.close();
+  prepared.close();
   database.close();
   mainDatabase.close();
   await store.database.delete();
+  await prepared.database.delete();
   await database.delete();
   await mainDatabase.delete();
   if (oldShowModal)
@@ -422,324 +443,311 @@ async function render(strict = false) {
     root!.render(
       strict ? (
         <StrictMode>
-          <OfflineReadAlong
-            pkg={pkg}
-            storage={mainRepo.storage}
-            onClose={vi.fn()}
-          />
+          <OfflineReadAlong pkg={pkg} onClose={() => {}} />
         </StrictMode>
       ) : (
-        <OfflineReadAlong
-          pkg={pkg}
-          storage={mainRepo.storage}
-          onClose={vi.fn()}
-        />
+        <OfflineReadAlong pkg={pkg} onClose={() => {}} />
       ),
     ),
   );
-  await until(() => expect(button("Open player").disabled).toBe(false));
+  await until(() => expect(harness.handle!.verifyAudiobook).toHaveBeenCalled());
+  await until(() => expect(button("Listen from here").disabled).toBe(false));
 }
-const textAnchor = (locator = secondCfi): ReadingAnchor => ({
-  bookId: "12",
-  fileId: "31",
-  kind: "epub",
-  locator,
-  progress: 0.5,
-  updatedAt: "2020-10-10T12:02:00Z",
-});
-const audioAnchor = (): ReadingAnchor => ({
-  bookId: "12",
-  fileId: "41",
-  kind: "audio",
-  locator: JSON.stringify({
-    version: 1,
-    trackId: "41",
-    trackTime: 1,
-    time: 1,
-    manifestRevision: "original-v1",
-  }),
-  progress: 1 / verified.duration,
-  updatedAt: "2020-10-10T12:01:00Z",
-});
-
-describe("offline read-along component", () => {
-  it("keeps healthy downloads visible and removes damaged metadata only after an explicit localized recovery action", async () => {
-    const input = await makeFixture();
-    const damaged = await store.put({
-      scope,
-      scopeLabel: "Damaged fixture",
-      book: input.book,
-      textFileId: input.textFileId,
-      epub: input.epub,
-    });
-    await store.database
-      .table("packages")
-      .update(JSON.stringify([scope, damaged.id]), {
-        scopeLabel:
-          "https://user:private-password@private.invalid/?token=private-token",
-        textFileId: "corrupt",
-      });
-    const remove = vi.spyOn(store, "removeIssue");
-    await act(async () =>
-      root!.render(<OfflineDownloads store={store} onClose={vi.fn()} />),
-    );
-    await until(() =>
-      expect(button("Remove damaged download").disabled).toBe(false),
-    );
-    expect(button("Open download").disabled).toBe(false);
-    expect(remove).not.toHaveBeenCalled();
-    expect(await store.database.table("payloads").count()).toBe(2);
-    expect(host.textContent).not.toMatch(
-      /private-password|private-token|private\.invalid/,
-    );
-    for (const [index, locale] of LOCALES.entries()) {
-      await act(async () => setLocale(locale.code));
-      expect(host.textContent).toContain(
-        readAlongMessages.damagedDownload[index],
-      );
-      expect(host.textContent).toContain(
-        readAlongMessages.damagedDetails[index],
-      );
-      expect(button(readAlongMessages.removeDamaged[index]!).disabled).toBe(
-        false,
-      );
-    }
-    await act(async () => setLocale("en"));
-    remove.mockRejectedValueOnce(new Error("Storage removal failed"));
-    await click("Remove damaged download");
-    await until(() =>
-      expect(host.querySelector('[role="alert"]')?.textContent).toContain(
-        "Storage removal failed",
-      ),
-    );
-    expect(await store.database.table("payloads").count()).toBe(2);
-    expect(button("Open download").disabled).toBe(false);
-    await click("Remove damaged download");
-    await until(() =>
-      expect(host.textContent).not.toContain("Damaged download"),
-    );
-    expect(remove).toHaveBeenCalledTimes(2);
-    expect(button("Open download").disabled).toBe(false);
-    expect(await store.database.table("payloads").count()).toBe(1);
-    expect((await store.get(scope, pkg.id))?.id).toBe(pkg.id);
-    expect(await store.listIssues()).toEqual([]);
-    expect(network).not.toHaveBeenCalled();
-  });
-  it("opens a cold saved package without a network/client and re-verifies its restored alignment", async () => {
-    // A live server can reuse file IDs for a different edition. Offline opening
-    // must not import that repository's reading position implicitly.
-    await mainRepo.checkpoint(textAnchor(), { readOnly: true });
-    await act(async () =>
-      root!.render(
-        <OfflineDownloads
-          storage={mainRepo.storage}
-          store={store}
-          onClose={vi.fn()}
-        />,
-      ),
-    );
-    await until(() => expect(button("Open download").disabled).toBe(false));
-    await click("Open download");
-    await until(() => expect(button("Open player").disabled).toBe(false));
-    expect(harness.props?.source).toBeInstanceOf(NodeBlob);
-    expect(harness.props?.accountScope).toBe(scope);
-    expect(harness.props?.initialAnchor).toBeUndefined();
-    expect(harness.handle?.verifyAudiobook).toHaveBeenCalled();
-    expect(created).toHaveBeenCalledTimes(2);
-    expect(network).not.toHaveBeenCalled();
-  });
-  it("restores the newer saved reading position under latest policy, despite passive audio metadata loading", async () => {
-    await seedOfflineReadAlongProgress(pkg, {
-      reading: textAnchor(),
-      audio: audioAnchor(),
-    });
-    localStorage.setItem(handoffPolicyKey(scope, "12"), "latest");
-    await render();
-    expect(harness.props?.initialAnchor?.locator).toBe(secondCfi);
-    await act(async () => audios[0]!.metadata(verified.tracks[0]!.duration));
-    await click("Open player");
-    expect(audios[0]!.src).toBe(created.mock.results[1]!.value);
-    expect(
-      host.querySelector<HTMLInputElement>('input[type="range"]')?.value,
-    ).toBe(String(verified.segments[1]!.start));
-    expect(network).not.toHaveBeenCalled();
-  });
-  it("does not persist preview navigation until the explicit save-position action", async () => {
-    await seedOfflineReadAlongProgress(pkg, { reading: textAnchor() });
-    await render();
-    const preview = [...host.querySelectorAll("label")]
-      .find((label) =>
-        label.textContent?.includes("Preview without saving position"),
-      )!
-      .querySelector<HTMLInputElement>("input")!;
-    await act(async () => preview.click());
-    expect(harness.props?.persistProgress).toBe(false);
-    await click("Fixture first passage");
-    expect(
-      (await repo.getAnchor({ bookId: "12", fileId: "31", kind: "epub" }))
-        ?.locator,
-    ).toBe(secondCfi);
-    await click("Save this reading position");
-    await until(async () =>
-      expect(
-        (await repo.getAnchor({ bookId: "12", fileId: "31", kind: "epub" }))
-          ?.locator,
-      ).toBe(firstCfi),
-    );
-    expect(await database.outbox.count()).toBe(0);
-    expect(
-      await mainRepo.getAnchor({ bookId: "12", fileId: "31", kind: "epub" }),
-    ).toBeUndefined();
-  });
-  it.each(["manual", "separate"] as const)(
-    "keeps independent reading and listening positions when reopening either view under %s policy",
-    async (policy) => {
-      await seedOfflineReadAlongProgress(pkg, {
-        reading: textAnchor(),
-        audio: audioAnchor(),
-      });
-      localStorage.setItem(handoffPolicyKey(scope, "12"), policy);
-      await render();
-      await act(async () => audios[0]!.metadata(verified.tracks[0]!.duration));
-      await click("Open player");
-      expect(audios[0]!.src).toBe(created.mock.results[0]!.value);
-      expect(audios[0]!.currentTime).toBe(1);
-      await click("Open book");
-      await until(() => expect(button("Open player").disabled).toBe(false));
-      expect(harness.props?.initialAnchor?.locator).toBe(secondCfi);
-      const follow = vi.mocked(harness.handle!.followAudio!);
-      expect(follow.mock.calls.at(-1)?.[3]).toEqual({ follow: false });
-      expect(
-        (await repo.getAnchor({ bookId: "12", fileId: "31", kind: "epub" }))
-          ?.locator,
-      ).toBe(secondCfi);
-      await click("Open player");
-      expect(audios[0]!.currentTime).toBe(1);
-      expect(network).not.toHaveBeenCalled();
-    },
+async function generatedInput(): Promise<PreparedReadListenInput> {
+  const original = await makeFixture(),
+    edition = original.alignment!.edition;
+  const document = new DOMParser().parseFromString(
+    new TextDecoder().decode(archive["chapter.xhtml"]!),
+    "application/xhtml+xml",
   );
-  it("uses a deliberate backward reading move under latest policy and preserves it after closing and reopening", async () => {
-    const laterAudio = audioAnchor();
-    laterAudio.locator = JSON.stringify({
+  const passages = original.alignment!.segments.map((segment, i) => ({
+    id: segment.id,
+    text: document.getElementById(`p${i + 1}`)!.textContent!,
+    textLocator: i === 0 ? firstCfi : secondCfi,
+    sectionIndex: 0,
+    textHref: "chapter.xhtml",
+    elementPath: [i],
+  }));
+  const tracks = await Promise.all(
+    original.audioAssets!.map(async (source, i) => ({
+      assetId: source.assetId,
+      fileId: String(41 + i),
+      sha256: await sha256Blob(source.blob),
+      sizeBytes: source.blob.size,
+      duration: original.manifest!.assets[i]!.durationMs! / 1000,
+    })),
+  );
+  const wordCount = passages.reduce(
+    (count, p) => count + alignmentTokens(p.text).length,
+    0,
+  );
+  return {
+    scope,
+    scopeLabel: original.scopeLabel,
+    book: original.book,
+    textFileId: "31",
+    epub: original.epub,
+    manifest: original.manifest!,
+    sources: original.audioAssets!,
+    alignment: {
       version: 1,
-      trackId: "42",
-      trackTime: 1,
-      time: verified.tracks[0]!.duration + 1,
-      manifestRevision: "original-v1",
-    });
-    await seedOfflineReadAlongProgress(pkg, {
-      reading: textAnchor(),
-      audio: laterAudio,
-    });
-    localStorage.setItem(handoffPolicyKey(scope, "12"), "latest");
-    await render();
-    await act(async () => audios[0]!.metadata(verified.tracks[1]!.duration));
-    await click("Fixture first passage");
-    await until(async () =>
-      expect(
-        (await repo.getAnchor({ bookId: "12", fileId: "31", kind: "epub" }))
-          ?.locator,
-      ).toBe(firstCfi),
-    );
-    await click("Open player");
-    expect(audios[0]!.src).toBe(created.mock.results[0]!.value);
-    await act(async () => audios[0]!.metadata(verified.tracks[0]!.duration));
-    expect(audios[0]!.currentTime).toBe(0);
-    await act(async () => {
-      root!.unmount();
-      root = null;
-    });
-    await until(() => expect(revoked).toHaveBeenCalledTimes(2));
-    root = createRoot(host);
-    await render();
-    expect(harness.props?.initialAnchor?.locator).toBe(firstCfi);
-    await click("Open player");
-    expect(audios[1]!.src).toBe(created.mock.results[2]!.value);
-    expect(audios[1]!.currentTime).toBe(0);
-    expect(await database.outbox.count()).toBe(0);
-    expect(network).not.toHaveBeenCalled();
+      source: "generated",
+      algorithm: "avid-word-match-v1",
+      edition: { ...edition },
+      model: { id: "fixture", revision: "one" },
+      tracks,
+      passages,
+      segments: original.alignment!.segments.map((s, i) => ({
+        ...s,
+        textLocator: passages[i]!.textLocator,
+        textFragment: "",
+        textElementPath: passages[i]!.elementPath,
+        confidence: 1,
+      })),
+      coverage: {
+        matchedPassages: 2,
+        totalPassages: 2,
+        matchedWords: wordCount,
+        totalWords: wordCount,
+      },
+    },
+  };
+}
+it("opens prior narrated packages without a session, re-verifies bytes, and disables annotations/progress UI", async () => {
+  await render();
+  expect(network).not.toHaveBeenCalled();
+  expect(harness.props).toMatchObject({
+    annotationsEnabled: false,
+    persistProgress: false,
+    annotations: [],
   });
-  it("creates a real local audio note at the exact track-relative position", async () => {
-    await render();
-    await click("Open player");
-    await act(async () => {
-      audios[0]!.metadata(verified.tracks[0]!.duration);
-      audios[0]!.currentTime = 2;
-      audios[0]!.dispatchEvent(new Event("timeupdate"));
-    });
-    await click(translate("note.add"));
-    const field = host.querySelector<HTMLTextAreaElement>("textarea")!;
-    expect(field).not.toBeNull();
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(
-        HTMLTextAreaElement.prototype,
-        "value",
-      )!.set!.call(field, "Remember this passage");
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await click(translate("note.save"));
-    await until(async () =>
-      expect((await repo.getAnnotations()).length).toBe(1),
-    );
-    const note = (await repo.getAnnotations())[0]!;
-    expect(note).toMatchObject({
+  expect(harness.props?.initialAnchor).toBeUndefined();
+  await click("Open player");
+  expect(host.textContent).not.toContain(translate("note.add", {}, "en"));
+  expect(host.textContent).not.toContain(translate("nav.notebook", {}, "en"));
+  expect(host.textContent).toContain(
+    "does not save reading positions, notes or highlights",
+  );
+  expect(created).toHaveBeenCalledTimes(2);
+});
+it("keeps legacy progress and notes unchanged through reading, playback, seeking and close", async () => {
+  const saved: ReadingAnchor = {
+    bookId: "12",
+    fileId: "31",
+    kind: "epub",
+    locator: secondCfi,
+    progress: 0.5,
+    updatedAt: "2026-10-17T10:00:00Z",
+  };
+  await repo.checkpoint(saved, { readOnly: true });
+  await repo.putAnnotation(
+    {
+      id: "old-note",
       bookId: "12",
-      fileId: "41",
-      kind: "audio",
-      text: "Remember this passage",
-    });
-    expect(JSON.parse(note.locator)).toMatchObject({
-      trackId: "41",
-      trackTime: 2,
-      time: 2,
-      manifestRevision: "original-v1",
-    });
-    await until(() =>
-      expect(host.querySelector(".offline-audio-notes")?.textContent).toContain(
-        "Remember this passage",
-      ),
-    );
-    await act(async () => {
-      audios[0]!.currentTime = 3;
-      audios[0]!.dispatchEvent(new Event("timeupdate"));
-    });
-    await act(async () =>
-      host
-        .querySelector<HTMLButtonElement>(".offline-audio-notes button")!
-        .click(),
-    );
-    expect(audios[0]!.currentTime).toBe(2);
-    expect(await database.outbox.count()).toBe(0);
-    expect(await mainRepo.getAnnotations()).toEqual([]);
-    expect(network).not.toHaveBeenCalled();
+      fileId: "31",
+      kind: "note",
+      quote: "Original",
+      text: "Preserved",
+      color: "#ffffff",
+      locator: secondCfi,
+      createdAt: saved.updatedAt,
+      updatedAt: saved.updatedAt,
+    },
+    { readOnly: true },
+  );
+  await render();
+  await click("Fixture second passage");
+  await click("Listen from here");
+  await act(async () => {
+    audios[0]!.currentTime = 0.7;
+    audios[0]!.dispatchEvent(new Event("timeupdate"));
   });
-  it("allocates one playback owner in StrictMode and revokes its blob sources when closed", async () => {
-    await render(true);
-    expect(audios).toHaveLength(1);
-    expect(created).toHaveBeenCalledTimes(2);
-    await click("Open player");
-    await act(async () => audios[0]!.metadata(verified.tracks[0]!.duration));
-    // No timeupdate event: closing must capture time since the browser's last
-    // throttled notification before releasing the owner or storage handle.
-    audios[0]!.currentTime = 2;
-    const urls = created.mock.results.map((result) => result.value);
-    await act(async () => {
-      root!.unmount();
-      root = null;
-    });
-    await until(() => expect(revoked).toHaveBeenCalledTimes(urls.length));
-    expect(revoked.mock.calls.map((call) => call[0]).sort()).toEqual(
-      urls.sort(),
+  await act(async () => root!.unmount());
+  root = null;
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(
+    await repo.getAnchor({ bookId: "12", fileId: "31", kind: "epub" }),
+  ).toEqual(saved);
+  expect((await repo.getAnnotations()).map((n) => n.text)).toEqual([
+    "Preserved",
+  ]);
+  expect(
+    await repo.getAnchor({ bookId: "12", fileId: "41", kind: "audio" }),
+  ).toBeUndefined();
+  expect(await mainRepo.getAnnotations()).toEqual([]);
+  expect(network).not.toHaveBeenCalled();
+});
+it("keeps navigation and automatic highlights session-only and starts a reopened player at zero", async () => {
+  await render();
+  await click("Fixture second passage");
+  await click("Listen from here");
+  expect(audios[0]!.currentTime).toBe(0); // the second physical track begins at zero
+  await click("Read from here");
+  await until(() => expect(harness.handle!.followAudio).toHaveBeenCalled());
+  expect(harness.props?.initialAnchor?.locator).toBe(
+    verified.segments[1]!.textLocator,
+  );
+  await act(async () => root!.unmount());
+  root = null;
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  root = createRoot(host);
+  await render();
+  await click("Open player");
+  expect(audios.at(-1)?.currentTime).toBe(0);
+  expect(
+    await repo.getAnchor({ bookId: "12", fileId: "41", kind: "audio" }),
+  ).toBeUndefined();
+});
+it("cold-opens generated preparation through fresh reader verification and never fetches sources", async () => {
+  const input = await generatedInput(),
+    saved = await prepared.put(input);
+  prepared.close();
+  prepared = new PreparedReadListenStore(prepared.database.name);
+  harness.handle!.restorePreparedAlignment = vi.fn<
+    NonNullable<ReaderAlignmentHandle["restorePreparedAlignment"]>
+  >(async (snapshot, _manifest, assets) => {
+    const actual = await Promise.all(
+      assets.map(async (asset, i) => ({
+        ...snapshot.tracks[i]!,
+        sha256: await sha256Blob(asset.blob),
+        sizeBytes: asset.blob.size,
+      })),
     );
-    expect(audios[0]!.pause).toHaveBeenCalled();
-    await until(async () => {
-      const anchor = await repo.getAnchor({
-        bookId: "12",
-        fileId: "41",
-        kind: "audio",
-      });
-      expect(anchor && JSON.parse(anchor.locator).trackTime).toBe(2);
-    });
-    expect(network).not.toHaveBeenCalled();
+    return createGeneratedAlignment(
+      snapshot,
+      {
+        version: 1,
+        textSha256: await sha256Blob(input.epub),
+        passages: snapshot.passages,
+      },
+      actual,
+    );
   });
+  await act(async () =>
+    root!.render(
+      <OfflineDownloads
+        store={store}
+        preparedStore={prepared}
+        onClose={() => {}}
+      />,
+    ),
+  );
+  await until(() =>
+    expect(host.textContent).toContain("Compared book and audio"),
+  );
+  await click("Open");
+  await until(() =>
+    expect(harness.handle!.restorePreparedAlignment).toHaveBeenCalled(),
+  );
+  await until(() => expect(button("Listen from here").disabled).toBe(false));
+  expect(harness.handle!.verifyAudiobook).not.toHaveBeenCalled();
+  await click("Listen from here");
+  expect(audios[0]!.play).toHaveBeenCalled();
+  expect(network).not.toHaveBeenCalled();
+  expect((await prepared.get(scope, saved.id))!.alignmentSnapshot.source).toBe(
+    "generated",
+  );
+});
+it("reuses existing paired-package audio bytes for comparison without deleting or downloading them", async () => {
+  const cached = await prepared.findReusableSources(
+    {
+      scope,
+      bookId: "12",
+      textFileId: "31",
+      textSha256: pkg.textSha256,
+      manifest: pkg.manifest!,
+    },
+    {},
+    store,
+  );
+  expect(cached?.sources.map((s) => s.assetId)).toEqual(audioNames);
+  expect(cached?.alignmentSnapshot).toBeUndefined();
+  expect(await store.get(scope, pkg.id)).toBeDefined();
+  expect(network).not.toHaveBeenCalled();
+});
+it("preserves damaged legacy rows and shows a bounded recovery notice", async () => {
+  await store.database.table("packages").put({
+    key: JSON.stringify([scope, "damaged"]),
+    scope,
+    id: "damaged",
+    version: 1,
+  });
+  await act(async () =>
+    root!.render(
+      <OfflineDownloads
+        store={store}
+        preparedStore={prepared}
+        onClose={() => {}}
+      />,
+    ),
+  );
+  await until(() =>
+    expect(host.textContent).toContain("They have been preserved"),
+  );
+  expect(host.textContent).toContain(pkg.book.title);
+  expect(await store.database.table("packages").count()).toBe(2);
+  expect(
+    [...host.querySelectorAll("button")].some((b) =>
+      b.textContent?.includes("damaged"),
+    ),
+  ).toBe(false);
+});
+it("releases every source URL and player owner after StrictMode cleanup without saving a checkpoint", async () => {
+  await render(true);
+  const playing = audios.at(-1)!;
+  await click("Listen from here");
+  await act(async () => root!.unmount());
+  root = null;
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(playing.pause).toHaveBeenCalled();
+  expect(playing.removeAttribute).toHaveBeenCalledWith("src");
+  expect(new Set(revoked.mock.calls.map(([url]) => url))).toEqual(
+    new Set(created.mock.results.map((result) => result.value)),
+  );
+  expect(
+    await repo.getAnchor({ bookId: "12", fileId: "41", kind: "audio" }),
+  ).toBeUndefined();
+});
+it("hands playback ownership between reader speech and audiobook without overlap", async () => {
+  await render();
+  await click("Play");
+  const audio = audios.at(-1)!;
+  expect(audio.paused).toBe(false);
+  await act(async () => harness.props!.onActivity?.("speech"));
+  expect(audio.paused).toBe(true);
+  vi.mocked(harness.handle!.pauseNarration).mockClear();
+  await act(async () => harness.props!.onClose());
+  expect(harness.handle!.pauseNarration).toHaveBeenCalledTimes(1);
+  await click("Open book");
+  vi.mocked(harness.handle!.pauseNarration).mockClear();
+  await click("Play");
+  expect(harness.handle!.pauseNarration).toHaveBeenCalledTimes(1);
+  expect(audio.paused).toBe(false);
+});
+it("unmounts the modal reader in player view and applies paused Read from here on a fresh reader", async () => {
+  await render();
+  expect(harness.mounts).toBe(1);
+  await click("Fixture second passage");
+  await click("Listen from here");
+  expect(host.querySelector('[data-testid="fixture-reader"]')).toBeNull();
+  expect(harness.unmounts).toBe(1);
+  await click("Pause");
+  await click("Read from here");
+  await until(() => expect(harness.mounts).toBe(2));
+  expect(harness.props?.initialAnchor?.locator).toBe(
+    verified.segments[1]!.textLocator,
+  );
+  expect(audios[0]!.paused).toBe(true);
+});
+it("keeps manual reading location only in the current viewer session across player switches", async () => {
+  await render();
+  await click("Fixture second passage");
+  await click("Open player");
+  expect(host.querySelector('[data-testid="fixture-reader"]')).toBeNull();
+  await click("Open book");
+  await until(() => expect(harness.mounts).toBe(2));
+  expect(harness.props?.initialAnchor?.locator).toBe(secondCfi);
+  expect(
+    await repo.getAnchor({ bookId: "12", fileId: "31", kind: "epub" }),
+  ).toBeUndefined();
 });

@@ -3,6 +3,15 @@ import { BookOrbitClient } from '../src/bookorbit';
 import { boundedBlob } from '../src/boundedBlob';
 const session = { profile: { id: 'server', url: 'https://books.test', name: 'Books' }, userId: '7', accessToken: 'offline-test' };
 describe('bounded authenticated alignment reads', () => {
+  it('requires explicit preparation purpose above the old verification limit and caps preparations at 512 MiB', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => new Response('original audio'));
+    const client = new BookOrbitClient(session, { fetch: fetcher, readOnly: true });
+    await expect(client.getAudioAssetBlob('12', 'asset', { maxBytes: 512 * 1024 ** 2 })).rejects.toThrow('64 MiB');
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(await (await client.getAudioAssetBlob('12', 'asset', { maxBytes: 512 * 1024 ** 2, purpose: 'preparation' })).text()).toBe('original audio');
+    await expect(client.getAudioAssetBlob('12', 'asset', { maxBytes: 512 * 1024 ** 2 + 1, purpose: 'preparation' })).rejects.toThrow('512 MiB');
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
   it('gets a complete asset with authentication and honors the supplied abort signal', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('audio bytes', { headers: { 'content-length': '11', 'content-type': 'audio/wav' } }));
     const abort = new AbortController();

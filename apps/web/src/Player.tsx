@@ -42,7 +42,7 @@ export function Player({
 }: {
   controller: PlaybackTransport;
   book: Book;
-  onNote: () => void;
+  onNote?: () => void;
   onRead?: () => void;
   /** Account-scoped read-along UI supplied by the application. */
   readAlong?: ReactNode;
@@ -392,10 +392,12 @@ export function Player({
         <div className="player-offline-control">{offlineControl}</div>
       )}
       <div className="player-bottom">
-        <button className="text-button" onClick={onNote}>
-          <BookmarkPlus size={18} />
-          {t("note.add")}
-        </button>
+        {onNote && (
+          <button className="text-button" onClick={onNote}>
+            <BookmarkPlus size={18} />
+            {t("note.add")}
+          </button>
+        )}
         <button
           className="text-button"
           aria-expanded={chapters}

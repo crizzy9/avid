@@ -16,6 +16,8 @@ export interface ReaderProps {
   modeControls?: ReactNode;
   /** A separate audiobook owns narration; pause internal audio and hide its playback controls. */
   externalNarration?: boolean;
+  /** Prepared read/listen mode does not expose notebook or highlight editing. */
+  annotationsEnabled?: boolean;
   file?: BookFile;
   source?: Blob;
   initialAnchor?: ReadingAnchor;

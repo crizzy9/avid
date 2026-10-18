@@ -2,6 +2,7 @@ import {
   assertStandaloneAlignment,
   alignmentSha256,
   createStandaloneAlignment,
+  createGeneratedAlignment,
   verifyAudioResource,
   type AlignmentEdition,
   type VerifiedAudioAlignment,
@@ -11,9 +12,20 @@ import type { MediaOverlayPlaylist } from "../../core/src/media-overlay";
 import { mediaOverlayPath } from "../../core/src/media-overlay";
 import type { AudioManifest } from "../../core/src/bookorbit";
 import { passageText } from "../../core/src/readAlongText";
+import { validateGeneratedAlignment, type ExtractedPublicationText, type GeneratedAlignmentSnapshot } from '../../playback/src/generated-alignment';
+import { passageElement } from './generatedText';
+import { sha256Blob } from '../../core/src/blobHash';
 export { passageText } from "../../core/src/readAlongText";
 
 export interface ReaderAlignmentHandle {
+  /** Ordinary EPUB text with exact source CFIs; no embedded narration is required. */
+  extractAlignmentText?(): Promise<ExtractedPublicationText>;
+  /** Rehash actual media and bind generated timing to the freshly parsed source publication. */
+  restorePreparedAlignment?(
+    snapshot: GeneratedAlignmentSnapshot,
+    manifest: AudioManifest,
+    assets: readonly PreparedAudioAsset[],
+  ): Promise<VerifiedAudioAlignment>;
   /** Stop embedded narration and speech before switching to another playback owner. */
   pauseNarration(): void;
   /** Resolve the actual DOM point, never estimate the nearest passage from reading percentage. */
@@ -48,6 +60,39 @@ export interface ReaderAlignmentHandle {
   ): Promise<AlignedPassageText | null>;
   clearAudioHighlight?(): void;
 }
+export interface PreparedAudioAsset { assetId: string; fileId: string; blob: Blob }
+/** Current EPUB extraction plus streamed full-byte audio proof; no model execution on reopen. */
+export async function verifyPreparedPublication(
+  input: GeneratedAlignmentSnapshot,
+  manifestInput: AudioManifest,
+  assetInput: readonly PreparedAudioAsset[],
+  publication: ExtractedPublicationText,
+  binding: Pick<AlignmentEdition,'accountScope'|'bookId'|'textFileId'>,
+  isActive:()=>boolean = ()=>true,
+):Promise<VerifiedAudioAlignment> {
+  validateGeneratedAlignment(input);
+  const snapshot=structuredClone(input), manifest=structuredClone(manifestInput), assets=assetInput.map(asset=>({...asset}));
+  const edition=snapshot.edition;
+  if (!isActive() || edition.accountScope!==binding.accountScope || edition.bookId!==binding.bookId || edition.textFileId!==binding.textFileId ||
+    manifest.schema!=='bookorbit.audiobook-manifest' || manifest.schemaVersion!==2 || manifest.revision!==edition.manifestRevision)
+    throw new Error('The prepared sources belong to a different account or edition.');
+  const ordered=[...manifest.assets].sort((a,b)=>a.sequence-b.sequence);
+  if (assets.length!==snapshot.tracks.length || ordered.length!==assets.length ||
+    new Set(assets.map(asset=>asset.assetId)).size!==assets.length || new Set(ordered.map(asset=>asset.sequence)).size!==ordered.length)
+    throw new Error('Complete, unique prepared audio sources are required.');
+  const actual=[];
+  for (const [index,expected] of snapshot.tracks.entries()) {
+    const item=ordered[index]!,asset=assets.find(value=>value.assetId===expected.assetId && value.fileId===expected.fileId);
+    if (!asset || item.assetId!==expected.assetId || String(item.fileId)!==expected.fileId || item.sizeBytes!==expected.sizeBytes ||
+      !Number.isSafeInteger(item.sequence) || item.sequence<0 || item.durationMs===null || item.durationMs/1000!==expected.duration ||
+      asset.blob.size!==expected.sizeBytes) throw new Error('The prepared audiobook manifest or source bytes changed.');
+    actual.push({...expected,sha256:await sha256Blob(asset.blob,{isActive})});
+  }
+  if (!Number.isFinite(manifest.totalDurationMs) || Math.abs(ordered.reduce((sum,asset)=>sum+(asset.durationMs??0),0)-manifest.totalDurationMs)>0.001)
+    throw new Error('The prepared audiobook duration does not match its source tracks.');
+  if (!isActive()) throw new Error('The reader closed during prepared source verification.');
+  return createGeneratedAlignment(snapshot,publication,actual);
+}
 export interface AlignedPassageText {
   readonly segmentId: string;
   readonly text: string;
@@ -65,7 +110,7 @@ export interface CandidateAudioAsset {
   bytes: ArrayBuffer;
 }
 export interface AlignmentPublication {
-  sections: Array<{ id: string; mediaOverlay?: { href: string } | null }>;
+  sections: Array<{ id: string; mediaOverlay?: { href: string } | null; createDocument?: () => Promise<Document> }>;
   loadText(href: string): Promise<string>;
   loadBlob(href: string): Promise<Blob>;
 }
@@ -159,10 +204,12 @@ export async function readPublicationTimedText(
       );
     let doc = documents.get(segment.textHref);
     if (!doc) {
-      doc = xml(await publication.loadText(segment.textHref));
+      doc = segment.textElementPath && publication.sections[segment.sectionIndex]?.createDocument
+        ? await publication.sections[segment.sectionIndex]!.createDocument!()
+        : xml(await publication.loadText(segment.textHref));
       documents.set(segment.textHref, doc);
     }
-    const element = uniqueFragment(doc, segment.textFragment);
+    const element = segment.textElementPath ? passageElement(doc,segment) : uniqueFragment(doc, segment.textFragment);
     if (!element)
       throw new Error(
         "The timed passage is missing or ambiguous in this EPUB.",
@@ -313,7 +360,7 @@ export function alignedPassageAtRange(
   const candidates = map.segments.filter(
     (segment) =>
       segment.sectionIndex === sectionIndex &&
-      doc.getElementById(segment.textFragment)?.contains(range.startContainer),
+      passageElement(doc, segment)?.contains(range.startContainer),
   );
   // Nested/repeated passage markers can be ambiguous. Do not silently pick an edition point.
   if (candidates.length) return candidates.length === 1 ? candidates[0]! : null;
@@ -325,23 +372,21 @@ export function alignedPassageAtRange(
     (segment) =>
       segment.sectionIndex === sectionIndex &&
       (() => {
-        const element = doc.getElementById(segment.textFragment);
+        const element = passageElement(doc, segment);
         return element && range.intersectsNode(element);
       })(),
   );
   visible.sort((a, b) =>
-    doc
-      .getElementById(a.textFragment)!
-      .compareDocumentPosition(doc.getElementById(b.textFragment)!) &
+    passageElement(doc,a)!
+      .compareDocumentPosition(passageElement(doc,b)!) &
     Node.DOCUMENT_POSITION_FOLLOWING
       ? -1
       : 1,
   );
   if (
     visible.length > 1 &&
-    doc
-      .getElementById(visible[0]!.textFragment)!
-      .contains(doc.getElementById(visible[1]!.textFragment))
+    passageElement(doc,visible[0]!)!
+      .contains(passageElement(doc,visible[1]!))
   )
     return null;
   return visible[0] ?? null;

@@ -9,7 +9,7 @@ export interface AlignedSegment {
 
 export interface AlignmentMap {
   version: string;
-  source: 'epub-media-overlay' | 'server-bridge';
+  source: 'epub-media-overlay' | 'server-bridge' | 'generated';
   textFileId: string;
   audioFileId: string;
   segments: AlignedSegment[];
@@ -18,7 +18,7 @@ export interface AlignmentMap {
 /** Reject invented percentage links and malformed timing before enabling linked mode. */
 export function validateAlignment(map: AlignmentMap): void {
   if (!map.version || !map.textFileId || !map.audioFileId || !map.segments.length ||
-    !['epub-media-overlay', 'server-bridge'].includes(map.source)) throw new Error('Verified text and audio alignment is required.');
+    !['epub-media-overlay', 'server-bridge', 'generated'].includes(map.source)) throw new Error('Verified text and audio alignment is required.');
   let end = -1;
   const ids = new Set<string>();
   for (const segment of map.segments) {
