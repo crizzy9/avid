@@ -1,3 +1,4 @@
+import { PlaybackSession, type PlaybackCommand, type PlaybackReason } from "./foundation";
 import {
   chapterAtTime,
   clamp,
@@ -56,6 +57,8 @@ export class PlaybackController {
   private generation = 0;
   private declaredDurations = new Map<string, number>();
   private remotePolicy: RemoteSkipPolicy;
+  private session = new PlaybackSession();
+  private accountScope = (): string | null => this.options.accountScope ? this.options.accountScope() : "device";
 
   constructor(options: PlaybackOptions = {}) {
     this.options = options;
@@ -94,8 +97,10 @@ export class PlaybackController {
         !this.audio.ended &&
         this.snapshot.status !== "loading"
       ) {
+        const before = this.snapshot;
         this.wantPlayback = false;
         this.update({ status: "interrupted" });
+        this.session.record("status", "interruption", before, this.snapshot, this.accountScope());
         this.checkpoint();
         return;
       }
@@ -106,6 +111,7 @@ export class PlaybackController {
     });
     this.listen("ended", () => this.ended());
     this.listen("error", () => {
+      const before = this.snapshot;
       this.wantPlayback = false;
       const code = this.audio.error?.code;
       this.update({
@@ -117,11 +123,27 @@ export class PlaybackController {
               ? "Audio could not be loaded. Check the connection and server access."
               : "Audio playback failed. Try loading the file again.",
       });
+      this.session.record("status", "failure", before, this.snapshot, this.accountScope());
       this.checkpoint();
     });
     this.bindMediaSession();
   }
 
+  getPlaybackSession = () => this.session.identity(this.accountScope());
+  getPlaybackHistory = () => this.session.events(this.accountScope());
+  onPlaybackEvent = this.session.subscribe;
+  async dispatch(command: PlaybackCommand): Promise<boolean> {
+    if (this.disposed || command.version !== 1 || !this.session.matches(command.expected, this.accountScope())) return false;
+    switch (command.action) {
+      case "play": await this.play(command.reason); break;
+      case "pause": this.pause(command.reason); break;
+      case "seek": if (!Number.isFinite(command.sourceSeconds)) return false; this.seek(command.sourceSeconds, command.reason); break;
+      case "skip": if (command.direction !== 1 && command.direction !== -1) return false; this.seek(remoteSkipPosition(this.book, this.snapshot, command.direction, this.remotePolicy), command.reason); break;
+      case "rate": if (!Number.isFinite(command.rate)) return false; this.setRate(command.rate, command.reason); break;
+      case "chapter": if (!this.book?.chapters?.some(chapter => chapter.id === command.chapterId)) return false; this.seek(this.book!.chapters!.find(chapter => chapter.id === command.chapterId)!.start, command.reason); break;
+    }
+    return true;
+  }
   getSnapshot = (): PlaybackSnapshot => this.snapshot;
   getBook = (): PlaybackBook | null => this.book;
   getRemotePolicy = (): RemoteSkipPolicy => ({ ...this.remotePolicy });
@@ -136,6 +158,7 @@ export class PlaybackController {
         direction,
         this.remotePolicy,
       ),
+      "remote",
     );
   }
   subscribe = (listener: () => void): (() => void) => {
@@ -156,6 +179,8 @@ export class PlaybackController {
   load(book: PlaybackBook, position = 0): void {
     this.ensureActive();
     validateTimeline(book.tracks, book.chapters ?? []);
+    const scope = this.accountScope();
+    if (!scope) throw new Error("An account scope is required for playback.");
     this.checkpoint();
     this.generation++;
     this.wantPlayback = false;
@@ -166,6 +191,7 @@ export class PlaybackController {
         track.duration === undefined ? [] : [[track.id, track.duration]],
       ),
     );
+    this.session.bind(book, scope);
     this.book = {
       ...book,
       tracks: book.tracks.map(
@@ -193,6 +219,7 @@ export class PlaybackController {
       chapterIndex: chapterAtTime(book.chapters ?? [], time),
     });
     this.changeTrack(target.index, target.offset);
+    this.session.record("load", "source-load", this.snapshot, this.snapshot, this.accountScope());
     if (this.media && typeof MediaMetadata !== "undefined") {
       this.media.metadata = new MediaMetadata({
         title: book.title,
@@ -203,17 +230,20 @@ export class PlaybackController {
     }
   }
 
-  async play(): Promise<void> {
+  async play(reason: PlaybackReason = "user-play"): Promise<void> {
     this.ensureActive();
-    if (!this.book) return;
+    if (!this.book || !this.getPlaybackSession()) return;
+    const before = this.snapshot;
     this.terminalSeekTrackId = null;
     this.wantPlayback = true;
     const generation = this.generation;
     this.update({ status: "loading", error: null });
     try {
       await this.audio.play();
-      if (generation === this.generation && this.wantPlayback)
+      if (generation === this.generation && this.wantPlayback) {
         this.update({ status: "playing" });
+        this.session.record("play", reason, before, this.snapshot, this.accountScope());
+      }
     } catch (error) {
       if (generation !== this.generation || !this.wantPlayback) return;
       this.wantPlayback = false;
@@ -225,14 +255,16 @@ export class PlaybackController {
     }
   }
 
-  pause(): void {
+  pause(reason: PlaybackReason = "user-pause"): void {
     if (this.disposed) return;
+    const before = this.snapshot;
     this.wantPlayback = false;
     // Capture the final source timestamp rather than losing the time since the
     // browser's most recent (usually throttled) timeupdate event.
     this.timeUpdated();
     this.audio.pause();
     if (this.book) this.update({ status: "paused" });
+    this.session.record("pause", reason, before, this.snapshot, this.accountScope());
     this.checkpoint();
   }
 
@@ -240,8 +272,9 @@ export class PlaybackController {
     return this.wantPlayback ? this.pause() : this.play();
   }
 
-  seek(seconds: number): void {
-    if (!this.book || this.disposed) return;
+  seek(seconds: number, reason: PlaybackReason = "user-seek"): void {
+    if (!this.book || this.disposed || !this.getPlaybackSession() || !Number.isFinite(seconds)) return;
+    const before = this.snapshot;
     const time = clamp(seconds, 0, this.snapshot.duration || Infinity);
     const target = trackAtTime(this.book.tracks, time);
     this.terminalSeekTrackId =
@@ -267,23 +300,27 @@ export class PlaybackController {
       }
     }
     this.enforceSleep();
+    this.session.record("seek", reason, before, this.snapshot, this.accountScope());
     this.checkpoint();
   }
 
   skip(delta: number): void {
-    this.seek(this.snapshot.currentTime + delta);
+    this.seek(this.snapshot.currentTime + delta, "user-skip");
   }
   goToChapter(id: string): void {
     const chapter = this.book?.chapters?.find(
       (candidate) => candidate.id === id,
     );
-    if (chapter) this.seek(chapter.start);
+    if (chapter) this.seek(chapter.start, "chapter");
   }
 
-  setRate(rate: number): void {
+  setRate(rate: number, reason: PlaybackReason = "rate-change"): void {
+    if (!Number.isFinite(rate)) return;
+    const before = this.snapshot;
     const next = clamp(rate, 0.5, 3);
     this.audio.playbackRate = next;
     this.update({ rate: next });
+    this.session.record("rate", reason, before, this.snapshot, this.accountScope());
   }
 
   setSleepTimer(timer: SleepTimer): void {
@@ -313,7 +350,7 @@ export class PlaybackController {
 
   /** Persist on pagehide/account change; caller owns the account-scoped journal. */
   checkpoint(): AudioCheckpoint | null {
-    if (!this.book) return null;
+    if (!this.book || !this.getPlaybackSession()) return null;
     const track = this.book.tracks[this.snapshot.trackIndex]!;
     const locator: AudioLocator = {
       version: 1,
@@ -354,6 +391,7 @@ export class PlaybackController {
     );
     this.audio.removeAttribute("src");
     this.audio.load();
+    this.session.clear();
     this.listeners.clear();
     this.checkpointListeners.clear();
     if (this.media) {
@@ -498,9 +536,9 @@ export class PlaybackController {
   private finishSleep(): void {
     const boundary = this.snapshot.sleepAtChapterEnd;
     this.setSleepTimer(null);
-    this.pause();
+    this.pause("sleep");
     if (boundary != null && this.snapshot.currentTime > boundary)
-      this.seek(boundary);
+      this.seek(boundary, "sleep");
   }
   private ended(): void {
     if (!this.book) return;
@@ -509,10 +547,12 @@ export class PlaybackController {
     if (this.wantPlayback && next < this.book.tracks.length) {
       this.update({ currentTime: trackStart(this.book.tracks, next) });
       this.changeTrack(next, 0);
-      void this.play();
+      void this.play("track-transition");
     } else {
+      const before = this.snapshot;
       this.wantPlayback = false;
       this.update({ status: "paused" });
+      this.session.record("status", "completion", before, this.snapshot, this.accountScope());
       this.checkpoint();
     }
   }
@@ -522,14 +562,14 @@ export class PlaybackController {
       Record<MediaSessionAction, MediaSessionActionHandler>
     > = {
       play: () => {
-        void this.play();
+        void this.play("remote");
       },
-      pause: () => this.pause(),
-      stop: () => this.pause(),
+      pause: () => this.pause("remote"),
+      stop: () => this.pause("remote"),
       seekbackward: () => this.remoteSkip(-1),
       seekforward: () => this.remoteSkip(1),
       seekto: (details) => {
-        if (details.seekTime != null) this.seek(details.seekTime);
+        if (details.seekTime != null) this.seek(details.seekTime, "remote");
       },
       previoustrack: () => this.remoteSkip(-1),
       nexttrack: () => this.remoteSkip(1),

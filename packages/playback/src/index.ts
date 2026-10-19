@@ -8,3 +8,5 @@ export * from './capabilities';
 export * from './codecs';
 export * from './activity';
 export * from './remotePolicy';
+export * from './foundation';
+export * from './preferences';

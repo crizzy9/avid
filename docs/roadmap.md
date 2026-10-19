@@ -1,6 +1,6 @@
 # Avid roadmap
 
-Updated: 2026-10-18. This is the current delivery order, superseding the phase numbers in the [historical research baseline](research-baseline.md). Requirement IDs stay stable: F01–F66 belong to Phase 1; F67–F71 now belong to Phase 3. The user's October 18 correction explicitly places local preparation of an independent ebook/audiobook pair and offline playback of that prepared read-along in Phase 2. Broader offline editing and reconciliation are deferred to Phase 3.
+Updated: 2026-10-19. This is the current delivery order, superseding the phase numbers in the [historical research baseline](research-baseline.md). Requirement IDs stay stable: F01–F66 belong to Phase 1; F67–F71 now belong to Phase 3. The user's October 18 correction explicitly places local preparation of an independent ebook/audiobook pair and offline playback of that prepared read-along in Phase 2. Broader offline editing and reconciliation are deferred to Phase 3.
 
 | Phase | Outcome | Current state |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ The validated source checkpoint `430b8b6` passed 657 shared tests, TypeScript, t
 
 ## Phase 2 — complete audiobook experience
 
-The **[Phase 2 audiobook plan](phase-2-audiobook-plan.md)** is the current feature and acceptance specification. It makes listening a first-class Avid workflow, inventories Plappa/Absorb/Audiobookshelf controls, defines preference scope and defaults, and sequences milestones A–H. The [reference inventory](audiobook-reference-inventory-2026-10-18.md) records dated primary sources; the [full-book validation plan](phase-2-full-book-validation.md) specifies the next matching experiments. This planning update does not claim those experiments have run.
+The **[Phase 2 audiobook plan](phase-2-audiobook-plan.md)** is the current feature and acceptance specification. It makes listening a first-class Avid workflow, inventories Plappa/Absorb/Audiobookshelf controls, defines preference scope and defaults, and sequences milestones A–H. The [reference inventory](audiobook-reference-inventory-2026-10-18.md) records dated primary sources; the [full-book validation plan](phase-2-full-book-validation.md) specifies the next matching experiments. Milestones A/B have started: [complete-book corpus and baseline execution](phase-2-full-book-runs.md), plus the [playback and settings foundation](phase-2-playback-foundation.md). Complete-input and installed-device acceptance remain open.
 
 Start with a complete-book baseline and shared playback/settings contracts, then daily controls and listening queue, measured Read & Listen improvements, audio processing and native surfaces. Ordinary settings/queue persistence and online recovery are Phase 2 essentials. General offline content/editing/reconciliation stays Phase 3. BookOrbit-specific gaps are tracked separately without shrinking the client feature target. The topic list below describes broad work areas; the detailed plan controls delivery order and completion.
 

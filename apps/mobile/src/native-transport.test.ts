@@ -28,6 +28,43 @@ afterEach(() => { transports.splice(0).forEach(value => value.destroy()); vi.use
 const drain = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 
 describe('native authoritative playback transport', () => {
+  it('keeps independent intervals in both bridge configuration and UI remote commands', async () => {
+    const {transport,plugin,emit}=setup();transports.push(transport);
+    transport.configureRemote({mode:'time',seconds:30,backwardSeconds:15,forwardSeconds:45});
+    transport.load(book);await transport.play();
+    expect(plugin.configureRemote).toHaveBeenLastCalledWith({mode:'time',seconds:30,backwardSeconds:15,forwardSeconds:45});
+    emit({position:60});transport.remoteSkip(-1);await drain();
+    expect(plugin.seek).toHaveBeenLastCalledWith({position:45});
+    transport.remoteSkip(1);await drain();expect(plugin.seek).toHaveBeenLastCalledWith({position:90});
+  });
+  it('dispatches source-bound commands and records actual native source position', async () => {
+    const {transport,plugin}=setup();transports.push(transport);transport.load(book);await transport.play();
+    const expected=transport.getPlaybackSession()!;
+    expect(await transport.dispatch({version:1,expected,reason:'read-listen-handoff',action:'seek',sourceSeconds:25})).toBe(true);
+    expect(plugin.seek).toHaveBeenLastCalledWith({position:25,expected});
+    expect(transport.getPlaybackHistory().at(-1)).toMatchObject({kind:'seek',reason:'read-listen-handoff',toSourceSeconds:25});
+    transport.load(book);await transport.play();
+    expect(await transport.dispatch({version:1,expected,reason:'user-seek',action:'seek',sourceSeconds:100})).toBe(false);
+  });
+  it('rejects a queued command when account or authoritative native edition changes',async()=>{
+    const {transport,plugin,emit,account}=setup();transports.push(transport);transport.load(book);await transport.play();
+    const expected=transport.getPlaybackSession()!;
+    emit({manifestRevision:'different'});
+    expect(await transport.dispatch({version:1,expected,reason:'user-seek',action:'seek',sourceSeconds:25})).toBe(false);
+    expect(plugin.seek).not.toHaveBeenCalled();
+    account('account-b');
+    expect(await transport.dispatch({version:1,expected,reason:'user-pause',action:'pause'})).toBe(false);
+    expect(transport.getPlaybackHistory()).toEqual([]);
+  });
+  it('imports background native observations after the UI returns without duplicate polling history',async()=>{
+    const {transport,emit}=setup();transports.push(transport);transport.load(book);await transport.play();
+    const nativeEvents={version:1 as const,ownerId:'process-load',accountScope:'account-a',bookId:'b',fileId:'f',manifestRevision:null,
+      events:[{sequence:1,kind:'pause' as const,reason:'sleep' as const,observedAt:'2026-10-19T00:00:00.000Z',fromSourceSeconds:80,toSourceSeconds:80,rate:1,status:'paused' as const}]};
+    emit({position:80,nativeEvents,updatedAt:'2026-10-19T00:00:01.000Z'});
+    emit({position:80,nativeEvents,updatedAt:'2026-10-19T00:00:02.000Z'});
+    expect(transport.getPlaybackHistory().filter(event=>event.origin==='native-owner')).toHaveLength(1);
+    expect(transport.getPlaybackHistory().find(event=>event.origin==='native-owner')).toMatchObject({reason:'sleep',toSourceSeconds:80});
+  });
   it('shows a durable recovery warning without reporting playing audio as failed, then clears on recovery', async () => {
     const { transport, emit } = setup(); transports.push(transport);
     transport.load(book); await transport.play();

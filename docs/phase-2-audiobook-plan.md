@@ -132,7 +132,7 @@ Local audio opening is a Phase 2 listening entry point, including grouping/reord
 
 ## Delivery order and acceptance
 
-Work in reviewable commits and push each validated milestone to the existing repository. The next implementation turn starts with **A and B**, not another unrelated feature batch. C/D can proceed alongside E after the shared contracts exist. F/G must use those contracts rather than growing separate player logic.
+Work in reviewable commits and push each validated milestone to the existing repository. **A and B are now underway:** the frozen full-book corpus and runner are implemented, with complete-input baselines in progress; the [playback/settings foundation](phase-2-playback-foundation.md) is implemented with shared and Android compile/JVM checks. See [current run evidence](phase-2-full-book-runs.md). Neither milestone is fully accepted: complete-book reports, native source-clock/codec checks and the desktop runtime engine experiment remain open. C/D can proceed alongside E after the shared contracts exist. F/G must use those contracts rather than growing separate player logic.
 
 | Milestone | Work | Evidence required to close |
 | --- | --- | --- |

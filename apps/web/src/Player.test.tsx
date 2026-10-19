@@ -10,6 +10,10 @@ import {
 } from "../../../packages/playback/src";
 import type { Book } from "../../../packages/core/src/types";
 import { setLocale } from "../../../packages/i18n/src";
+import {
+  PlaybackPreferenceStore,
+  legacyPlaybackPreferenceKey,
+} from "../../../packages/playback/src/preferences";
 
 class TestAudio extends EventTarget {
   src = "";
@@ -132,6 +136,22 @@ async function change(
       }),
     );
   });
+}
+function field(label: string): HTMLInputElement | HTMLSelectElement {
+  const matching = [...host.querySelectorAll("label")].find(
+    (node) => node.textContent?.trim() === label,
+  );
+  if (!matching?.htmlFor) throw new Error(`Missing field ${label}`);
+  return document.getElementById(matching.htmlFor) as
+    HTMLInputElement | HTMLSelectElement;
+}
+
+async function submitField(label: string) {
+  await act(async () =>
+    field(label)
+      .closest("form")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+  );
 }
 
 describe("chapter-focused player", () => {
@@ -271,5 +291,176 @@ describe("chapter-focused player", () => {
       host.querySelector<HTMLInputElement>('input[type="range"]')!.value,
     ).toBe("200");
     expect(host.textContent).toContain("13:20 remaining at 2×");
+  });
+
+  it("uses independent account/series/book skips and removes duplicate preference controls", async () => {
+    const preferences = new PlaybackPreferenceStore("a", localStorage);
+    preferences.set(
+      { kind: "account" },
+      { skipBackwardSeconds: 12, skipForwardSeconds: 45 },
+    );
+    preferences.set(
+      { kind: "series", id: "series" },
+      { skipForwardSeconds: 60 },
+    );
+    preferences.set({ kind: "book", id: "book" }, { skipBackwardSeconds: 9 });
+    await render({ preferences, book: { ...book, seriesId: "series" } });
+    expect(host.querySelectorAll(".player-options select")).toHaveLength(1);
+    await click("Back 9 seconds");
+    expect(controller.getSnapshot().currentTime).toBe(891);
+    await click("Forward 60 seconds");
+    expect(controller.getSnapshot().currentTime).toBe(951);
+    await act(async () => {
+      preferences.set({ kind: "book", id: "book" }, { skipForwardSeconds: 73 });
+    });
+    await click("Forward 73 seconds");
+    expect(controller.getSnapshot().currentTime).toBe(1024);
+    expect(localStorage.getItem(legacyPlaybackPreferenceKey)).toBeNull();
+  });
+
+  it("edits account and book settings separately and resets a book to series/account inheritance", async () => {
+    const preferences = new PlaybackPreferenceStore("a", localStorage);
+    preferences.set({ kind: "account" }, { rate: 1.25 });
+    preferences.set({ kind: "series", id: "series" }, { rate: 1.4 });
+    await render({ preferences, book: { ...book, seriesId: "series" } });
+    const details = host.querySelector<HTMLDetailsElement>(
+      ".listening-settings",
+    )!;
+    await act(async () => {
+      details.open = true;
+    });
+    expect(field("Playback speed (×)").value).toBe("1.4");
+    expect(field("Playback speed (×)").closest("form")!.textContent).toContain(
+      "From: Series",
+    );
+    await change(field("Playback speed (×)"), "2");
+    await click("Apply Playback speed (×)");
+    expect(preferences.getSnapshot().document.books.book).toEqual({ rate: 2 });
+    expect(field("Playback speed (×)").closest("form")!.textContent).toContain(
+      "From: This book",
+    );
+    await change(field("Apply changes to"), "account");
+    expect(field("Playback speed (×)").value).toBe("1.25");
+    await change(field("Playback speed (×)"), "1.6");
+    await click("Apply Playback speed (×)");
+    expect(preferences.getSnapshot().document.account.rate).toBe(1.6);
+    expect(preferences.resolve({ bookId: "book" }).values.rate).toBe(2);
+    await change(field("Apply changes to"), "book");
+    await click("Reset Playback speed (×)");
+    expect(field("Playback speed (×)").value).toBe("1.4");
+    expect(preferences.getSnapshot().document.books.book).toBeUndefined();
+    await act(async () => {
+      preferences.reset({ kind: "series", id: "series" }, "rate");
+    });
+    expect(field("Playback speed (×)").value).toBe("1.6");
+    expect(field("Playback speed (×)").closest("form")!.textContent).toContain(
+      "From: Account defaults",
+    );
+    expect(
+      new PlaybackPreferenceStore("a", localStorage).resolve({ bookId: "book" })
+        .values.rate,
+    ).toBe(1.6);
+  });
+
+  it("validates edited speeds and skip seconds even when a form is submitted directly", async () => {
+    const preferences = new PlaybackPreferenceStore("a", localStorage);
+    await render({ preferences });
+    const previous = preferences.getSnapshot().document;
+    await change(field("Playback speed (×)"), "4");
+    await submitField("Playback speed (×)");
+    expect(host.textContent).toContain("Choose a speed from 0.5 to 3×.");
+    expect(preferences.getSnapshot().document).toBe(previous);
+    await change(field("Skip forward (seconds)"), "1.5");
+    await submitField("Skip forward (seconds)");
+    expect(host.textContent).toContain(
+      "Choose a whole number from 1 to 300 seconds.",
+    );
+    expect(preferences.getSnapshot().document).toBe(previous);
+    await change(field("Skip forward (seconds)"), "300");
+    await click("Apply Skip forward (seconds)");
+    expect(
+      preferences.resolve({ bookId: "book" }).values.skipForwardSeconds,
+    ).toBe(300);
+  });
+
+  it("retains an imported speed above this engine's range and explains the capability limit", async () => {
+    const preferences = new PlaybackPreferenceStore("a", localStorage);
+    preferences.set({ kind: "book", id: "book" }, { rate: 4.5 });
+    await render({ preferences });
+    expect(field("Playback speed (×)").value).toBe("4.5");
+    expect(host.textContent).toContain(
+      "Saved speed: 4.5×. This player supports up to 3×; your saved preference is retained.",
+    );
+    await change(field("Skip backward (seconds)"), "7");
+    await click("Apply Skip backward (seconds)");
+    expect(preferences.resolve({ bookId: "book" }).values.rate).toBe(4.5);
+    expect(
+      preferences.resolve({ bookId: "book" }).values.skipBackwardSeconds,
+    ).toBe(7);
+  });
+
+  it("does not carry a book's settings into another account", async () => {
+    const first = new PlaybackPreferenceStore("a", localStorage);
+    first.set(
+      { kind: "book", id: "book" },
+      { skipBackwardSeconds: 7, rate: 2 },
+    );
+    await render({ preferences: first });
+    expect(button("Back 7 seconds")).toBeDefined();
+    await render({
+      preferences: new PlaybackPreferenceStore("b", localStorage),
+    });
+    expect(button("Back 15 seconds")).toBeDefined();
+    expect(field("Playback speed (×)").value).toBe("1");
+    expect(button("Reset Playback speed (×)").disabled).toBe(true);
+  });
+
+  it("keeps prepared/session-only remote changes out of global storage", async () => {
+    await render();
+    const remote = [...host.querySelectorAll("select")].find((node) =>
+      [...node.options].some((option) => option.textContent === "By chapter"),
+    )!;
+    await change(remote, "45");
+    expect(controller.getRemotePolicy()).toEqual({ mode: "time", seconds: 45 });
+    await click("Back 45 seconds");
+    expect(controller.getSnapshot().currentTime).toBe(855);
+    expect(localStorage.getItem(legacyPlaybackPreferenceKey)).toBeNull();
+    expect(host.querySelector(".listening-settings")).toBeNull();
+  });
+
+  it("reports failed persistence while keeping the explicitly selected session value", async () => {
+    const preferences = new PlaybackPreferenceStore("a", {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("storage blocked");
+      },
+      removeItem: () => {},
+    });
+    await render({ preferences });
+    await change(field("Skip forward (seconds)"), "33");
+    await click("Apply Skip forward (seconds)");
+    expect(button("Forward 33 seconds")).toBeDefined();
+    expect(host.textContent).toContain(
+      "These settings apply to this session but could not be saved on this device.",
+    );
+    expect(preferences.getSnapshot().status).toBe("memory");
+  });
+
+  it("shows a recovered rate as a temporary session choice and offers explicit inheritance reset", async () => {
+    const preferences = new PlaybackPreferenceStore("a", localStorage);
+    const reset = vi.fn();
+    await render({ preferences, sessionRate: 2, onResetSessionRate: reset });
+    expect(field("Playback speed (×)").value).toBe("2");
+    expect(field("Playback speed (×)").closest("form")!.textContent).toContain(
+      "From: This session",
+    );
+    await click("Reset Playback speed (×)");
+    expect(reset).toHaveBeenCalledOnce();
+    expect(preferences.getSnapshot().document.books).toEqual({});
+    await render({ preferences, onResetSessionRate: reset });
+    expect(field("Playback speed (×)").value).toBe("1");
+    expect(field("Playback speed (×)").closest("form")!.textContent).toContain(
+      "From: Avid default",
+    );
   });
 });

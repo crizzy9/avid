@@ -1,3 +1,4 @@
+import { PlaybackSession, type PlaybackCommand, type PlaybackReason, type PlaybackEvent } from "../../../packages/playback/src/foundation";
 import { PlaybackController, chapterAtTime, trackAtTime, trackStart, clamp, validateTimeline, type AudioCheckpoint, type PlaybackBook, type PlaybackSnapshot, type SleepTimer } from '../../../packages/playback/src';
 import { createLazyPlaybackTransport } from './lazy-transport';
 import { getNativePlayback, type NativePlaybackPlugin, type NativePlaybackSnapshot } from './native-playback';
@@ -30,6 +31,7 @@ export class NativePlaybackTransport implements PlaybackTransport {
   private refreshing = false;
   private lastNativeTime: string | null = null;
   private remotePolicy:RemoteSkipPolicy;
+  private session = new PlaybackSession();
 
   constructor(private readonly plugin: NativePlaybackPlugin, private readonly options: NativeTransportOptions) {
     this.remotePolicy=normalizeRemotePolicy(options.remotePolicy);
@@ -37,6 +39,32 @@ export class NativePlaybackTransport implements PlaybackTransport {
     // Active UI progress. Background safety comes from the native service/AVPlayer, not this timer.
     this.poll = setInterval(() => { void this.refresh(); }, 1000);
     this.listener.catch(error => this.fail(error));
+  }
+  getPlaybackSession = () => this.session.identity(this.options.accountScope());
+  getPlaybackHistory = () => this.session.events(this.options.accountScope());
+  onPlaybackEvent = this.session.subscribe;
+  async dispatch(command: PlaybackCommand): Promise<boolean> {
+    if (command.version !== 1 || !this.session.matches(command.expected, this.options.accountScope()) || this.disposed) return false;
+    if (command.action === 'seek' && !Number.isFinite(command.sourceSeconds) || command.action === 'rate' && !Number.isFinite(command.rate) || command.action === 'skip' && command.direction !== 1 && command.direction !== -1) return false;
+    if (command.action === 'chapter' && !this.book?.chapters?.some(chapter => chapter.id === command.chapterId)) return false;
+    let executed = false;
+    await this.command(async () => {
+      if (!this.loaded || !this.session.matches(command.expected, this.options.accountScope())) return;
+      // Validate the native owner too: a car/native surface may have changed its source.
+      const owner = await this.plugin.snapshot();
+      if (!this.session.matches(command.expected, this.options.accountScope()) || owner.accountScope !== command.expected.accountScope || owner.bookId !== command.expected.bookId || owner.fileId !== command.expected.fileId || (owner.manifestRevision ?? null) !== command.expected.manifestRevision) return;
+      const expected = command.expected;
+      switch (command.action) {
+        case 'play': await this.plugin.play({ expected }); break;
+        case 'pause': await this.plugin.pause({ expected }); break;
+        case 'seek': await this.plugin.seek({ position: clamp(command.sourceSeconds, 0, this.state.duration || Infinity), expected }); break;
+        case 'skip': await this.plugin.seek({ position: remoteSkipPosition(this.book, this.state, command.direction, this.remotePolicy), expected }); break;
+        case 'chapter': await this.plugin.seek({ position: this.book!.chapters!.find(chapter => chapter.id === command.chapterId)!.start, expected }); break;
+        case 'rate': await this.plugin.setRate({ rate: clamp(command.rate, .5, 3), expected }); break;
+      }
+      executed = true;
+    }, { kind: command.action === 'skip' || command.action === 'chapter' ? 'seek' : command.action, reason: command.reason }, () => executed);
+    return executed;
   }
   getSnapshot = (): PlaybackSnapshot => this.state;
   getBook = (): PlaybackBook | null => this.book;
@@ -55,11 +83,13 @@ export class NativePlaybackTransport implements PlaybackTransport {
       !value.trackIds || value.trackIds.length !== book.tracks.length || value.trackIds.some((id, index) => id !== book.tracks[index]!.id) ||
       !value.trackId || !book.tracks.some(track => track.id === value.trackId) || !Number.isFinite(value.position) || !Number.isFinite(value.duration) || !Number.isFinite(value.rate)) return false;
     this.scope = scope;
+    this.session.bind(book, scope);
     this.book = structuredClone(book);
     this.loaded = true;
     this.lastNativeTime = null;
     this.update({ ...initial, bookId: book.bookId, fileId: book.fileId, title: book.title });
     this.accept(value);
+    this.session.record("adopt", "recovery", this.state, this.state, this.options.accountScope());
     return true;
   }
 
@@ -72,6 +102,7 @@ export class NativePlaybackTransport implements PlaybackTransport {
     this.checkpoint();
     this.loaded = false;
     this.scope = scope;
+    this.session.bind(book, scope);
     this.book = structuredClone(book);
     const revision = ++this.revision;
     this.lastNativeTime = null;
@@ -86,27 +117,27 @@ export class NativePlaybackTransport implements PlaybackTransport {
         if(revision!==this.revision || scope!==this.options.accountScope() || this.disposed)return;
         await this.plugin.configureRemote?.(this.remotePolicy);
         await this.plugin.load({ accountScope: scope, bookId: book.bookId, fileId: book.fileId, url: resolved.tracks[0]!.url, tracks: resolved.tracks.map(({ id, url, duration }) => ({ id, url, duration })), chapters:book.chapters,coverUrl:resolved.coverUrl,manifestRevision: book.manifestRevision, readOnly, title: book.title, author: book.authors.join(', '), position, rate });
-        this.loaded = true;
+        if (revision === this.revision && scope === this.options.accountScope() && !this.disposed) this.loaded = true;
       } catch (error) { await this.plugin.clear().catch(() => {}); throw error; }
-    });
+    }, { kind: "load", reason: "source-load" });
   }
-  async play(): Promise<void> { await this.command(async () => { if (this.loaded) await this.plugin.play(); }); }
-  pause(): void { this.command(() => this.plugin.pause()); }
+  async play(reason: PlaybackReason = "user-play"): Promise<void> { await this.command(async () => { if (this.loaded) await this.plugin.play(); }, {kind:"play", reason}, () => this.loaded); }
+  pause(reason: PlaybackReason = "user-pause"): void { this.command(() => this.plugin.pause(), {kind:"pause", reason}); }
   toggle(): Promise<void> | void { return this.state.status === 'playing' || this.state.status === 'loading' ? this.pause() : this.play(); }
-  seek(position: number): void {
+  seek(position: number, reason: PlaybackReason = "user-seek"): void {
     if (!Number.isFinite(position)) return;
-    this.command(() => this.plugin.seek({ position: clamp(position, 0, this.state.duration || Infinity) }));
+    this.command(() => this.plugin.seek({ position: clamp(position, 0, this.state.duration || Infinity) }), {kind:"seek", reason});
   }
-  skip(delta: number): void { this.seek(this.state.currentTime + delta); }
+  skip(delta: number): void { this.seek(this.state.currentTime + delta, "user-skip"); }
   getRemotePolicy=():RemoteSkipPolicy=>({...this.remotePolicy});
   configureRemote(policy:RemoteSkipPolicy):void {this.remotePolicy=normalizeRemotePolicy(policy);void this.command(async()=>{await this.plugin.configureRemote?.(this.remotePolicy);});}
-  remoteSkip(direction:1|-1):void {this.seek(remoteSkipPosition(this.book,this.state,direction,this.remotePolicy));}
-  goToChapter(id: string): void { const chapter = this.book?.chapters?.find(value => value.id === id); if (chapter) this.seek(chapter.start); }
-  setRate(rate: number): void {
+  remoteSkip(direction:1|-1):void {this.seek(remoteSkipPosition(this.book,this.state,direction,this.remotePolicy), "remote");}
+  goToChapter(id: string): void { const chapter = this.book?.chapters?.find(value => value.id === id); if (chapter) this.seek(chapter.start, "chapter"); }
+  setRate(rate: number, reason: PlaybackReason = "rate-change"): void {
     if (!Number.isFinite(rate)) return;
     const next = clamp(rate, .5, 3);
     if (!this.book) { this.update({ rate: next }); return; }
-    this.command(() => this.plugin.setRate({ rate: next }));
+    this.command(() => this.plugin.setRate({ rate: next }), {kind:"rate", reason});
   }
   setSleepTimer(timer: SleepTimer): void {
     const chapter = this.book?.chapters?.[this.state.chapterIndex];
@@ -136,17 +167,21 @@ export class NativePlaybackTransport implements PlaybackTransport {
     void this.listener.then(handle => handle.remove()).catch(() => {});
     // Explicit app teardown/account transition must clear the native source too.
     void this.queue.then(() => this.plugin.clear()).catch(() => {});
-    this.listeners.clear(); this.checkpoints.clear();
+    this.session.clear(); this.listeners.clear(); this.checkpoints.clear();
   }
-  private command(action: () => Promise<void>): Promise<void> {
+  private command(action: () => Promise<void>, event?: {kind: PlaybackEvent["kind"]; reason: PlaybackReason}, record = () => true): Promise<void> {
     const revision = this.revision;
     this.queue = this.queue.then(async () => {
       if (this.disposed || revision !== this.revision) return;
       if (this.scope && this.scope !== this.options.accountScope()) {
         await this.plugin.clear(); this.loaded = false; this.book = null; this.scope = null; this.update({ ...initial }); return;
       }
+      const before = this.state;
       await action();
+      if (this.disposed || revision !== this.revision || this.scope && this.scope !== this.options.accountScope()) return;
       await this.refresh();
+      if (this.disposed || revision !== this.revision || this.scope && this.scope !== this.options.accountScope()) return;
+      if (event && record()) this.session.record(event.kind, event.reason, before, this.state, this.options.accountScope());
     }).catch(error => { if (!this.disposed && revision === this.revision) this.fail(error); });
     return this.queue;
   }
@@ -160,7 +195,7 @@ export class NativePlaybackTransport implements PlaybackTransport {
   private accept(value: NativePlaybackSnapshot): void {
     if (this.disposed || !this.book || this.scope !== this.options.accountScope() || value.accountScope !== this.scope || value.bookId !== this.book.bookId || value.fileId !== this.book.fileId) return;
     if (!Number.isFinite(value.position) || !Number.isFinite(value.duration) || !Number.isFinite(value.rate)) return;
-    if (value.manifestRevision !== undefined && value.manifestRevision !== this.book.manifestRevision) return;
+    if (value.manifestRevision !== this.book.manifestRevision) return;
     const trackIndex = value.trackId ? this.book.tracks.findIndex(track => track.id === value.trackId) : trackAtTime(this.book.tracks, value.position).index;
     if (trackIndex < 0) return;
     // Ignore stale native callbacks from a previous command/load generation.
@@ -168,9 +203,12 @@ export class NativePlaybackTransport implements PlaybackTransport {
     this.lastNativeTime = value.updatedAt;
     const currentTime = Math.max(0, value.position);
     const duration = Math.max(0, value.duration || this.state.duration);
+    this.session.importNative(value.nativeEvents, this.options.accountScope());
+    const before = this.state;
     this.update({ currentTime, duration, trackIndex, rate: value.rate, chapterIndex: chapterAtTime(this.book.chapters ?? [], currentTime),
       status: value.status ?? (value.playing ? 'playing' : 'paused'), error: value.error || value.recoveryError || null,
       sleepUntil: value.sleepUntil ?? null, sleepAtChapterEnd: value.sleepAtChapterEnd ?? null });
+    if (before.status !== this.state.status || before.trackIndex !== this.state.trackIndex) this.session.record("status", "native-observation", before, this.state, this.options.accountScope());
     this.checkpoint();
   }
   private fail(error: unknown): void { if (!this.disposed) this.update({ status: 'failed', error: error instanceof Error ? error.message : String(error) }); }
@@ -180,6 +218,6 @@ export class NativePlaybackTransport implements PlaybackTransport {
 export function createPlaybackTransport(options: NativeTransportOptions): PlaybackTransport {
   return createLazyPlaybackTransport(() => {
     const native = getNativePlayback();
-    return native ? new NativePlaybackTransport(native, options) : new PlaybackController({remotePolicy:options.remotePolicy,...(getDesktopBridge()?{mediaSession:null}:{})});
+    return native ? new NativePlaybackTransport(native, options) : new PlaybackController({accountScope:options.accountScope,remotePolicy:options.remotePolicy,...(getDesktopBridge()?{mediaSession:null}:{})});
   });
 }

@@ -44,8 +44,10 @@ class AvidPlaybackService : MediaLibraryService() {
     @Volatile private var sourceEpoch = 0L
     @Volatile private var sourceFiles = emptyMap<String, MediaIdentity>()
     private var sourceFingerprint = ""
+    private val playbackEvents = PlaybackEventTail()
     private var remoteMode = "time"
-    private var remoteSeconds = 30.0
+    private var remoteBackwardSeconds = 15.0
+    private var remoteForwardSeconds = 30.0
     private var metadataKey = ""
     private var artworkIndex = -1
     private var metadataArtwork: ByteArray? = null
@@ -69,6 +71,7 @@ class AvidPlaybackService : MediaLibraryService() {
                 sleepDeadline = null
                 chapterEndMs = null
                 publishSleep()
+                recordPlaybackEvent("pause", "sleep")
                 player.pause()
                 if (stopAt != null) AvidQueue.seek(player, stopAt / 1000.0)
                 checkpoint()
@@ -88,7 +91,9 @@ class AvidPlaybackService : MediaLibraryService() {
         AvidPlaybackJournal.initialize(this)
         val preferences = getSharedPreferences("avid-playback-policy", MODE_PRIVATE)
         remoteMode = preferences.getString("mode", "time").takeIf { it in setOf("time", "chapter") } ?: "time"
-        remoteSeconds = preferences.getFloat("seconds", 30f).toDouble().takeIf { it.isFinite() && it in 1.0..300.0 } ?: 30.0
+        val legacySeconds = preferences.getFloat("seconds", Float.NaN)
+        remoteBackwardSeconds = preferences.getFloat("backwardSeconds", legacySeconds).toDouble().takeIf { it.isFinite() && it in 1.0..300.0 } ?: 15.0
+        remoteForwardSeconds = preferences.getFloat("forwardSeconds", legacySeconds).toDouble().takeIf { it.isFinite() && it in 1.0..300.0 } ?: 30.0
         val cookieManager = CookieManager.getInstance()
         // A redirect must not carry Cookie/Bearer to another origin. Local/content sources still use
         // DefaultDataSource; streaming HTTP has no total-call timeout because an audiobook lasts hours.
@@ -134,9 +139,19 @@ class AvidPlaybackService : MediaLibraryService() {
             .setSeekForwardIncrementMs(30_000)
             .build()
         player.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) { if (isPlaying) retriedUnauthorized = false; checkpoint() }
-            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) { checkpoint() }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { if (isPlaying) retriedUnauthorized = false; recordPlaybackEvent("status", "native-observation"); checkpoint() }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                recordPlaybackEvent(if (playWhenReady) "play" else "pause", if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS || reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) "interruption" else "native-observation")
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) recordPlaybackEvent("status", "completion")
+            }
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                recordPlaybackEvent("seek", if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) "track-transition" else "native-observation", if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) (oldPosition.mediaItem?.mediaMetadata?.extras?.getDouble("trackStart") ?: 0.0) + oldPosition.positionMs / 1000.0 else null)
+                checkpoint()
+            }
             override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) playbackEvents.reset()
                 sourceScope = player.currentMediaItem?.mediaMetadata?.extras?.getString("accountScope") ?: ""
                 val items = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
                 sourceFiles = items.mapNotNull { item ->
@@ -147,13 +162,14 @@ class AvidPlaybackService : MediaLibraryService() {
                 val fingerprint = items.joinToString("\n") { "${it.mediaId}:${it.localConfiguration?.uri}:${it.mediaMetadata.extras?.getString("manifestRevision")}:${it.mediaMetadata.extras?.getBoolean("readOnly", true)}" }
                 if (fingerprint != sourceFingerprint) {
                     sourceFingerprint = fingerprint; metadataKey = ""; artworkKey = ""; metadataArtwork = null; artworkIndex = -1
-                    sourceEpoch++; needsPrepareAfterAuth = false; retriedUnauthorized = false; authError = ""; lastAuthFailure = 0; publishSleep()
+                    sourceEpoch++; recordPlaybackEvent("load", "source-load"); needsPrepareAfterAuth = false; retriedUnauthorized = false; authError = ""; lastAuthFailure = 0; publishSleep()
                 }
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 sourceScope = mediaItem?.mediaMetadata?.extras?.getString("accountScope") ?: ""
             }
             override fun onPlayerError(error: PlaybackException) {
+                recordPlaybackEvent("status", "failure")
                 var cause: Throwable? = error
                 var unauthorized = false
                 while (cause != null) {
@@ -182,17 +198,20 @@ class AvidPlaybackService : MediaLibraryService() {
             override fun seekToNext() { skipRemote(true) }
             override fun seekToPreviousMediaItem() { skipRemote(false) }
             override fun seekToNextMediaItem() { skipRemote(true) }
-            override fun getSeekBackIncrement() = (remoteSeconds * 1000).toLong()
-            override fun getSeekForwardIncrement() = (remoteSeconds * 1000).toLong()
+            override fun getSeekBackIncrement() = (remoteBackwardSeconds * 1000).toLong()
+            override fun getSeekForwardIncrement() = (remoteForwardSeconds * 1000).toLong()
             override fun seekTo(positionMs: Long) { runCatching { AvidPlaybackJournal.flush() }; super.seekTo(positionMs) }
             override fun seekTo(mediaItemIndex: Int, positionMs: Long) { runCatching { AvidPlaybackJournal.flush() }; super.seekTo(mediaItemIndex, positionMs) }
         }
         session = MediaLibrarySession.Builder(this, sessionPlayer, AvidLibraryCallback(this, { AvidControllerPolicy.allows(this, it) }, { args ->
             val mode = args.getString("mode") ?: ""
             val seconds = args.getDouble("seconds", Double.NaN)
-            require(mode in setOf("time", "chapter") && seconds.isFinite() && seconds in 1.0..300.0)
-            remoteMode = mode; remoteSeconds = seconds
-            getSharedPreferences("avid-playback-policy", MODE_PRIVATE).edit().putString("mode", mode).putFloat("seconds", seconds.toFloat()).apply()
+            val backward = args.getDouble("backwardSeconds", seconds)
+            val forward = args.getDouble("forwardSeconds", seconds)
+            require(mode in setOf("time", "chapter") && listOf(seconds, backward, forward).all { it.isFinite() && it in 1.0..300.0 })
+            remoteMode = mode; remoteBackwardSeconds = backward; remoteForwardSeconds = forward
+            getSharedPreferences("avid-playback-policy", MODE_PRIVATE).edit().putString("mode", mode).putFloat("seconds", seconds.toFloat())
+                .putFloat("backwardSeconds", backward.toFloat()).putFloat("forwardSeconds", forward.toFloat()).apply()
             publishSleep()
         }) { args ->
             sleepDeadline = if (args.containsKey("deadline")) args.getLong("deadline") else null
@@ -223,16 +242,18 @@ class AvidPlaybackService : MediaLibraryService() {
         session?.setSessionExtras(Bundle().apply {
             sleepDeadline?.let { putLong("deadline", it) }
             chapterEndMs?.let { putLong("chapterEndMs", it) }
+            playbackEvents.snapshot()?.let { putString("nativeEvents", it.toString()) }
             putString("authError", authError)
-            putString("remoteMode", remoteMode); putDouble("remoteSeconds", remoteSeconds)
+            putString("remoteMode", remoteMode); putDouble("remoteSeconds", remoteForwardSeconds); putDouble("remoteBackwardSeconds", remoteBackwardSeconds); putDouble("remoteForwardSeconds", remoteForwardSeconds)
         })
     }
 
     private fun skipRemote(forward: Boolean) {
+        recordPlaybackEvent("seek", "remote")
         runCatching { AvidPlaybackJournal.flush() }
         val source = player.currentMediaItem?.mediaId?.let { AvidAudioCatalog.get(it) }
         val chapters = source?.let { AvidQueue.chapters(it) }.orEmpty()
-        AvidQueue.seek(player, RemotePlaybackPolicy.target(chapters, AvidQueue.position(player), forward, remoteMode, remoteSeconds, AvidQueue.duration(player)))
+        AvidQueue.seek(player, RemotePlaybackPolicy.target(chapters, AvidQueue.position(player), forward, remoteMode, if (forward) remoteForwardSeconds else remoteBackwardSeconds, AvidQueue.duration(player)))
     }
 
     private fun updateMetadata() {
@@ -306,6 +327,20 @@ class AvidPlaybackService : MediaLibraryService() {
                 }
             }
         }
+    }
+
+    private fun recordPlaybackEvent(kind: String, reason: String, from: Double? = null) {
+        val value = snapshot() ?: return
+        val time = AvidQueue.position(player)
+        val status = when {
+            player.playerError != null -> "failed"
+            player.playbackState == Player.STATE_BUFFERING -> "buffering"
+            player.isPlaying -> "playing"
+            player.playbackState == Player.STATE_IDLE -> "stopped"
+            else -> "paused"
+        }
+        playbackEvents.record(value, kind, reason, from ?: time, time, player.playbackParameters.speed.toDouble(), status)
+        publishSleep()
     }
 
     private fun snapshot(): JSONObject? {

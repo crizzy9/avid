@@ -1,3 +1,4 @@
+import type { NativeOwnerEventTail, PlaybackSessionIdentity } from "../../../packages/playback/src/foundation";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import type {RemoteSkipPolicy} from '../../../packages/playback/src/remotePolicy';
 
@@ -21,6 +22,7 @@ export interface NativePlaybackLoad {
 }
 
 export interface NativePlaybackSnapshot {
+  nativeEvents?: NativeOwnerEventTail;
   accountScope: string;
   bookId: string;
   fileId: string;
@@ -47,10 +49,10 @@ export interface NativePlaybackSnapshot {
 export interface NativePlaybackPlugin {
   capabilities(): Promise<{ backgroundAudioAvailable: boolean; systemMediaControlsAvailable: boolean; carIntegrationAvailable: boolean }>;
   load(options: NativePlaybackLoad): Promise<void>;
-  play(): Promise<void>;
-  pause(): Promise<void>;
-  seek(options: { position: number }): Promise<void>;
-  setRate(options: { rate: number }): Promise<void>;
+  play(options?: { expected: PlaybackSessionIdentity }): Promise<void>;
+  pause(options?: { expected: PlaybackSessionIdentity }): Promise<void>;
+  seek(options: { position: number; expected?: PlaybackSessionIdentity }): Promise<void>;
+  setRate(options: { rate: number; expected?: PlaybackSessionIdentity }): Promise<void>;
   configureRemote?(options:RemoteSkipPolicy):Promise<void>;
   setSleepTimer(options: { deadline?: number; chapterEnd?: number }): Promise<void>;
   snapshot(): Promise<NativePlaybackSnapshot>;

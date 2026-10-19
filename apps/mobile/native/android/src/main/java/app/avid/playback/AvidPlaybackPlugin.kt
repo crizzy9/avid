@@ -68,6 +68,14 @@ class AvidPlaybackPlugin : Plugin() {
     }
 
     private fun command(call: PluginCall, action: (MediaController) -> Unit) = connected(call) {
+        call.getObject("expected")?.let { expected ->
+            val extras = it.currentMediaItem?.mediaMetadata?.extras
+            require(expected.optInt("version") == 1 && expected.optString("accountScope") == extras?.getString("accountScope") &&
+                expected.optString("bookId") == extras?.getString("bookId") && expected.optString("fileId") == extras?.getString("fileId") &&
+                expected.optString("manifestRevision", "").let { revision -> revision == (extras?.getString("manifestRevision") ?: "") }) {
+                "The playback source changed. Refresh the player before trying again."
+            }
+        }
         runCatching { AvidPlaybackJournal.flush() }
         action(it); call.resolve()
     }
@@ -137,9 +145,11 @@ class AvidPlaybackPlugin : Plugin() {
     @PluginMethod fun configureRemote(call: PluginCall) = connected(call) { player ->
         val mode = call.getString("mode") ?: ""
         val seconds = call.getDouble("seconds") ?: Double.NaN
-        require(mode in setOf("time", "chapter") && seconds.isFinite() && seconds in 1.0..300.0)
+        val backward = call.getDouble("backwardSeconds") ?: seconds
+        val forward = call.getDouble("forwardSeconds") ?: seconds
+        require(mode in setOf("time", "chapter") && listOf(seconds, backward, forward).all { it.isFinite() && it in 1.0..300.0 })
         val pending = player.sendCustomCommand(SessionCommand(AvidPlaybackService.REMOTE_COMMAND, Bundle.EMPTY),
-            Bundle().apply { putString("mode", mode); putDouble("seconds", seconds) })
+            Bundle().apply { putString("mode", mode); putDouble("seconds", seconds); putDouble("backwardSeconds", backward); putDouble("forwardSeconds", forward) })
         pending.addListener({
             try { if (pending.get().resultCode == 0) call.resolve() else call.reject("Native service rejected the remote policy.") }
             catch (error: Exception) { call.reject(error.message, error) }
@@ -171,6 +181,7 @@ class AvidPlaybackPlugin : Plugin() {
             put("chapterTitle", chapters.getOrNull(chapterIndex)?.title ?: "")
             put("trackIds", org.json.JSONArray((0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaMetadata.extras?.getString("trackId") ?: "" }))
             val session = (player as? MediaController)?.sessionExtras
+            session?.getString("nativeEvents")?.let { raw -> runCatching { put("nativeEvents", org.json.JSONObject(raw)) } }
             put("sleepUntil", if (session?.containsKey("deadline") == true) session.getLong("deadline") else org.json.JSONObject.NULL)
             put("sleepAtChapterEnd", if (session?.containsKey("chapterEndMs") == true) session.getLong("chapterEndMs") / 1000.0 else org.json.JSONObject.NULL)
             item?.mediaMetadata?.extras?.getString("manifestRevision")?.let { put("manifestRevision", it) }

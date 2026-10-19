@@ -1,7 +1,10 @@
 import type { PlaybackBook, PlaybackSnapshot } from "./types";
 export interface RemoteSkipPolicy {
   mode: "time" | "chapter";
+  /** Legacy symmetric interval; retained for older saved policies and bridges. */
   seconds: number;
+  backwardSeconds?: number;
+  forwardSeconds?: number;
 }
 export const defaultRemotePolicy: RemoteSkipPolicy = {
   mode: "time",
@@ -14,9 +17,21 @@ export function normalizeRemotePolicy(
   return {
     mode: value?.mode === "chapter" ? "chapter" : "time",
     seconds: Number.isFinite(value?.seconds)
-      ? Math.max(5, Math.min(120, Math.round(value!.seconds!)))
+      ? Math.max(1, Math.min(300, Math.round(value!.seconds!)))
       : 30,
+    ...(value?.backwardSeconds !== undefined || value?.forwardSeconds !== undefined ? {
+      backwardSeconds: interval(value.backwardSeconds, value.seconds, 15),
+      forwardSeconds: interval(value.forwardSeconds, value.seconds, 30),
+    } : {}),
   };
+}
+function interval(value: number | undefined, legacy: number | undefined, fallback: number): number {
+  const candidate = Number.isFinite(value) ? value! : Number.isFinite(legacy) ? legacy! : fallback;
+  return Math.max(1, Math.min(300, Math.round(candidate)));
+}
+/** Source seconds; acceleration and future DSP never scale a seek interval. */
+export function remoteSkipSeconds(policy: RemoteSkipPolicy, direction: 1 | -1): number {
+  return interval(direction < 0 ? policy.backwardSeconds : policy.forwardSeconds, policy.seconds, direction < 0 ? 15 : 30);
 }
 export function readRemotePolicy(
   storage?: Pick<Storage, "getItem">,
@@ -54,7 +69,7 @@ export function remoteSkipPosition(
     0,
     Math.min(
       state.duration || Infinity,
-      state.currentTime + direction * policy.seconds,
+      state.currentTime + direction * remoteSkipSeconds(policy, direction),
     ),
   );
 }

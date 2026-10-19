@@ -1,0 +1,77 @@
+.listening-settings {
+  margin: 0 0 20px;
+  border-block: 1px solid var(--line);
+  text-align: start;
+}
+.listening-settings > summary {
+  min-height: 48px;
+  padding: 14px 0;
+  cursor: pointer;
+  font-weight: 600;
+}
+.listening-settings-hint,
+.listening-setting-error {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 6px 0 14px;
+}
+.listening-settings-hint,
+.listening-setting-source small {
+  color: var(--muted);
+}
+.listening-setting-error {
+  color: var(--danger, #ae3030);
+}
+.listening-settings-scope {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.listening-setting {
+  border-top: 1px solid var(--line);
+  padding: 14px 0;
+}
+.listening-setting > label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.listening-setting-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin: 9px 0 5px;
+}
+.listening-settings :is(input, select) {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+  font-size: 14px;
+}
+.listening-settings button {
+  min-height: 44px;
+}
+.listening-setting-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.listening-setting-source small {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.listening-setting-source button {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.listening-settings :is(summary, button, select, input):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}

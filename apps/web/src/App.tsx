@@ -105,7 +105,7 @@ import { useCurrentBookDescription } from "./useCurrentBookDescription";
 import { descriptionToPlainText } from "./descriptionText";
 import { useDesktopSurfaces } from "./useDesktopSurfaces";
 import { SyncRecoveryPanel } from "./SyncRecoveryPanel";
-import { readRemotePolicy } from "../../../packages/playback/src/remotePolicy";
+import { applyListeningPreferences, usePlaybackPreferences } from "./playbackPreferences";
 import { createBookOrbitReaderPreferences } from "./readerPreferences";
 import { recoveryTranslate } from "./recoveryMessages";
 import { importAo3Edition, type ImportedAo3Edition } from "./localEditions";
@@ -455,7 +455,6 @@ export default function App() {
     createPlaybackTransport({
       accountScope: () => accountScope.current,
       readOnly: () => readOnlyConnection.current,
-      remotePolicy: readRemotePolicy(localStorage),
     }),
   );
   const playback = useSyncExternalStore(
@@ -532,6 +531,20 @@ export default function App() {
     new Map<string, { book: Book; sources: Map<string, File> }>(),
   );
   const playbackScope = useRef<string | null>(null);
+  const {
+    store: listeningPreferences,
+    sessionRate: listeningSessionRate,
+    resetSessionRate: resetListeningSessionRate,
+  } = usePlaybackPreferences({
+    scope: library.repo.scope,
+    controller,
+    book: playerBook,
+    active: playbackScope.current === library.repo.scope,
+    isActive: () =>
+      playbackScope.current === library.repo.scope &&
+      accountScope.current === library.repo.scope,
+    allowLegacyMigration: !!library.client,
+  });
   const openRequest = useRef<AbortController | null>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -1274,6 +1287,7 @@ export default function App() {
       confirmedAudioAnchor.current = saved;
       setUndoAudioPosition(undefined);
       controller.load(source, time);
+      applyListeningPreferences(controller, listeningPreferences, { bookId: book.id, seriesId: book.seriesId });
       playbackScope.current = scope;
       setPlayerBook(book);
       publishNativeRecent(book, file, saved);
@@ -1508,7 +1522,7 @@ export default function App() {
         source: audio!,
         seconds: controller.getSnapshot().currentTime,
       });
-      controller.seek(confirmed.seconds);
+      controller.seek(confirmed.seconds, "read-listen-handoff");
     }
     handle?.pauseNarration();
     finishReading();
@@ -1807,6 +1821,7 @@ export default function App() {
         tracks: [{ id, url }],
       });
       playbackScope.current = accountScope.current;
+      applyListeningPreferences(controller, listeningPreferences, { bookId: book.id, seriesId: book.seriesId });
       setPlayerBook(book);
       setShowPlayer(true);
       await controller.play();
@@ -2997,6 +3012,9 @@ export default function App() {
             <Player
               controller={controller}
               book={playerBook}
+              preferences={listeningPreferences}
+              sessionRate={listeningSessionRate}
+              onResetSessionRate={resetListeningSessionRate}
               onNote={audioNote}
               onRead={
                 alignment &&
@@ -3047,7 +3065,7 @@ export default function App() {
                                 accountScope.current,
                               )
                             )
-                              controller.seek(undoAudioPosition.seconds);
+                              controller.seek(undoAudioPosition.seconds, "recovery");
                             setUndoAudioPosition(undefined);
                           }
                     }

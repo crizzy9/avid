@@ -18,9 +18,12 @@ import type { PlaybackTransport } from "../../mobile/src/native-transport";
 import type { Book } from "../../../packages/core/src/types";
 import { Cover } from "./ui";
 import {
-  remotePolicyKey,
+  remoteSkipSeconds,
   type RemoteSkipPolicy,
 } from "../../../packages/playback/src/remotePolicy";
+import type { PlaybackPreferenceStore } from "../../../packages/playback/src/preferences";
+import { PlaybackSettings } from "./PlaybackSettings";
+import { usePlaybackSettingsI18n } from "./playbackSettingsMessages";
 import { useRemoteI18n } from "./remoteMessages";
 import { playerRemainingLabel, usePlayerI18n } from "./playerMessages";
 import {
@@ -32,6 +35,9 @@ import {
 import type { PlaybackBook } from "../../../packages/playback/src";
 import "./player.css";
 
+const noPreferenceSubscribe = () => () => {};
+const noPreferenceSnapshot = () => null;
+
 export function Player({
   controller,
   book,
@@ -39,6 +45,9 @@ export function Player({
   onRead,
   readAlong,
   offlineControl,
+  preferences,
+  sessionRate,
+  onResetSessionRate,
 }: {
   controller: PlaybackTransport;
   book: Book;
@@ -48,16 +57,39 @@ export function Player({
   readAlong?: ReactNode;
   /** Download/cache actions remain owned by the application's storage flow. */
   offlineControl?: ReactNode;
+  /** Optional account-owned settings; prepared playback without this is session-only. */
+  preferences?: PlaybackPreferenceStore;
+  /** Live native adoption can retain an unsaved rate until explicitly changed/reset. */
+  sessionRate?: number;
+  onResetSessionRate?: () => void;
 }) {
   const { t, locale } = useI18n();
   const { t: alignmentText } = useAlignmentI18n();
   const remoteText = useRemoteI18n();
   const playerText = usePlayerI18n();
+  const settingsText = usePlaybackSettingsI18n();
   const chapterListId = useId();
-  const [remotePolicy, setRemotePolicy] = useState(() =>
+  const [sessionRemotePolicy, setRemotePolicy] = useState(() =>
     controller.getRemotePolicy(),
   );
-  const [preferenceError, setPreferenceError] = useState(false);
+  useSyncExternalStore(
+    preferences?.subscribe ?? noPreferenceSubscribe,
+    preferences?.getSnapshot ?? noPreferenceSnapshot,
+  );
+  const resolvedPreferences = preferences?.resolve({
+    bookId: book.id,
+    seriesId: book.seriesId,
+  }).values;
+  const remotePolicy: RemoteSkipPolicy = resolvedPreferences
+    ? {
+        mode: resolvedPreferences.remoteMode,
+        seconds: resolvedPreferences.skipForwardSeconds,
+        backwardSeconds: resolvedPreferences.skipBackwardSeconds,
+        forwardSeconds: resolvedPreferences.skipForwardSeconds,
+      }
+    : sessionRemotePolicy;
+  const backwardSeconds = remoteSkipSeconds(remotePolicy, -1);
+  const forwardSeconds = remoteSkipSeconds(remotePolicy, 1);
   function changeRemote(value: string) {
     const policy: RemoteSkipPolicy =
       value === "chapter"
@@ -65,12 +97,6 @@ export function Player({
         : { mode: "time", seconds: Number(value) };
     controller.configureRemote(policy);
     setRemotePolicy(policy);
-    try {
-      localStorage.setItem(remotePolicyKey, JSON.stringify(policy));
-      setPreferenceError(false);
-    } catch {
-      setPreferenceError(true);
-    }
   }
 
   const state = useSyncExternalStore(
@@ -217,11 +243,11 @@ export function Player({
         </button>
         <button
           className="icon-button skip-button"
-          onClick={() => controller.skip(-remotePolicy.seconds)}
-          aria-label={remoteText("back", { seconds: remotePolicy.seconds })}
+          onClick={() => controller.skip(-backwardSeconds)}
+          aria-label={remoteText("back", { seconds: backwardSeconds })}
         >
           <RotateCcw />
-          <small>{remotePolicy.seconds}</small>
+          <small>{backwardSeconds}</small>
         </button>
         <button
           className="play-button"
@@ -236,11 +262,11 @@ export function Player({
         </button>
         <button
           className="icon-button skip-button"
-          onClick={() => controller.skip(remotePolicy.seconds)}
-          aria-label={remoteText("forward", { seconds: remotePolicy.seconds })}
+          onClick={() => controller.skip(forwardSeconds)}
+          aria-label={remoteText("forward", { seconds: forwardSeconds })}
         >
           <RotateCw />
-          <small>{remotePolicy.seconds}</small>
+          <small>{forwardSeconds}</small>
         </button>
         <button
           className="icon-button player-chapter-button"
@@ -271,60 +297,64 @@ export function Player({
         </div>
       )}
       <div className="player-options">
-        <label>
-          <span>{playerText("remoteControls")}</span>
-          <select
-            value={
-              remotePolicy.mode === "chapter"
-                ? "chapter"
-                : String(remotePolicy.seconds)
-            }
-            onChange={(event) => changeRemote(event.target.value)}
-          >
-            {[10, 15, 30, 45, 60].map((seconds) => (
-              <option key={seconds} value={seconds}>
-                {remoteText("seconds", { seconds })}
-              </option>
-            ))}
-            <option value="chapter">{remoteText("chapter")}</option>
-          </select>
-        </label>
-        <label>
-          <span>{t("player.speed")}</span>
-          <select
-            value={state.rate}
-            onChange={(e) => controller.setRate(Number(e.target.value))}
-          >
-            {Array.from(
-              new Set([
-                0.5,
-                0.75,
-                0.9,
-                1,
-                1.1,
-                1.2,
-                1.25,
-                1.3,
-                1.4,
-                1.5,
-                1.75,
-                2,
-                2.5,
-                3,
-                state.rate,
-              ]),
-            )
-              .sort((a, b) => a - b)
-              .map((rate) => (
-                <option key={rate} value={rate}>
-                  {new Intl.NumberFormat(locale, {
-                    maximumFractionDigits: 2,
-                  }).format(rate)}
-                  ×
-                </option>
-              ))}
-          </select>
-        </label>
+        {!preferences && (
+          <>
+            <label>
+              <span>{playerText("remoteControls")}</span>
+              <select
+                value={
+                  remotePolicy.mode === "chapter"
+                    ? "chapter"
+                    : String(remotePolicy.seconds)
+                }
+                onChange={(event) => changeRemote(event.target.value)}
+              >
+                {[10, 15, 30, 45, 60].map((seconds) => (
+                  <option key={seconds} value={seconds}>
+                    {remoteText("seconds", { seconds })}
+                  </option>
+                ))}
+                <option value="chapter">{remoteText("chapter")}</option>
+              </select>
+            </label>
+            <label>
+              <span>{t("player.speed")}</span>
+              <select
+                value={state.rate}
+                onChange={(e) => controller.setRate(Number(e.target.value))}
+              >
+                {Array.from(
+                  new Set([
+                    0.5,
+                    0.75,
+                    0.9,
+                    1,
+                    1.1,
+                    1.2,
+                    1.25,
+                    1.3,
+                    1.4,
+                    1.5,
+                    1.75,
+                    2,
+                    2.5,
+                    3,
+                    state.rate,
+                  ]),
+                )
+                  .sort((a, b) => a - b)
+                  .map((rate) => (
+                    <option key={rate} value={rate}>
+                      {new Intl.NumberFormat(locale, {
+                        maximumFractionDigits: 2,
+                      }).format(rate)}
+                      ×
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </>
+        )}
         <label>
           <span>
             <Timer size={14} />
@@ -371,14 +401,22 @@ export function Player({
           </select>
         </label>
       </div>
-      {preferenceError && (
-        <p role="alert" className="error-banner">
-          {remoteText("save")}
-        </p>
+      {preferences && (
+        <PlaybackSettings
+          key={`${preferences.accountId}:${book.id}`}
+          preferences={preferences}
+          bookId={book.id}
+          seriesId={book.seriesId}
+          sessionRate={sessionRate}
+          onResetSessionRate={onResetSessionRate}
+        />
       )}
       {remotePolicy.mode === "chapter" && !chapterSkipping && (
         <p className="player-policy-note">
-          {remoteText("fallback", { seconds: remotePolicy.seconds })}
+          {settingsText("chapterFallback", {
+            backward: backwardSeconds,
+            forward: forwardSeconds,
+          })}
         </p>
       )}
       {onRead && (

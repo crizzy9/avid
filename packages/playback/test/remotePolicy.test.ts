@@ -65,7 +65,7 @@ describe("remote skip source policy", () => {
   it("restores only valid bounded settings and survives unavailable storage", () => {
     expect(normalizeRemotePolicy({ mode: "chapter", seconds: 999 })).toEqual({
       mode: "chapter",
-      seconds: 120,
+      seconds: 300,
     });
     expect(normalizeRemotePolicy({ seconds: NaN })).toEqual({
       mode: "time",
@@ -82,6 +82,13 @@ describe("remote skip source policy", () => {
         },
       }),
     ).toEqual({ mode: "time", seconds: 30 });
+  });
+  it("applies independent source-time skips to system handlers while preserving legacy symmetric policies", () => {
+    const policy = normalizeRemotePolicy({ mode: "time", seconds: 30, backwardSeconds: 15, forwardSeconds: 45 });
+    expect(remoteSkipPosition(book, state(80), -1, policy)).toBe(65);
+    expect(remoteSkipPosition(book, state(80), 1, policy)).toBe(125);
+    expect(normalizeRemotePolicy({ seconds: 45 })).toEqual({ mode: "time", seconds: 45 });
+    expect(normalizeRemotePolicy({ seconds: 30, backwardSeconds: -2, forwardSeconds: 999 })).toEqual({ mode: "time", seconds: 30, backwardSeconds: 1, forwardSeconds: 300 });
   });
   it("applies a changed policy to existing system media handlers", () => {
     const handlers = new Map<
@@ -122,6 +129,11 @@ describe("remote skip source policy", () => {
       );
       handlers.get("nexttrack")!({ action: "nexttrack" });
       expect(controller.getSnapshot().currentTime).toBe(75);
+      controller.configureRemote({mode: "time", seconds: 30, backwardSeconds: 10, forwardSeconds: 25});
+      handlers.get("seekbackward")!({action:"seekbackward"});
+      expect(controller.getSnapshot().currentTime).toBe(65);
+      handlers.get("seekforward")!({action:"seekforward"});
+      expect(controller.getSnapshot().currentTime).toBe(90);
       controller.configureRemote(chapter);
       handlers.get("previoustrack")!({ action: "previoustrack" });
       expect(controller.getSnapshot().currentTime).toBe(60);

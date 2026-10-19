@@ -74,6 +74,8 @@ export type AudioElement = Pick<HTMLAudioElement,
 
 export interface PlaybackOptions {
   audio?: AudioElement;
+  /** Stable server/user identity supplied by the owner; never credentials. */
+  accountScope?: () => string | null;
   mediaSession?: MediaSession | null;
   /** Invoked synchronously at checkpoints, before subscribers (e.g. durable journal). */
   persistCheckpoint?: (checkpoint: AudioCheckpoint) => void;

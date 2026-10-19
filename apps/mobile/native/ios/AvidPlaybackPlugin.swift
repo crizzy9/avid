@@ -66,26 +66,39 @@ public class AvidPlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
             } catch { call.reject(error.localizedDescription) }
         }
     }
+    /// Final source check on the native owner's main actor, immediately before mutation.
+    @MainActor private func acceptsExpected(_ call: CAPPluginCall) -> Bool {
+        guard let expected = call.getObject("expected") else { return true } // Existing bridges remain supported.
+        let actual = AvidPlaybackOwner.shared.snapshot()
+        let valid = (expected["version"] as? Int) == 1 &&
+            (expected["accountScope"] as? String) == (actual["accountScope"] as? String) &&
+            (expected["bookId"] as? String) == (actual["bookId"] as? String) &&
+            (expected["fileId"] as? String) == (actual["fileId"] as? String) &&
+            (expected["manifestRevision"] as? String) == (actual["manifestRevision"] as? String)
+        if !valid { call.reject("The playback source changed. Refresh the player before trying again.") }
+        return valid
+    }
     @objc func play(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
+            guard self.acceptsExpected(call) else { return }
             do { try AvidPlaybackOwner.shared.play(); call.resolve() } catch { call.reject(error.localizedDescription) }
         }
     }
-    @objc func pause(_ call: CAPPluginCall) { DispatchQueue.main.async { AvidPlaybackOwner.shared.pause(); call.resolve() } }
+    @objc func pause(_ call: CAPPluginCall) { DispatchQueue.main.async { guard self.acceptsExpected(call) else { return }; AvidPlaybackOwner.shared.pause(); call.resolve() } }
     @objc func seek(_ call: CAPPluginCall) {
         guard let position = call.getDouble("position"), position.isFinite else { call.reject("A finite position is required."); return }
-        DispatchQueue.main.async { AvidPlaybackOwner.shared.seek(position); call.resolve() }
+        DispatchQueue.main.async { guard self.acceptsExpected(call) else { return }; AvidPlaybackOwner.shared.seek(position); call.resolve() }
     }
     @objc func configureRemote(_ call: CAPPluginCall) {
         guard let mode = call.getString("mode"), let seconds = call.getDouble("seconds") else { call.reject("A remote control policy is required."); return }
         Task { @MainActor in
-            do { try AvidPlaybackOwner.shared.configureRemote(mode: mode, seconds: seconds); call.resolve() }
+            do { try AvidPlaybackOwner.shared.configureRemote(mode: mode, seconds: seconds, backwardSeconds: call.getDouble("backwardSeconds"), forwardSeconds: call.getDouble("forwardSeconds")); call.resolve() }
             catch { call.reject(error.localizedDescription) }
         }
     }
     @objc func setRate(_ call: CAPPluginCall) {
         guard let rate = call.getDouble("rate"), rate.isFinite else { call.reject("A finite playback rate is required."); return }
-        DispatchQueue.main.async { AvidPlaybackOwner.shared.setRate(Float(rate)); call.resolve() }
+        DispatchQueue.main.async { guard self.acceptsExpected(call) else { return }; AvidPlaybackOwner.shared.setRate(Float(rate)); call.resolve() }
     }
     @objc func setSleepTimer(_ call: CAPPluginCall) {
         DispatchQueue.main.async {

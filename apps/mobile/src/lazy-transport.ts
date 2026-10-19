@@ -12,6 +12,10 @@ export function createLazyPlaybackTransport(factory: () => PlaybackTransport): P
     return owner ??= factory();
   };
   return {
+    getPlaybackSession: () => owner?.getPlaybackSession() ?? null,
+    getPlaybackHistory: () => owner?.getPlaybackHistory() ?? [],
+    onPlaybackEvent: listener => active().onPlaybackEvent(listener),
+    dispatch: command => owner?.dispatch(command) ?? Promise.resolve(false),
     getSnapshot: () => owner?.getSnapshot() ?? empty,
     getBook: () => owner?.getBook() ?? null,
     getRemotePolicy: () => active().getRemotePolicy(),
@@ -21,13 +25,13 @@ export function createLazyPlaybackTransport(factory: () => PlaybackTransport): P
     onCheckpoint: (listener: (value: AudioCheckpoint) => void) => active().onCheckpoint(listener),
     load: (book: PlaybackBook, position?: number) => active().load(book, position),
     adoptNative: (book: PlaybackBook) => active().adoptNative?.(book) ?? Promise.resolve(false),
-    play: () => active().play(),
-    pause: () => owner?.pause(),
+    play: reason => active().play(reason),
+    pause: reason => owner?.pause(reason),
     toggle: () => active().toggle(),
-    seek: (seconds: number) => active().seek(seconds),
+    seek: (seconds, reason) => active().seek(seconds, reason),
     skip: (delta: number) => active().skip(delta),
     goToChapter: (id: string) => active().goToChapter(id),
-    setRate: (rate: number) => active().setRate(rate),
+    setRate: (rate, reason) => active().setRate(rate, reason),
     setSleepTimer: (timer: SleepTimer) => active().setSleepTimer(timer),
     checkpoint: () => owner?.checkpoint() ?? null,
     destroy: () => { if (!destroyed) { destroyed = true; owner?.destroy(); } },

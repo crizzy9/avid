@@ -1,0 +1,1959 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-19-alice-exploratory",
+  "purpose": "Validate harness before a frozen, host-supervised whole-corpus run",
+  "status": "cancelled-by-operator",
+  "reason": "Restart with bundled production fixture and durable host supervision; no algorithm failure inferred.",
+  "isFullBookResult": false,
+  "corpusManifest": "read-listen-full-book-corpus-2026-10-19.json",
+  "report": {
+    "schemaVersion": 1,
+    "bookId": "alice-yearsley-v3",
+    "role": "development",
+    "startedAt": "2026-10-19T15:19:49.502Z",
+    "status": "cancelled",
+    "baseline": "654db63",
+    "commit": "053ead94f9340ab75209c758b72ed39924795489",
+    "sourceProof": [
+      {
+        "path": "apps/web/src/preparation/prepareReadListen.ts",
+        "sha256": "b564a58c7b2411ae46cf6b521dd6fe921653c4e0e1b4b3b0fe7cbe95fdc55e96",
+        "baselineSha256": "b564a58c7b2411ae46cf6b521dd6fe921653c4e0e1b4b3b0fe7cbe95fdc55e96",
+        "matchesBaseline": true
+      },
+      {
+        "path": "apps/web/src/preparation/audioWindows.ts",
+        "sha256": "66f2e2954fd4c6dfc9fa0a897e152c6c4fadb6e273efbe03f91e3f5dab468112",
+        "baselineSha256": "66f2e2954fd4c6dfc9fa0a897e152c6c4fadb6e273efbe03f91e3f5dab468112",
+        "matchesBaseline": true
+      },
+      {
+        "path": "apps/web/src/preparation/transcription.ts",
+        "sha256": "9547e2e5517d06ece191a135f4e768546db6d2bfaa167e71bd2d9f6464309730",
+        "baselineSha256": "9547e2e5517d06ece191a135f4e768546db6d2bfaa167e71bd2d9f6464309730",
+        "matchesBaseline": true
+      },
+      {
+        "path": "apps/web/src/preparation/transcription.worker.ts",
+        "sha256": "f18b3aa68e2ecb5801693d428b5590c25b4dc71fcaa6193dfc14ca3082c5e6a0",
+        "baselineSha256": "f18b3aa68e2ecb5801693d428b5590c25b4dc71fcaa6193dfc14ca3082c5e6a0",
+        "matchesBaseline": true
+      },
+      {
+        "path": "apps/web/src/preparation/model.ts",
+        "sha256": "70f0b2b671231f2e9b427649f10142282014dc60d92c6eb9138e1704237e5e61",
+        "baselineSha256": "70f0b2b671231f2e9b427649f10142282014dc60d92c6eb9138e1704237e5e61",
+        "matchesBaseline": true
+      },
+      {
+        "path": "apps/web/src/preparation/match.ts",
+        "sha256": "19829572bf5f3351c3b1495780a40f55d1aad3cb3c7104596a61ed7b6c0fef49",
+        "baselineSha256": "19829572bf5f3351c3b1495780a40f55d1aad3cb3c7104596a61ed7b6c0fef49",
+        "matchesBaseline": true
+      },
+      {
+        "path": "apps/web/src/preparation/match.worker.ts",
+        "sha256": "9a475b13deab8ce3d6c0de5e1de02248702f0a039f7567d35ae4cbe51e22419d",
+        "baselineSha256": "9a475b13deab8ce3d6c0de5e1de02248702f0a039f7567d35ae4cbe51e22419d",
+        "matchesBaseline": true
+      },
+      {
+        "path": "packages/playback/src/generated-alignment.ts",
+        "sha256": "c4a46968307d681e7a117a3edf71ecca038d37b198e79f3d1e170b6513756486",
+        "baselineSha256": "c4a46968307d681e7a117a3edf71ecca038d37b198e79f3d1e170b6513756486",
+        "matchesBaseline": true
+      },
+      {
+        "path": "packages/playback/src/audioDuration.ts",
+        "sha256": "0fcbfdcda21b757e49df8c50497bf6d872d054b9ca28fd5755a8cfda7ae01f7a",
+        "baselineSha256": "0fcbfdcda21b757e49df8c50497bf6d872d054b9ca28fd5755a8cfda7ae01f7a",
+        "matchesBaseline": true
+      },
+      {
+        "path": "packages/playback/src/standalone-alignment.ts",
+        "sha256": "7e2aa09f3638304bd0bb08bc282f7cbf7d270d2073c008e37500bbf0e543c67e",
+        "baselineSha256": "7e2aa09f3638304bd0bb08bc282f7cbf7d270d2073c008e37500bbf0e543c67e",
+        "matchesBaseline": true
+      },
+      {
+        "path": "packages/readers/src/generatedText.ts",
+        "sha256": "42b7b876a1fada3cff1b9274277bb3a22658bd21efd42ad99d4e8f2eae5c4fff",
+        "baselineSha256": "42b7b876a1fada3cff1b9274277bb3a22658bd21efd42ad99d4e8f2eae5c4fff",
+        "matchesBaseline": true
+      },
+      {
+        "path": "packages/readers/src/alignedPassage.ts",
+        "sha256": "1cfda1e0ebed6ede5d25144d35cc0f950fd1c228cbeba863444c6271f7b79e9e",
+        "baselineSha256": "1cfda1e0ebed6ede5d25144d35cc0f950fd1c228cbeba863444c6271f7b79e9e",
+        "matchesBaseline": true
+      },
+      {
+        "path": "packages/core/src/preparedReadListen.ts",
+        "sha256": "e2054cbb12c7b8b2f39691e406802918b9f55cb00a16ccd98a1ad061b5840d63",
+        "baselineSha256": "e2054cbb12c7b8b2f39691e406802918b9f55cb00a16ccd98a1ad061b5840d63",
+        "matchesBaseline": true
+      }
+    ],
+    "model": {
+      "id": "Xenova/whisper-base.en",
+      "revision": "95bf40a508535962c6483ead40270b2e32267508"
+    },
+    "runtime": {
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+      "hardwareConcurrency": 24,
+      "backend": "production-browser-worker-wasm",
+      "threads": 1
+    },
+    "originalAssetCount": 12,
+    "originalAudioSeconds": 9758.406441000001,
+    "modelCache": [
+      {
+        "name": "config.json",
+        "sha256": "5c390f2c6ba84ddeb7e362cd8b2123832911407850174e64d7081ccc36df2d64"
+      },
+      {
+        "name": "generation_config.json",
+        "sha256": "1e57ed56ad1bd7f08a49ece7fe7daada674573805a35f8bdbbe68380aab5b1ee"
+      },
+      {
+        "name": "preprocessor_config.json",
+        "sha256": "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "sha256": "e082c1ad251541bf277967a703252cddd4bb37a71a43737e03d050c22ec08238"
+      },
+      {
+        "name": "tokenizer.json",
+        "sha256": "c6ee8f089220a5b1188f6426456772572671c6141ae007eecb83c6a8349f5deb"
+      },
+      {
+        "name": "onnx/encoder_model_quantized.onnx",
+        "sha256": "d0d4e59e2842617b39787cece73d7e8f76f99b1697d3386c0e682eca2269f4a1"
+      },
+      {
+        "name": "onnx/decoder_model_merged_quantized.onnx",
+        "sha256": "a25afc5858a20aabb7652cb2d555996ebe10691a69bbdb423d5073d52f060325"
+      }
+    ],
+    "events": [
+      {
+        "stage": "checking",
+        "elapsedMs": 1554,
+        "jsHeapBytes": 58141415
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0,
+        "elapsedMs": 1695,
+        "jsHeapBytes": 65188679
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.08064523741203673,
+        "elapsedMs": 1910,
+        "jsHeapBytes": 78241081
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.15801712047751,
+        "elapsedMs": 2119,
+        "jsHeapBytes": 90628811
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.22153011033063277,
+        "elapsedMs": 2363,
+        "jsHeapBytes": 41588268
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.3110639951968467,
+        "elapsedMs": 2657,
+        "jsHeapBytes": 55876312
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.3917975592056354,
+        "elapsedMs": 2928,
+        "jsHeapBytes": 68764723
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.48910933958569264,
+        "elapsedMs": 3262,
+        "jsHeapBytes": 84242633
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.5763869355300181,
+        "elapsedMs": 3560,
+        "jsHeapBytes": 98312466
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.6642747745713844,
+        "elapsedMs": 3868,
+        "jsHeapBytes": 112132090
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.7526069105466484,
+        "elapsedMs": 4202,
+        "jsHeapBytes": 46585791
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.8459012684110413,
+        "elapsedMs": 4517,
+        "jsHeapBytes": 61429251
+      },
+      {
+        "stage": "downloading",
+        "fraction": 0.9178184510168634,
+        "elapsedMs": 4707,
+        "jsHeapBytes": 72923704
+      },
+      {
+        "stage": "model",
+        "elapsedMs": 4924,
+        "jsHeapBytes": 86019623
+      },
+      {
+        "stage": "model",
+        "detail": "config.json",
+        "fraction": 1,
+        "elapsedMs": 5746,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "tokenizer.json",
+        "fraction": 1,
+        "elapsedMs": 5753,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "tokenizer.json",
+        "fraction": 1,
+        "elapsedMs": 5758,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "tokenizer.json",
+        "fraction": 1,
+        "elapsedMs": 5758,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "tokenizer.json",
+        "fraction": 1,
+        "elapsedMs": 5759,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "tokenizer.json",
+        "fraction": 1,
+        "elapsedMs": 5759,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "preprocessor_config.json",
+        "fraction": 1,
+        "elapsedMs": 5760,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "tokenizer_config.json",
+        "fraction": 1,
+        "elapsedMs": 5760,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5765,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5766,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5766,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5771,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5772,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5773,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5778,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5783,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5790,
+        "jsHeapBytes": 86297740
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5798,
+        "jsHeapBytes": 87499680
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5806,
+        "jsHeapBytes": 87499680
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5814,
+        "jsHeapBytes": 87499680
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/encoder_model_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5828,
+        "jsHeapBytes": 87499680
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5835,
+        "jsHeapBytes": 87499680
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5836,
+        "jsHeapBytes": 87499680
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5841,
+        "jsHeapBytes": 87499680
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5843,
+        "jsHeapBytes": 87499680
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5846,
+        "jsHeapBytes": 87499680
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5850,
+        "jsHeapBytes": 87884760
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5857,
+        "jsHeapBytes": 87884760
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5861,
+        "jsHeapBytes": 87884760
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5866,
+        "jsHeapBytes": 87884760
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5876,
+        "jsHeapBytes": 87884760
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5882,
+        "jsHeapBytes": 87884760
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5890,
+        "jsHeapBytes": 87884760
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5899,
+        "jsHeapBytes": 87884760
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5908,
+        "jsHeapBytes": 88000756
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5925,
+        "jsHeapBytes": 88000756
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5934,
+        "jsHeapBytes": 88000756
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5944,
+        "jsHeapBytes": 88000756
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5974,
+        "jsHeapBytes": 88060348
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 5994,
+        "jsHeapBytes": 88060348
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 6010,
+        "jsHeapBytes": 88060348
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 6036,
+        "jsHeapBytes": 88106332
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 6050,
+        "jsHeapBytes": 88106332
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 6067,
+        "jsHeapBytes": 88106332
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 6093,
+        "jsHeapBytes": 88153432
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 6109,
+        "jsHeapBytes": 88153432
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 6127,
+        "jsHeapBytes": 88153432
+      },
+      {
+        "stage": "model",
+        "detail": "onnx/decoder_model_merged_quantized.onnx",
+        "fraction": 1,
+        "elapsedMs": 6145,
+        "jsHeapBytes": 88208144
+      },
+      {
+        "stage": "model",
+        "detail": "generation_config.json",
+        "fraction": 1,
+        "elapsedMs": 6146,
+        "jsHeapBytes": 88208144
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.0028688524590163933,
+        "elapsedMs": 13538,
+        "jsHeapBytes": 132965335
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.005532786885245901,
+        "elapsedMs": 29168,
+        "jsHeapBytes": 44414557
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.00819672131147541,
+        "elapsedMs": 45613,
+        "jsHeapBytes": 50861999
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.010860655737704918,
+        "elapsedMs": 59853,
+        "jsHeapBytes": 50140491
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.013524590163934426,
+        "elapsedMs": 74706,
+        "jsHeapBytes": 44452797
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.016188524590163934,
+        "elapsedMs": 82174,
+        "jsHeapBytes": 51818581
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.018852459016393444,
+        "elapsedMs": 89392,
+        "jsHeapBytes": 45958153
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.02151639344262295,
+        "elapsedMs": 96388,
+        "jsHeapBytes": 51486933
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.02418032786885246,
+        "elapsedMs": 103831,
+        "jsHeapBytes": 47028239
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.026844262295081966,
+        "elapsedMs": 119434,
+        "jsHeapBytes": 44512985
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.029508196721311476,
+        "elapsedMs": 134265,
+        "jsHeapBytes": 50985325
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.032172131147540986,
+        "elapsedMs": 149072,
+        "jsHeapBytes": 44519797
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.03483606557377049,
+        "elapsedMs": 163227,
+        "jsHeapBytes": 52081801
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.0375,
+        "elapsedMs": 177953,
+        "jsHeapBytes": 44537933
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.04016393442622951,
+        "elapsedMs": 192351,
+        "jsHeapBytes": 51040371
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.04282786885245902,
+        "elapsedMs": 206486,
+        "jsHeapBytes": 46024519
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.04549180327868853,
+        "elapsedMs": 220633,
+        "jsHeapBytes": 50857271
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.04815573770491803,
+        "elapsedMs": 234218,
+        "jsHeapBytes": 46811643
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.05081967213114754,
+        "elapsedMs": 248630,
+        "jsHeapBytes": 51787057
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.05348360655737705,
+        "elapsedMs": 263125,
+        "jsHeapBytes": 51354563
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.05614754098360656,
+        "elapsedMs": 270289,
+        "jsHeapBytes": 47057869
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.05881147540983606,
+        "elapsedMs": 277536,
+        "jsHeapBytes": 51668545
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.06147540983606557,
+        "elapsedMs": 284147,
+        "jsHeapBytes": 47483993
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.06413934426229508,
+        "elapsedMs": 291152,
+        "jsHeapBytes": 54180027
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.06680327868852459,
+        "elapsedMs": 298130,
+        "jsHeapBytes": 49988227
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.0694672131147541,
+        "elapsedMs": 305363,
+        "jsHeapBytes": 54203353
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.07213114754098361,
+        "elapsedMs": 313322,
+        "jsHeapBytes": 49198705
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.07479508196721311,
+        "elapsedMs": 321122,
+        "jsHeapBytes": 53758437
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.07745901639344262,
+        "elapsedMs": 331059,
+        "jsHeapBytes": 43079742
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.08012295081967213,
+        "elapsedMs": 339830,
+        "jsHeapBytes": 49376113
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.08350409836065574,
+        "elapsedMs": 348907,
+        "jsHeapBytes": 68916178
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.08616803278688524,
+        "elapsedMs": 362221,
+        "jsHeapBytes": 44658310
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.08883196721311476,
+        "elapsedMs": 375526,
+        "jsHeapBytes": 50726619
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.09149590163934426,
+        "elapsedMs": 390594,
+        "jsHeapBytes": 44659467
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.09415983606557377,
+        "elapsedMs": 405160,
+        "jsHeapBytes": 52167445
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.09682377049180328,
+        "elapsedMs": 413125,
+        "jsHeapBytes": 47811783
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.09948770491803278,
+        "elapsedMs": 420582,
+        "jsHeapBytes": 52387855
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.1021516393442623,
+        "elapsedMs": 427670,
+        "jsHeapBytes": 47881443
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.1048155737704918,
+        "elapsedMs": 435134,
+        "jsHeapBytes": 54567626
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.10747950819672131,
+        "elapsedMs": 449797,
+        "jsHeapBytes": 44685848
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.11014344262295082,
+        "elapsedMs": 463112,
+        "jsHeapBytes": 51129484
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.11280737704918033,
+        "elapsedMs": 476460,
+        "jsHeapBytes": 47262204
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.11547131147540983,
+        "elapsedMs": 489717,
+        "jsHeapBytes": 52537092
+      },
+      {
+        "stage": "comparing",
+        "fraction": 0.11813524590163935,
+        "elapsedMs": 504526,
+        "jsHeapBytes": 44701648
+      }
+    ],
+    "tracks": [
+      {
+        "index": 0,
+        "duration": 787,
+        "words": 1051,
+        "recognitionMs": 335586
+      }
+    ],
+    "qualityReview": "not performed",
+    "coldReopen": "not performed",
+    "nativeAcceptance": "not performed",
+    "extractedPassages": 875,
+    "error": "Preparation cancelled.",
+    "lastStage": "comparing",
+    "finishedAt": "2026-10-19T15:28:28.502Z",
+    "elapsedMs": 519000
+  },
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/155.0.8059.39",
+    "revision": "@3ff7ac5a9224be9156d7f8703a06e22890aafd34",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "jsVersion": "15.5.35.20"
+  },
+  "browserRuns": [
+    {
+      "bookId": "alice-yearsley-v3",
+      "status": "cancelled",
+      "elapsedMs": 530600
+    }
+  ],
+  "resourceSamples": [
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 5009,
+      "status": {
+        "text": "downloading: 75.26% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 341860352,
+          "cpuSeconds": 1.47
+        },
+        {
+          "type": "renderer",
+          "pid": 934701,
+          "rssBytes": 109920256,
+          "cpuSeconds": 0.03
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 234094592,
+          "cpuSeconds": 4.31
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 109883392,
+          "cpuSeconds": 0.04
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76750848,
+          "cpuSeconds": 0.01
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 155504640,
+          "cpuSeconds": 0.31
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 84692992,
+          "cpuSeconds": 0.11
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 113803264,
+          "cpuSeconds": 0.32
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 47611904,
+          "cpuSeconds": 0
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 35049,
+      "status": {
+        "text": "comparing: 0.29% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 355467264,
+          "cpuSeconds": 2.9
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1414529024,
+          "cpuSeconds": 36.7
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 109334528,
+          "cpuSeconds": 0.04
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76353536,
+          "cpuSeconds": 0.01
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 147558400,
+          "cpuSeconds": 0.39
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 83357696,
+          "cpuSeconds": 0.23
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 113070080,
+          "cpuSeconds": 0.72
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48205824,
+          "cpuSeconds": 0
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 65085,
+      "status": {
+        "text": "comparing: 0.82% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 359182336,
+          "cpuSeconds": 3.13
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1412096000,
+          "cpuSeconds": 67.72
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 111915008,
+          "cpuSeconds": 0.05
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 147623936,
+          "cpuSeconds": 0.39
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82534400,
+          "cpuSeconds": 0.25
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112750592,
+          "cpuSeconds": 0.79
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48386048,
+          "cpuSeconds": 0.01
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 95120,
+      "status": {
+        "text": "comparing: 1.62% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 373207040,
+          "cpuSeconds": 3.59
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1682776064,
+          "cpuSeconds": 99.01
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 111915008,
+          "cpuSeconds": 0.05
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.43
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82595840,
+          "cpuSeconds": 0.27
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112726016,
+          "cpuSeconds": 0.89
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48386048,
+          "cpuSeconds": 0.01
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 125148,
+      "status": {
+        "text": "comparing: 2.42% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 373272576,
+          "cpuSeconds": 3.63
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1406251008,
+          "cpuSeconds": 130.27
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 111915008,
+          "cpuSeconds": 0.05
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.43
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82636800,
+          "cpuSeconds": 0.29
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112644096,
+          "cpuSeconds": 0.9
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48365568,
+          "cpuSeconds": 0.01
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 155181,
+      "status": {
+        "text": "comparing: 2.95% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 373063680,
+          "cpuSeconds": 3.66
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1452023808,
+          "cpuSeconds": 161.38
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 111915008,
+          "cpuSeconds": 0.05
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.43
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82636800,
+          "cpuSeconds": 0.31
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112644096,
+          "cpuSeconds": 0.91
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48365568,
+          "cpuSeconds": 0.01
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 185211,
+      "status": {
+        "text": "comparing: 3.75% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 373243904,
+          "cpuSeconds": 3.71
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1496530944,
+          "cpuSeconds": 192.62
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 111915008,
+          "cpuSeconds": 0.05
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.43
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82747392,
+          "cpuSeconds": 0.32
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112730112,
+          "cpuSeconds": 0.91
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48365568,
+          "cpuSeconds": 0.01
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 215248,
+      "status": {
+        "text": "comparing: 4.28% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 373235712,
+          "cpuSeconds": 3.75
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1496666112,
+          "cpuSeconds": 223.53
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 111915008,
+          "cpuSeconds": 0.05
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.43
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82747392,
+          "cpuSeconds": 0.34
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112730112,
+          "cpuSeconds": 0.93
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48365568,
+          "cpuSeconds": 0.01
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 245281,
+      "status": {
+        "text": "comparing: 4.82% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 373260288,
+          "cpuSeconds": 3.79
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1646223360,
+          "cpuSeconds": 254.57
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 111915008,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.44
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82706432,
+          "cpuSeconds": 0.35
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112635904,
+          "cpuSeconds": 0.94
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48365568,
+          "cpuSeconds": 0.01
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 275313,
+      "status": {
+        "text": "comparing: 5.35% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 373305344,
+          "cpuSeconds": 3.82
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1696112640,
+          "cpuSeconds": 285.55
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 111915008,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.44
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82706432,
+          "cpuSeconds": 0.37
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112627712,
+          "cpuSeconds": 0.94
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48365568,
+          "cpuSeconds": 0.02
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 305352,
+      "status": {
+        "text": "comparing: 6.68% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 371294208,
+          "cpuSeconds": 3.87
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1704333312,
+          "cpuSeconds": 316.98
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 112144384,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.44
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82706432,
+          "cpuSeconds": 0.39
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112709632,
+          "cpuSeconds": 0.96
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48365568,
+          "cpuSeconds": 0.02
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 335385,
+      "status": {
+        "text": "comparing: 7.48% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 371326976,
+          "cpuSeconds": 3.92
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1708195840,
+          "cpuSeconds": 348.14
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 112144384,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.44
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82595840,
+          "cpuSeconds": 0.41
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112631808,
+          "cpuSeconds": 0.98
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48365568,
+          "cpuSeconds": 0.02
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 365410,
+      "status": {
+        "text": "comparing: 8.35% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 373448704,
+          "cpuSeconds": 3.98
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1388015616,
+          "cpuSeconds": 379.42
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 112144384,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.44
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82595840,
+          "cpuSeconds": 0.42
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112627712,
+          "cpuSeconds": 0.98
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48365568,
+          "cpuSeconds": 0.03
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 395450,
+      "status": {
+        "text": "comparing: 8.88% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 373407744,
+          "cpuSeconds": 4.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1371963392,
+          "cpuSeconds": 410.71
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 112144384,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 76484608,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144060416,
+          "cpuSeconds": 0.44
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 82595840,
+          "cpuSeconds": 0.44
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 112627712,
+          "cpuSeconds": 0.99
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 48365568,
+          "cpuSeconds": 0.03
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 425479,
+      "status": {
+        "text": "comparing: 9.68% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 374292480,
+          "cpuSeconds": 4.12
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1723834368,
+          "cpuSeconds": 441.74
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 112144384,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 77373440,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144678912,
+          "cpuSeconds": 0.45
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 83202048,
+          "cpuSeconds": 0.46
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 113176576,
+          "cpuSeconds": 1
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 49528832,
+          "cpuSeconds": 0.03
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 455512,
+      "status": {
+        "text": "comparing: 10.48% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 374087680,
+          "cpuSeconds": 4.15
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1456943104,
+          "cpuSeconds": 473.17
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 112144384,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 77373440,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144678912,
+          "cpuSeconds": 0.45
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 83132416,
+          "cpuSeconds": 0.47
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 113172480,
+          "cpuSeconds": 1.01
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 49524736,
+          "cpuSeconds": 0.03
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 485549,
+      "status": {
+        "text": "comparing: 11.28% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 374013952,
+          "cpuSeconds": 4.19
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1919225856,
+          "cpuSeconds": 504.29
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 112144384,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 77373440,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144678912,
+          "cpuSeconds": 0.45
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 83193856,
+          "cpuSeconds": 0.5
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 113180672,
+          "cpuSeconds": 1.02
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 49524736,
+          "cpuSeconds": 0.03
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 515579,
+      "status": {
+        "text": "comparing: 11.81% "
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 373968896,
+          "cpuSeconds": 4.23
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 1663848448,
+          "cpuSeconds": 535.47
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 112144384,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 77373440,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144678912,
+          "cpuSeconds": 0.45
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 83193856,
+          "cpuSeconds": 0.51
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 113176576,
+          "cpuSeconds": 1.03
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 49524736,
+          "cpuSeconds": 0.03
+        }
+      ]
+    },
+    {
+      "bookId": "alice-yearsley-v3",
+      "elapsedMs": 530599,
+      "status": {
+        "status": "cancelled",
+        "text": "cancelled at comparing: Preparation cancelled."
+      },
+      "processes": [
+        {
+          "type": "browser",
+          "pid": 934559,
+          "rssBytes": 371879936,
+          "cpuSeconds": 4.25
+        },
+        {
+          "type": "renderer",
+          "pid": 934699,
+          "rssBytes": 348119040,
+          "cpuSeconds": 548.26
+        },
+        {
+          "type": "renderer",
+          "pid": 934676,
+          "rssBytes": 112144384,
+          "cpuSeconds": 0.06
+        },
+        {
+          "type": "renderer",
+          "pid": 934749,
+          "rssBytes": 77373440,
+          "cpuSeconds": 0.02
+        },
+        {
+          "type": "renderer",
+          "pid": 934663,
+          "rssBytes": 144678912,
+          "cpuSeconds": 0.45
+        },
+        {
+          "type": "GPU",
+          "pid": 934596,
+          "rssBytes": 83308544,
+          "cpuSeconds": 0.52
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "pid": 934598,
+          "rssBytes": 113168384,
+          "cpuSeconds": 1.03
+        },
+        {
+          "type": "storage.mojom.StorageService",
+          "pid": 934634,
+          "rssBytes": 49524736,
+          "cpuSeconds": 0.03
+        }
+      ]
+    }
+  ],
+  "browserExceptionCount": 0,
+  "peakSummedProcessRssBytes": 2873335808,
+  "memoryCaveat": "Sum of /proc per-process RSS, sampled every30s; includes shared pages more than once, excludes unobserved peaks, not a private-memory measurement. Browser JS heap excludes native/WASM allocations.",
+  "qualityReview": null,
+  "coldReopen": null,
+  "nativeAcceptance": null
+}

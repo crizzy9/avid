@@ -14,11 +14,16 @@ final class AvidPlaybackOwner: NSObject {
     private var chapters: [AvidAudioChapter] = []
     private var artwork: MPMediaItemArtwork?
     private var artworkTask: Task<Void, Never>?
+    private var playbackEvents: [[String: Any]] = []
+    private var playbackEventSequence = 0
     private var remoteMode = UserDefaults.standard.string(forKey: "avid.remote.mode") == "chapter" ? "chapter" : "time"
-    private var remoteSeconds: Double = {
-        let value = UserDefaults.standard.double(forKey: "avid.remote.seconds")
-        return value >= 5 && value <= 120 ? value : 30
-    }()
+    private var remoteBackwardSeconds = AvidPlaybackOwner.remoteInterval(key: "avid.remote.backwardSeconds", fallback: 15)
+    private var remoteForwardSeconds = AvidPlaybackOwner.remoteInterval(key: "avid.remote.forwardSeconds", fallback: 30)
+    private static func remoteInterval(key: String, fallback: Double) -> Double {
+        let defaults = UserDefaults.standard
+        let value = defaults.object(forKey: key) != nil ? defaults.double(forKey: key) : defaults.double(forKey: "avid.remote.seconds")
+        return value.isFinite && value >= 1 && value <= 300 ? value.rounded() : fallback
+    }
     private var itemIndices: [ObjectIdentifier: Int] = [:]
     private var activeIndex = 0
     private var finalPosition: Double?
@@ -137,6 +142,7 @@ final class AvidPlaybackOwner: NSObject {
         pause()
         authenticationTask?.cancel(); authenticationTask = nil
         sourceGeneration = UUID(); authenticationError = nil
+        playbackEvents = []; playbackEventSequence = 0
         authenticationRecoveryNeeded = false; retriedUnauthorized = false
         credentialGeneration = try? AvidSessionStore.read()["generation"] as? String
         if AvidSharedStore.shared.isAvailable {
@@ -163,12 +169,13 @@ final class AvidPlaybackOwner: NSObject {
         player.removeAllItems()
         itemIndices.removeAll()
         pendingSeek = nil
-        seek(position)
+        seek(position, reason: "source-load")
+        recordPlaybackEvent(kind: "load", reason: "source-load", from: position)
         updateArtwork(coverURL)
         publishNowPlaying()
     }
 
-    func play() throws {
+    func play(reason: String = "native-observation") throws {
         guard player.currentItem != nil else { throw PlaybackError.noItem }
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .spokenAudio)
@@ -178,15 +185,17 @@ final class AvidPlaybackOwner: NSObject {
         do { if try renewCredentialsIfNeeded() { checkpoint(); return } }
         catch { desiredPlaying = false; authenticationError = error.localizedDescription; checkpoint(); throw error }
         player.playImmediately(atRate: preferredRate)
+        recordPlaybackEvent(kind: "play", reason: reason, from: globalPosition)
         checkpoint()
         publishNowPlaying()
     }
 
-    func pause() {
+    func pause(reason: String = "native-observation") {
         try? AvidPlaybackJournal.shared.sample(snapshot())
         try? AvidPlaybackJournal.shared.flush()
         desiredPlaying = false
         player.pause()
+        recordPlaybackEvent(kind: "pause", reason: reason, from: globalPosition)
         checkpoint()
         publishNowPlaying()
     }
@@ -258,8 +267,9 @@ final class AvidPlaybackOwner: NSObject {
             player.insert(item, after: nil)
         }
     }
-    func seek(_ seconds: Double, forceRebuild: Bool = false) {
+    func seek(_ seconds: Double, forceRebuild: Bool = false, reason: String = "native-observation") {
         guard seconds.isFinite, !tracks.isEmpty else { return }
+        let previousPosition = reason == "source-load" ? max(0, seconds) : globalPosition
         try? AvidPlaybackJournal.shared.flush()
         seekGeneration &+= 1
         let generation = seekGeneration
@@ -281,6 +291,7 @@ final class AvidPlaybackOwner: NSObject {
                     self.checkpoint(); self.publishNowPlaying(); return
                 }
                 self.pendingSeek = nil
+                self.recordPlaybackEvent(kind: "seek", reason: reason, from: previousPosition)
                 if self.desiredPlaying && self.authenticationTask == nil { self.player.playImmediately(atRate: self.preferredRate) }
                 self.enforceSleep(); self.checkpoint(); self.publishNowPlaying()
             }
@@ -326,6 +337,7 @@ final class AvidPlaybackOwner: NSObject {
         guard rate.isFinite else { return }
         preferredRate = min(3, max(0.5, rate))
         if player.rate > 0 { player.rate = preferredRate }
+        recordPlaybackEvent(kind: "rate", reason: "rate-change", from: globalPosition)
         publishNowPlaying()
     }
 
@@ -338,6 +350,16 @@ final class AvidPlaybackOwner: NSObject {
             sleepTimer = Timer.scheduledTimer(withTimeInterval: max(0.01, deadline.timeIntervalSinceNow), repeats: false) { [weak self] _ in self?.finishSleep() }
         }
         enforceSleep()
+    }
+
+    private func recordPlaybackEvent(kind: String, reason: String, from: Double) {
+        guard !scope.isEmpty, !bookId.isEmpty, from.isFinite, globalPosition.isFinite else { return }
+        playbackEventSequence += 1
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        playbackEvents.append(["sequence": playbackEventSequence, "kind": kind, "reason": reason,
+            "observedAt": formatter.string(from: Date()), "fromSourceSeconds": max(0, from), "toSourceSeconds": max(0, globalPosition),
+            "rate": preferredRate, "status": player.currentItem?.status == .failed ? "failed" : player.timeControlStatus == .playing ? "playing" : pendingSeek != nil ? "loading" : "paused"])
+        if playbackEvents.count > 64 { playbackEvents.removeFirst(playbackEvents.count - 64) }
     }
 
     func snapshot() -> [String: Any] {
@@ -364,6 +386,8 @@ final class AvidPlaybackOwner: NSObject {
         if let chapter { value["chapterTitle"] = chapters[chapter].title }
         if let manifestRevision { value["manifestRevision"] = manifestRevision }
         value["trackIds"] = tracks.map(\.id)
+        value["nativeEvents"] = ["version": 1, "ownerId": sourceGeneration.uuidString, "accountScope": scope, "bookId": bookId,
+            "fileId": fileId, "manifestRevision": manifestRevision as Any? ?? NSNull(), "events": playbackEvents] as [String: Any]
         value["readOnly"] = sourceReadOnly || AvidSessionStore.readOnly(scope: scope)
         value["sleepUntil"] = deadline.map { $0.timeIntervalSince1970 * 1000 } as Any? ?? NSNull()
         value["sleepAtChapterEnd"] = chapterEnd as Any? ?? NSNull()
@@ -373,6 +397,7 @@ final class AvidPlaybackOwner: NSObject {
     func clear() {
         authenticationTask?.cancel(); authenticationTask = nil
         sourceGeneration = UUID(); authenticationError = nil
+        playbackEvents = []; playbackEventSequence = 0
         authenticationRecoveryNeeded = false; retriedUnauthorized = false
         credentialGeneration = nil
         seekGeneration &+= 1
@@ -383,6 +408,7 @@ final class AvidPlaybackOwner: NSObject {
         artworkTask?.cancel(); artworkTask = nil; artwork = nil; chapters = []
         tracks = []; itemIndices = [:]; activeIndex = 0; finalPosition = nil; manifestRevision = nil; assetCookies = []
         scope = ""; bookId = ""; fileId = ""; title = ""; author = ""
+        playbackEvents = []; playbackEventSequence = 0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
@@ -395,7 +421,8 @@ final class AvidPlaybackOwner: NSObject {
         let hash = SHA256.hash(data: Data(scope.utf8)).map { String(format: "%02x", $0) }.joined()
         // Native checkpoint remains available while the WebView is suspended.
         // SQLite events are replayed into the repository outbox on JS return; this record is not a server acknowledgement.
-        UserDefaults.standard.set(value, forKey: "avid.playback.\(hash)")
+        var recovery = value; recovery.removeValue(forKey: "nativeEvents")
+        UserDefaults.standard.set(recovery, forKey: "avid.playback.\(hash)")
         lastCheckpoint = Date()
         if AvidSharedStore.shared.activeScopeHash == hash {
             let duration = value["duration"] as? Double ?? 0
@@ -418,8 +445,8 @@ final class AvidPlaybackOwner: NSObject {
     private func finishSleep() {
         let target = chapterEnd
         setSleepTimer(deadlineMilliseconds: nil, chapterEnd: nil)
-        pause()
-        if let target { seek(target) }
+        pause(reason: "sleep")
+        if let target { seek(target, reason: "sleep") }
     }
 
     private func updateArtwork(_ raw: String?) {
@@ -433,14 +460,18 @@ final class AvidPlaybackOwner: NSObject {
         }
     }
 
-    func configureRemote(mode: String, seconds: Double) throws {
-        guard ["time", "chapter"].contains(mode), seconds.isFinite, seconds >= 5, seconds <= 120 else { throw PlaybackError.invalidTimeline }
-        remoteMode = mode; remoteSeconds = seconds.rounded()
+    func configureRemote(mode: String, seconds: Double, backwardSeconds: Double? = nil, forwardSeconds: Double? = nil) throws {
+        let backward = backwardSeconds ?? seconds
+        let forward = forwardSeconds ?? seconds
+        guard ["time", "chapter"].contains(mode), [seconds, backward, forward].allSatisfy({ $0.isFinite && $0 >= 1 && $0 <= 300 }) else { throw PlaybackError.invalidTimeline }
+        remoteMode = mode; remoteBackwardSeconds = backward.rounded(); remoteForwardSeconds = forward.rounded()
         UserDefaults.standard.set(mode, forKey: "avid.remote.mode")
-        UserDefaults.standard.set(remoteSeconds, forKey: "avid.remote.seconds")
+        UserDefaults.standard.set(seconds.rounded(), forKey: "avid.remote.seconds")
+        UserDefaults.standard.set(remoteBackwardSeconds, forKey: "avid.remote.backwardSeconds")
+        UserDefaults.standard.set(remoteForwardSeconds, forKey: "avid.remote.forwardSeconds")
         let commands = MPRemoteCommandCenter.shared()
-        commands.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSeconds)]
-        commands.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSeconds)]
+        commands.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteForwardSeconds)]
+        commands.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteBackwardSeconds)]
     }
 
     private func remoteSkip(_ direction: Int) {
@@ -448,13 +479,13 @@ final class AvidPlaybackOwner: NSObject {
         if remoteMode == "chapter", !chapters.isEmpty {
             let index = chapters.lastIndex { $0.start <= position } ?? -1
             if direction < 0 {
-                if index >= 0, position - chapters[index].start > 3 { seek(chapters[index].start) }
-                else { seek(chapters[max(0, index - 1)].start) }
+                if index >= 0, position - chapters[index].start > 3 { seek(chapters[index].start, reason: "remote") }
+                else { seek(chapters[max(0, index - 1)].start, reason: "remote") }
                 return
             }
-            if index + 1 < chapters.count { seek(chapters[index + 1].start); return }
+            if index + 1 < chapters.count { seek(chapters[index + 1].start, reason: "remote"); return }
         }
-        seek(max(0, position + Double(direction) * remoteSeconds))
+        seek(max(0, position + Double(direction) * (direction < 0 ? remoteBackwardSeconds : remoteForwardSeconds)), reason: "remote")
     }
 
     private func publishNowPlaying() {
@@ -479,16 +510,16 @@ final class AvidPlaybackOwner: NSObject {
     private func configureRemoteCommands() {
         let commands = MPRemoteCommandCenter.shared()
         commands.playCommand.addTarget { [weak self] _ in
-            do { try self?.play(); return .success } catch { return .commandFailed }
+            do { try self?.play(reason: "remote"); return .success } catch { return .commandFailed }
         }
-        commands.pauseCommand.addTarget { [weak self] _ in self?.pause(); return .success }
+        commands.pauseCommand.addTarget { [weak self] _ in self?.pause(reason: "remote"); return .success }
         commands.togglePlayPauseCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            if self.player.rate > 0 { self.pause() } else { do { try self.play() } catch { return .commandFailed } }
+            if self.player.rate > 0 { self.pause(reason: "remote") } else { do { try self.play(reason: "remote") } catch { return .commandFailed } }
             return .success
         }
-        commands.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteSeconds)]
-        commands.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteSeconds)]
+        commands.skipForwardCommand.preferredIntervals = [NSNumber(value: remoteForwardSeconds)]
+        commands.skipBackwardCommand.preferredIntervals = [NSNumber(value: remoteBackwardSeconds)]
         commands.skipForwardCommand.addTarget { [weak self] event in
             guard let self, event is MPSkipIntervalCommandEvent else { return .commandFailed }
             self.remoteSkip(1); return .success
@@ -501,7 +532,7 @@ final class AvidPlaybackOwner: NSObject {
         commands.previousTrackCommand.addTarget { [weak self] _ in self?.remoteSkip(-1); return .success }
         commands.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            self?.seek(event.positionTime); return .success
+            self?.seek(event.positionTime, reason: "remote"); return .success
         }
     }
 
@@ -510,18 +541,18 @@ final class AvidPlaybackOwner: NSObject {
               let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
         if type == .began {
             resumeAfterInterruption = player.rate > 0
-            pause()
+            pause(reason: "interruption")
         } else {
             let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions)
-            if resumeAfterInterruption && options.contains(.shouldResume) { try? play() }
+            if resumeAfterInterruption && options.contains(.shouldResume) { try? play(reason: "interruption") }
             resumeAfterInterruption = false
         }
     }
 
     @objc private func routeChanged(_ notification: Notification) {
         let reason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
-        if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { pause() }
+        if reason == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue { pause(reason: "interruption") }
     }
 
     @objc private func itemEnded(_ notification: Notification) {
@@ -530,10 +561,11 @@ final class AvidPlaybackOwner: NSObject {
             let duration = item.duration.seconds
             finalPosition = trackStart(index) + (tracks[index].duration ?? (duration.isFinite ? duration : 0))
             activeIndex = index
-            pause()
+            pause(reason: "completion")
         } else {
             // AVQueuePlayer advances autonomously; no WebView timer performs track transitions.
             activeIndex = index + 1
+            recordPlaybackEvent(kind: "status", reason: "track-transition", from: trackStart(index + 1))
             enforceSleep(); checkpoint()
         }
     }
