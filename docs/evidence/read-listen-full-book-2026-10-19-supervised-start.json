@@ -1,0 +1,392 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-19-supervised-start",
+  "capturedAt": "2026-10-19T15:39:41.388449+00:00",
+  "statusAtCapture": "running",
+  "terminalResult": false,
+  "sourceCommit": "75a66c8732ac55c188e11e97b470f91be00d0805",
+  "baseline": "654db63",
+  "corpusManifestSha256": "cac583b998dadb75255765598f9c3fc1b95a867e4c3a5d27fc5ef56d46fbe40b",
+  "host": {
+    "platform": "linux",
+    "release": "7.2.9",
+    "architecture": "x64",
+    "totalMemoryBytes": 66667118592,
+    "availableParallelism": 24,
+    "cpuModel": "AMD Ryzen AI 9 HX 370 w/ Radeon 890M",
+    "nodeVersion": "v24.21.0"
+  },
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/155.0.8059.39",
+    "revision": "@3ff7ac5a9224be9156d7f8703a06e22890aafd34",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+    "jsVersion": "15.5.35.20"
+  },
+  "inventory": {
+    "books": 3,
+    "tracks": 112,
+    "bytes": 1992081598
+  },
+  "sourceProof": [
+    {
+      "path": "apps/web/src/preparation/prepareReadListen.ts",
+      "sha256": "b564a58c7b2411ae46cf6b521dd6fe921653c4e0e1b4b3b0fe7cbe95fdc55e96",
+      "baselineSha256": "b564a58c7b2411ae46cf6b521dd6fe921653c4e0e1b4b3b0fe7cbe95fdc55e96",
+      "matchesBaseline": true
+    },
+    {
+      "path": "apps/web/src/preparation/audioWindows.ts",
+      "sha256": "66f2e2954fd4c6dfc9fa0a897e152c6c4fadb6e273efbe03f91e3f5dab468112",
+      "baselineSha256": "66f2e2954fd4c6dfc9fa0a897e152c6c4fadb6e273efbe03f91e3f5dab468112",
+      "matchesBaseline": true
+    },
+    {
+      "path": "apps/web/src/preparation/transcription.ts",
+      "sha256": "9547e2e5517d06ece191a135f4e768546db6d2bfaa167e71bd2d9f6464309730",
+      "baselineSha256": "9547e2e5517d06ece191a135f4e768546db6d2bfaa167e71bd2d9f6464309730",
+      "matchesBaseline": true
+    },
+    {
+      "path": "apps/web/src/preparation/transcription.worker.ts",
+      "sha256": "f18b3aa68e2ecb5801693d428b5590c25b4dc71fcaa6193dfc14ca3082c5e6a0",
+      "baselineSha256": "f18b3aa68e2ecb5801693d428b5590c25b4dc71fcaa6193dfc14ca3082c5e6a0",
+      "matchesBaseline": true
+    },
+    {
+      "path": "apps/web/src/preparation/model.ts",
+      "sha256": "70f0b2b671231f2e9b427649f10142282014dc60d92c6eb9138e1704237e5e61",
+      "baselineSha256": "70f0b2b671231f2e9b427649f10142282014dc60d92c6eb9138e1704237e5e61",
+      "matchesBaseline": true
+    },
+    {
+      "path": "apps/web/src/preparation/match.ts",
+      "sha256": "19829572bf5f3351c3b1495780a40f55d1aad3cb3c7104596a61ed7b6c0fef49",
+      "baselineSha256": "19829572bf5f3351c3b1495780a40f55d1aad3cb3c7104596a61ed7b6c0fef49",
+      "matchesBaseline": true
+    },
+    {
+      "path": "apps/web/src/preparation/match.worker.ts",
+      "sha256": "9a475b13deab8ce3d6c0de5e1de02248702f0a039f7567d35ae4cbe51e22419d",
+      "baselineSha256": "9a475b13deab8ce3d6c0de5e1de02248702f0a039f7567d35ae4cbe51e22419d",
+      "matchesBaseline": true
+    },
+    {
+      "path": "packages/playback/src/generated-alignment.ts",
+      "sha256": "c4a46968307d681e7a117a3edf71ecca038d37b198e79f3d1e170b6513756486",
+      "baselineSha256": "c4a46968307d681e7a117a3edf71ecca038d37b198e79f3d1e170b6513756486",
+      "matchesBaseline": true
+    },
+    {
+      "path": "packages/playback/src/audioDuration.ts",
+      "sha256": "0fcbfdcda21b757e49df8c50497bf6d872d054b9ca28fd5755a8cfda7ae01f7a",
+      "baselineSha256": "0fcbfdcda21b757e49df8c50497bf6d872d054b9ca28fd5755a8cfda7ae01f7a",
+      "matchesBaseline": true
+    },
+    {
+      "path": "packages/playback/src/standalone-alignment.ts",
+      "sha256": "7e2aa09f3638304bd0bb08bc282f7cbf7d270d2073c008e37500bbf0e543c67e",
+      "baselineSha256": "7e2aa09f3638304bd0bb08bc282f7cbf7d270d2073c008e37500bbf0e543c67e",
+      "matchesBaseline": true
+    },
+    {
+      "path": "packages/readers/src/generatedText.ts",
+      "sha256": "42b7b876a1fada3cff1b9274277bb3a22658bd21efd42ad99d4e8f2eae5c4fff",
+      "baselineSha256": "42b7b876a1fada3cff1b9274277bb3a22658bd21efd42ad99d4e8f2eae5c4fff",
+      "matchesBaseline": true
+    },
+    {
+      "path": "packages/readers/src/alignedPassage.ts",
+      "sha256": "1cfda1e0ebed6ede5d25144d35cc0f950fd1c228cbeba863444c6271f7b79e9e",
+      "baselineSha256": "1cfda1e0ebed6ede5d25144d35cc0f950fd1c228cbeba863444c6271f7b79e9e",
+      "matchesBaseline": true
+    },
+    {
+      "path": "packages/core/src/preparedReadListen.ts",
+      "sha256": "e2054cbb12c7b8b2f39691e406802918b9f55cb00a16ccd98a1ad061b5840d63",
+      "baselineSha256": "e2054cbb12c7b8b2f39691e406802918b9f55cb00a16ccd98a1ad061b5840d63",
+      "matchesBaseline": true
+    },
+    {
+      "path": "package.json",
+      "sha256": "9c3817ab4c2fa5a7ee8a8468ec11fc9dfa65644f393b94b029d659a21d473adf",
+      "baselineSha256": "9c3817ab4c2fa5a7ee8a8468ec11fc9dfa65644f393b94b029d659a21d473adf",
+      "matchesBaseline": true
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "59b380f5dcc003dcddceed6b2db3aa5f473bfa46bf03d1d9aa0ad6f47c483eb7",
+      "baselineSha256": "59b380f5dcc003dcddceed6b2db3aa5f473bfa46bf03d1d9aa0ad6f47c483eb7",
+      "matchesBaseline": true
+    },
+    {
+      "path": "packages/readers/src/Reader.tsx",
+      "sha256": "90aafb53b0306d14cef180a780aac0707dd23bb651dff635286dc62c326ffee6",
+      "baselineSha256": "90aafb53b0306d14cef180a780aac0707dd23bb651dff635286dc62c326ffee6",
+      "matchesBaseline": true
+    },
+    {
+      "path": "packages/readers/src/EbookView.tsx",
+      "sha256": "749096c88817a8b6fee2c8e6fc9cc265ffb4d2edc7813aff57509df555855f6e",
+      "baselineSha256": "749096c88817a8b6fee2c8e6fc9cc265ffb4d2edc7813aff57509df555855f6e",
+      "matchesBaseline": true
+    }
+  ],
+  "harnessProof": [
+    {
+      "path": "scripts/full-book-server.mjs",
+      "sha256": "2eaffd87bf8e114f01ecafeb1e84889ff8c9eb1208df8e74bfc49be13bf3864d"
+    },
+    {
+      "path": "scripts/full-book-support.mjs",
+      "sha256": "a3538edd83b4227a73fe50170145def40fe6358ecb9b3adff2e1f80ef18d3700"
+    },
+    {
+      "path": "scripts/run-full-book-browser.mjs",
+      "sha256": "84283c8e539f5d2c984910323d4cf9df7b278b1a49d7cedc968b533a1bf96fc5"
+    },
+    {
+      "path": "scripts/run-full-book-suite.mjs",
+      "sha256": "c6d5764d2ea612986ff1b4ecd1f7de921796c572f776eb1d9e21265f62c0e67d"
+    },
+    {
+      "path": "packages/readers/fixtures/full-book-harness.tsx",
+      "sha256": "7938a83c807d69d0973dbb5ec62b6a47d62c981a5f988a7c292717e9b2ed722d"
+    },
+    {
+      "path": "packages/readers/fixtures/full-book.html",
+      "sha256": "7b61c0c5b2ed3467ea095f2b5e0a379d198a66c61a253ad3f4975ca38501c471"
+    }
+  ],
+  "buildProof": [
+    {
+      "path": "assets/comic-book-D9HonzZU.js",
+      "bytes": 1128,
+      "sha256": "55563bd8a610bee6d424557810f9df3a88a4a67f78a7738a268c9df54dd583ba"
+    },
+    {
+      "path": "assets/epub-CP7ZqVaG.js",
+      "bytes": 22851,
+      "sha256": "c754df902f4f26dc4b13af192d025647468ddf7777feff2d27a87eba115f4f0d"
+    },
+    {
+      "path": "assets/fb2-BoviXFhw.js",
+      "bytes": 7028,
+      "sha256": "c090b553aa08207a39cb996b9aa4ef3ede999d39feaba42f5cece99dbc9cad72"
+    },
+    {
+      "path": "assets/fflate-B2dMBbpR.js",
+      "bytes": 3795,
+      "sha256": "4a428aac45f290c0ddbbb2ea9c01c61d052ff416fc4e43def3047dfc6e5f9635"
+    },
+    {
+      "path": "assets/fixed-layout-By7-f2ZO.js",
+      "bytes": 5739,
+      "sha256": "9898e40bc99413be1f2685a16d32d00358d92f0946e8313e7a14ddc325d71a2a"
+    },
+    {
+      "path": "assets/full-book-CHZ3Gl1I.css",
+      "bytes": 60547,
+      "sha256": "0a28bf593a3837a76c8d3a48cda1069d9b47af8c3945ad527738711211b757b7"
+    },
+    {
+      "path": "assets/full-book-ec5147yv.js",
+      "bytes": 1492960,
+      "sha256": "ca73e71b4c218aa66266205ca42d495a3ed2643d424e4b6350fca00bb30cc41f"
+    },
+    {
+      "path": "assets/libarchive-Dcz4ZPbh.js",
+      "bytes": 7983,
+      "sha256": "e1081026e7c6a0b7da1853e240ab766c388f9e596430c478cfa5dc2f2fa756d6"
+    },
+    {
+      "path": "assets/libarchive-DxGirPmi.wasm",
+      "bytes": 1002547,
+      "sha256": "8a66066ed3ea1e6db0469ec752d8fca888a6bf737c6cff21fdbcb62241a72424"
+    },
+    {
+      "path": "assets/libarchive-UqBd7SZV.js",
+      "bytes": 65,
+      "sha256": "b268dd1d844eefe6fce1b0d2ed02e0d2c81acf5cd8e6806b4f0b7539d115ebdd"
+    },
+    {
+      "path": "assets/match.worker-CZ3HljRS.js",
+      "bytes": 8786,
+      "sha256": "fa8449c4ae48370d4dfddaaadd30790584cce37ac5ab2b4a0e532f9be870d6d0"
+    },
+    {
+      "path": "assets/mobi-j-tQpHmS.js",
+      "bytes": 22595,
+      "sha256": "7c9c2d7ccb50dd529136e710c26d7281380eddb3de3855960ca06956b88ee1ab"
+    },
+    {
+      "path": "assets/ort-wasm-simd-threaded-4byDm7i3.wasm",
+      "bytes": 14264838,
+      "sha256": "06ba057753da3847e4c24f02d91ab133455b0817c69a44993a9a53a2146df9e3"
+    },
+    {
+      "path": "assets/ort-wasm-simd-threaded-BQJNh0bu.mjs",
+      "bytes": 24381,
+      "sha256": "c57ca56328877353a575e51bbca6f18450027d6c9bf2307a2cb2c41363b4de9f"
+    },
+    {
+      "path": "assets/paginator-BGsqC-jM.js",
+      "bytes": 21369,
+      "sha256": "49a7d56b4c8d6439c7c6dc91ef4b84854bf381fb76d2541eb187e98da406d6d2"
+    },
+    {
+      "path": "assets/pdf.worker.min-iDqQPrd3.mjs",
+      "bytes": 1232303,
+      "sha256": "52fadd5b81b6abd1eb665bab0c3749a8ad6a293fcb6ee9d9e0309f29d4f82619"
+    },
+    {
+      "path": "assets/search-UHG1SVDO.js",
+      "bytes": 2409,
+      "sha256": "d9128018e62481050604e21a74f08595315c8f1ca211ca8c89f954bffc3d873f"
+    },
+    {
+      "path": "assets/transcription.worker-CRJfWYjl.js",
+      "bytes": 500933,
+      "sha256": "52279019199c180031741667234ef1b1580eb6ff2e53f25ce4de1dbc03497383"
+    },
+    {
+      "path": "assets/tts-fb28Buch.js",
+      "bytes": 4696,
+      "sha256": "1d8b3be890e7ebcc795d77b0d6d885f084213dde9a422b5be9060444d909b62b"
+    },
+    {
+      "path": "assets/worker-bundle-Bp0KiU5a.js",
+      "bytes": 61700,
+      "sha256": "59b906eeda732c9903f0a4f45c68a6e1d5415057ebb496637055be8b41a1e8bb"
+    },
+    {
+      "path": "assets/worker-bundle-Dx5mKZOL.js",
+      "bytes": 61634,
+      "sha256": "552fd4c4e96e677b8d1ee28b96eec3f7761f19ae9069b6df40c1848b3b632493"
+    },
+    {
+      "path": "assets/zip-C8lAiWvu.js",
+      "bytes": 36838,
+      "sha256": "fb0a489ec17b5764fe410ab4d0723bac2bac44a05c4c892d3d070c8b79a75397"
+    },
+    {
+      "path": "covers/alice.svg",
+      "bytes": 1308,
+      "sha256": "394cd4a3c35966225c4bd073560054db8bf15a4cada07b49d576963d26910da8"
+    },
+    {
+      "path": "covers/dorian.svg",
+      "bytes": 1311,
+      "sha256": "f28a46da17dc5f20c27d006d2de8bbff2501dfd8e32ef58df1a626ef2e58ff44"
+    },
+    {
+      "path": "covers/dracula.svg",
+      "bytes": 1108,
+      "sha256": "6180e986dec7fa0dbb4fb7a0bba3e5450635fa3c65a344b208e63847140bf278"
+    },
+    {
+      "path": "covers/frankenstein.svg",
+      "bytes": 1218,
+      "sha256": "df330e3484fc2f664c1c2d13d9da46741ba64f8781b781f95792e07a6b978779"
+    },
+    {
+      "path": "covers/garden.svg",
+      "bytes": 1418,
+      "sha256": "aec9afcc974cb5ca601fe9bb9068dbbb55baa2e1243510888ee098ca2996f2ec"
+    },
+    {
+      "path": "covers/moby.svg",
+      "bytes": 1228,
+      "sha256": "a4fd9584a9c7a74229318fbe93c48f0ab661ffb3c5686ed35832f8198ccad180"
+    },
+    {
+      "path": "covers/pride.svg",
+      "bytes": 1408,
+      "sha256": "d9365834a57029cf96f681ffefef8e0bce25803e6beb3ff1e81b7d6915e563d8"
+    },
+    {
+      "path": "covers/sherlock.svg",
+      "bytes": 1301,
+      "sha256": "6fe1dcfafe67f5a431a8763cc03b9996c4909b12851101aeca9b8f15c6a51c9d"
+    },
+    {
+      "path": "covers/sleepy.svg",
+      "bytes": 1177,
+      "sha256": "ff031ba1f42b58900e788646d01b9bea0ffee31813aed208bbd851d10a3fb991"
+    },
+    {
+      "path": "covers/timemachine.svg",
+      "bytes": 1303,
+      "sha256": "177b02ab014a872f4bff70df4081082378fb2d8cca922b0637814e56d63b1a4d"
+    },
+    {
+      "path": "covers/treasure.svg",
+      "bytes": 1344,
+      "sha256": "366832f830a3814d66da084f937ee3b1eb8dd21b3784d9538104ce850d365308"
+    },
+    {
+      "path": "covers/twocities.svg",
+      "bytes": 1312,
+      "sha256": "ce3dccad9aaaaf033d1b91dd7f5bf99e8b544c5597aedfbccd189211c6c4af8e"
+    },
+    {
+      "path": "fonts.css",
+      "bytes": 83,
+      "sha256": "d0fb69f371f1fae3a7d05c11a66077395dca96d4f6117784c4ac539e2aa28e8a"
+    },
+    {
+      "path": "icon.svg",
+      "bytes": 279,
+      "sha256": "fbc224fc71fcafad8d8556ec25affff1ca8bc7939004355da5c5098599a6341f"
+    },
+    {
+      "path": "manifest.webmanifest",
+      "bytes": 395,
+      "sha256": "d2302caa5585c507507f14c6a38f51d1254e36105237392e74035de9bce491a5"
+    },
+    {
+      "path": "packages/readers/fixtures/full-book.html",
+      "bytes": 403,
+      "sha256": "41635160decae6b2777c61b2c50807ea8c58dce380d554967902962ccdf7cd05"
+    },
+    {
+      "path": "samples/narration.wav",
+      "bytes": 1665176,
+      "sha256": "48e5fedb27cf4f3432fb24a57bd1eba50befea65ed53a7a028fb6060db420748"
+    }
+  ],
+  "service": {
+    "name": "avid-full-book-baseline.service",
+    "type": "transient user service",
+    "restart": "no",
+    "bookWatchdogMs": 86400000,
+    "runtimeMaxHours": 80
+  },
+  "books": [
+    {
+      "bookId": "alice-yearsley-v3",
+      "statusAtCapture": "running"
+    },
+    {
+      "bookId": "pride-savage-v3",
+      "statusAtCapture": "not-started"
+    },
+    {
+      "bookId": "jane-eyre-volunteers",
+      "statusAtCapture": "not-started"
+    }
+  ],
+  "currentObservation": {
+    "bookId": "alice-yearsley-v3",
+    "status": "running",
+    "lastStage": "comparing",
+    "elapsedMs": 62927,
+    "extractedPassages": 875,
+    "originalAssetCount": 12,
+    "originalAudioSeconds": 9758.406441000001
+  },
+  "qualityReview": "not performed",
+  "coldReopen": "not performed",
+  "nativeAcceptance": "not performed",
+  "note": "Start checkpoint only. Live runtime files remain outside Git; no complete-input or accuracy result is claimed."
+}

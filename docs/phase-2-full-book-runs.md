@@ -76,6 +76,19 @@ systemctl --user stop avid-full-book-baseline
 
 Stopping preserves partial evidence and terminates owned browser/server children. Retrying requires a new output directory and repeats recognition. Inspect the suite summary, each book’s terminal report and browser-runtime samples together; absence of a terminal report is not success. A failed book must remain visible even if later books complete.
 
+## Active supervised run
+
+Started **2026-10-19 at 15:38 UTC** from implementation commit `75a66c8732ac55c188e11e97b470f91be00d0805`, with all 17 baseline source/dependency proofs matching. The [checked-in start checkpoint](evidence/read-listen-full-book-2026-10-19-supervised-start.json) records the actual machine, browser, manifest and bundle identities. At capture, Alice was recognizing speech; Pride and Jane were queued. This is a timestamped start observation, not a terminal result.
+
+- Source snapshot: `/tmp/avid-full-book-source-75a66c8732ac55c188e11e97b470f91be00d0805`.
+- Run directory: `/tmp/avid-full-book-baseline-2026-10-19-supervised`.
+- Suite status: `suite-runtime.json`; each preparation: `reports/<book-id>-baseline.json`.
+- Browser samples and log: `browsers/<book-id>/browser-runtime.json` and `runner.log`.
+- Build/proof log: `server.log` and `build-proof.json`; full publication/recognition/alignment diagnostics: `artifacts/`.
+- Service: `avid-full-book-baseline.service`, no automatic restart, 24-hour watchdog per book, 80-hour service maximum. The service exits after the suite. Stop/status commands are above; retained JSON files remain the record after the transient unit is collected.
+
+The host has a Ryzen AI 9 HX 370, 24 available CPU threads and 66,667,118,592 bytes reported RAM; speech recognition uses its existing single-thread WASM configuration. Chromium is 155.0.8059.39. None of these measurements qualifies a phone or another machine. Keep the host awake; do not remove the source snapshot, corpus, model cache, run directory or installed dependencies during execution. `/tmp` data may be removed on reboot. This job saves local evidence; publication/review of terminal results is a separate step.
+
 ## Remaining work
 
 Finish the three unchanged complete-input baselines and publish sanitized terminal results. Use those measured failures to set Milestone E’s next implementation targets. Then add independently labeled quality/timing evaluation, unrelated/abridged controls, original-codec clock comparisons, rendered interactions and cold prepared reopening. Physical iOS/Android and packaged desktop evidence remain separate requirements.
